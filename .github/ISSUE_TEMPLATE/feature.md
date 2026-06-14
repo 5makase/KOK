@@ -1,3 +1,12 @@
+---
+name: Feature
+about: 기능 개발 이슈 템플릿
+title: "[FEATURE] "
+labels: feature
+assignees: ''
+
+---
+
 ## 📌 기능 설명
 
 구현할 기능에 대한 설명을 작성해주세요.

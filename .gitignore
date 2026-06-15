@@ -8,6 +8,7 @@ out/
 .DS_Store
 
 .env
+*.env
 *.log
 
 docker-data/

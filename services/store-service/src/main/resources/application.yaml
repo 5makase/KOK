@@ -6,7 +6,7 @@ spring:
     name: store-service
 
   datasource:
-    url: ${STORE_DB_URL:jdbc:postgresql://localhost:5432/store_db}
+    url: ${STORE_DB_URL:jdbc:postgresql://localhost:5433/store_db}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver

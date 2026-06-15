@@ -1,7 +1,7 @@
 # Read Me First
 The following was discovered as part of building this project:
 
-* The original package name 'com.omakase.kok.api-gateway' is invalid and this project uses 'com.omakase.kok.api_gateway' instead.
+* The original package name 'com.omakase.kok.api-gateway' is invalid and this project uses 'com.omakase.kok.gateway' instead.
 
 # Getting Started
 

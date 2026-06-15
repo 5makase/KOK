@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: api-gateway-test
+
+  cloud:
+    discovery:
+      enabled: false
+    gateway:
+      server:
+        webflux:
+          routes: []
+
+eureka:
+  client:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

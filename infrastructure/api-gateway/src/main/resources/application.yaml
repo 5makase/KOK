@@ -35,6 +35,10 @@ spring:
               predicates:
                 - Path=/api/v1/notifications/**
 
+            - id: review-service
+              uri: lb://review-service
+              predicates:
+                - Path=/api/v1/reviews/**
 eureka:
   client:
     service-url:

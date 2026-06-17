@@ -49,6 +49,9 @@ public class Waiting extends BaseEntity {
     @Column(name = "expected_waiting_minutes")
     private Integer expectedWaitingMinutes;
 
+    @Column(name = "request_message", length = 500)
+    private String requestMessage;
+
     @Column(name = "called_at")
     private LocalDateTime calledAt;
 
@@ -58,16 +61,24 @@ public class Waiting extends BaseEntity {
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
     @Column(name = "no_showed_at")
     private LocalDateTime noShowedAt;
 
+    @Column(name = "no_show_reason", length = 500)
+    private String noShowReason;
+
     @Builder
-    private Waiting(UUID storeId, UUID userId, Long waitingNumber, Integer peopleCount, Integer expectedWaitingMinutes) {
+    private Waiting(UUID storeId, UUID userId, Long waitingNumber, Integer peopleCount,
+                    Integer expectedWaitingMinutes, String requestMessage) {
         this.storeId = storeId;
         this.userId = userId;
         this.waitingNumber = waitingNumber;
         this.peopleCount = peopleCount;
         this.expectedWaitingMinutes = expectedWaitingMinutes;
+        this.requestMessage = requestMessage;
         this.status = WaitingStatus.WAITING;
     }
 
@@ -81,13 +92,15 @@ public class Waiting extends BaseEntity {
         this.enteredAt = LocalDateTime.now();
     }
 
-    public void cancel() {
+    public void cancel(String cancelReason) {
         this.status = WaitingStatus.CANCELLED;
+        this.cancelReason = cancelReason;
         this.cancelledAt = LocalDateTime.now();
     }
 
-    public void noShow() {
+    public void noShow(String noShowReason) {
         this.status = WaitingStatus.NO_SHOW;
+        this.noShowReason = noShowReason;
         this.noShowedAt = LocalDateTime.now();
     }
 }

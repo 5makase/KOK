@@ -4,13 +4,12 @@ import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.reservation.infrastructure.client.dto.CreatePaymentRequest;
 import com.omakase.kok.reservation.infrastructure.client.dto.PaymentResponse;
 import com.omakase.kok.reservation.infrastructure.client.dto.RefundRequest;
-import com.omakase.kok.reservation.infrastructure.config.FeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-@FeignClient(name = "payment-service", path = "/api/v1/internal/payments", configuration = FeignConfig.class)
+@FeignClient(name = "payment-service", path = "/api/v1/internal/payments")
 public interface PaymentFeignClient {
 
     @PostMapping

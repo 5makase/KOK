@@ -33,6 +33,11 @@ feign:
       default:
         connect-timeout: 3000
         read-timeout: 3000
+        logger-level: BASIC
+
+logging:
+  level:
+    com.omakase.kok.reservation.infrastructure.client: DEBUG
 
 eureka:
   client:

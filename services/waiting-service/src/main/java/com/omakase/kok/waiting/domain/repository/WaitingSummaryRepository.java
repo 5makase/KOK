@@ -1,4 +1,4 @@
-package com.omakase.kok.waiting.repository;
+package com.omakase.kok.waiting.domain.repository;
 
 import com.omakase.kok.waiting.domain.entity.WaitingSummary;
 import org.springframework.data.jpa.repository.JpaRepository;

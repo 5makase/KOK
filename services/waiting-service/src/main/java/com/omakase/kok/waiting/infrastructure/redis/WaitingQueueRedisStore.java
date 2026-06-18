@@ -1,5 +1,7 @@
 package com.omakase.kok.waiting.infrastructure.redis;
 
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -22,16 +24,23 @@ public class WaitingQueueRedisStore {
     private static final String WAITING_QUEUE_KEY_PREFIX = "waiting:store:";
     private static final String WAITING_QUEUE_KEY_MIDDLE = ":queue:";
     private static final String WAITING_SEQUENCE_KEY_MIDDLE = ":sequence:";
+    private static final String WAITING_ACTIVE_USER_KEY_MIDDLE = ":user:";
+    private static final String WAITING_ACTIVE_USER_KEY_SUFFIX = ":active";
     private static final String WAITING_STORE_CACHE_KEY_SUFFIX = ":cache";
     private static final Duration WAITING_KEY_TTL = Duration.ofDays(3);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
     private static final DefaultRedisScript<List> REGISTER_WAITING_SCRIPT = new DefaultRedisScript<>("""
             local queueKey = KEYS[1]
             local sequenceKey = KEYS[2]
+            local activeUserKey = KEYS[3]
             local waitingId = ARGV[1]
             local maxWaitingCount = tonumber(ARGV[2])
             local ttlSeconds = tonumber(ARGV[3])
             local currentCount = redis.call('ZCARD', queueKey)
+
+            if redis.call('EXISTS', activeUserKey) == 1 then
+                return {-2, currentCount}
+            end
 
             if currentCount >= maxWaitingCount then
                 return {-1, currentCount}
@@ -39,12 +48,25 @@ public class WaitingQueueRedisStore {
 
             local waitingNumber = redis.call('INCR', sequenceKey)
             redis.call('ZADD', queueKey, waitingNumber, waitingId)
+            redis.call('SET', activeUserKey, waitingId, 'EX', ttlSeconds)
             redis.call('EXPIRE', queueKey, ttlSeconds)
             redis.call('EXPIRE', sequenceKey, ttlSeconds)
 
             local rank = redis.call('ZRANK', queueKey, waitingId)
             return {waitingNumber, rank + 1}
             """, List.class);
+    private static final DefaultRedisScript<Long> REMOVE_WAITING_SCRIPT = new DefaultRedisScript<>("""
+            local queueKey = KEYS[1]
+            local activeUserKey = KEYS[2]
+            local waitingId = ARGV[1]
+
+            local removed = redis.call('ZREM', queueKey, waitingId)
+            if redis.call('GET', activeUserKey) == waitingId then
+                redis.call('DEL', activeUserKey)
+            end
+
+            return removed
+            """, Long.class);
 
     // 오늘 날짜
     private String today() {
@@ -61,19 +83,28 @@ public class WaitingQueueRedisStore {
         return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_SEQUENCE_KEY_MIDDLE + today();
     }
 
+    // 사용자별 진행 중 웨이팅 키
+    private String activeUserKey(UUID storeId, UUID userId) {
+        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE + userId + WAITING_ACTIVE_USER_KEY_SUFFIX;
+    }
+
     // 매장 캐시 키
     private String storeCacheKey(UUID storeId) {
         return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_STORE_CACHE_KEY_SUFFIX;
     }
 
     // 웨이팅 등록
-    public Optional<WaitingRegistration> register(UUID storeId, UUID waitingId, Integer maxWaitingCount) {
-        List<Long> result = executeRegisterScript(storeId, waitingId, maxWaitingCount);
-        if (result == null || result.size() < 2) {
-            throw new IllegalStateException("Invalid waiting register script result");
+    public Optional<WaitingRegistration> register(UUID storeId, UUID userId, UUID waitingId, Integer maxWaitingCount) {
+        List<Long> result = executeRegisterScript(storeId, userId, waitingId, maxWaitingCount);
+        if (result.size() < 2) {
+            throw new WaitingException(WaitingErrorCode.WAITING_REGISTER_FAILED);
         }
         Long waitingNumber = result.get(0);
         Long currentRank = result.get(1);
+
+        if (waitingNumber == -2) {
+            throw new WaitingException(WaitingErrorCode.WAITING_ALREADY_EXISTS);
+        }
 
         if (waitingNumber < 0) {
             return Optional.empty();
@@ -94,6 +125,15 @@ public class WaitingQueueRedisStore {
     // 대기열 제거
     public void remove(UUID storeId, UUID waitingId) {
         redisTemplate.opsForZSet().remove(queueKey(storeId), waitingId.toString());
+    }
+
+    // 대기열/사용자 중복 방지 키 제거
+    public void remove(UUID storeId, UUID userId, UUID waitingId) {
+        redisTemplate.execute(
+                REMOVE_WAITING_SCRIPT,
+                List.of(queueKey(storeId), activeUserKey(storeId, userId)),
+                waitingId.toString()
+        );
     }
 
     // 다음 호출 대상 조회
@@ -191,10 +231,10 @@ public class WaitingQueueRedisStore {
 
     // 웨이팅 등록 스크립트 실행
     @SuppressWarnings("unchecked")
-    private List<Long> executeRegisterScript(UUID storeId, UUID waitingId, Integer maxWaitingCount) {
+    private List<Long> executeRegisterScript(UUID storeId, UUID userId, UUID waitingId, Integer maxWaitingCount) {
         return (List<Long>) redisTemplate.execute(
                 REGISTER_WAITING_SCRIPT,
-                List.of(queueKey(storeId), sequenceKey(storeId)),
+                List.of(queueKey(storeId), sequenceKey(storeId), activeUserKey(storeId, userId)),
                 waitingId.toString(),
                 maxWaitingCount.toString(),
                 String.valueOf(WAITING_KEY_TTL.toSeconds())

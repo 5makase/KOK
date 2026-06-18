@@ -61,9 +61,6 @@ public class WaitingService {
 
         // TODO: Store Service 내부 API 연동 후 본인 매장 웨이팅 등록 제한 검증 추가
 
-        // 웨이팅 중복 방지
-        validateActiveWaitingNotExists(storeId, userId);
-
         // 매장 웨이팅 설정/평균 대기시간 조회
         StoreWaitingValues storeWaitingValues = getStoreWaitingValues(storeId);
         // 웨이팅 활성화 여부 검증
@@ -72,6 +69,7 @@ public class WaitingService {
         UUID waitingId = UUID.randomUUID();
         WaitingRegistration registration = waitingQueueRedisStore.register(
                 storeId,
+                userId,
                 waitingId,
                 storeWaitingValues.maxWaitingCount()
         ).orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CAPACITY_EXCEEDED));
@@ -176,18 +174,6 @@ public class WaitingService {
         );
     }
 
-    // 웨이팅 중복 방지
-    private void validateActiveWaitingNotExists(UUID storeId, UUID userId) {
-        boolean exists = waitingRepository.existsByStoreIdAndUserIdAndStatusIn(
-                storeId,
-                userId,
-                List.of(WaitingStatus.WAITING, WaitingStatus.CALLED)
-        );
-        if (exists) {
-            throw new WaitingException(WaitingErrorCode.WAITING_ALREADY_EXISTS);
-        }
-    }
-
     // 웨이팅 가능 여부 판단 - 가게 웨이팅 활성화 여부
     private void validateWaitingEnabled(StoreWaitingValues storeWaitingValues) {
         if (!Boolean.TRUE.equals(storeWaitingValues.waitingEnabled())) {
@@ -200,7 +186,7 @@ public class WaitingService {
         try {
             return waitingRepository.saveAndFlush(waiting);
         } catch (RuntimeException e) {
-            waitingQueueRedisStore.remove(storeId, waiting.getId());
+            waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
             throw e;
         }
     }
@@ -213,7 +199,7 @@ public class WaitingService {
         return Math.toIntExact((currentRank - 1) * storeWaitingValues.averageWaitingMinutes());
     }
 
-    // cache-aside 패턴
+    // 웨이팅 요약/세팅 캐싱 - cache-aside 패턴
     private StoreWaitingValues getStoreWaitingValues(UUID storeId) {
         return waitingQueueRedisStore.getStoreValues(storeId)
                 .orElseGet(() -> {

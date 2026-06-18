@@ -73,10 +73,16 @@ public class Reservation extends BaseEntity {
     }
 
     public void confirm() {
+        if (this.status != ReservationStatus.PAYMENT_PENDING) {
+            throw new IllegalStateException("PAYMENT_PENDING 상태에서만 확정할 수 있습니다. 현재 상태: " + this.status);
+        }
         this.status = ReservationStatus.CONFIRMED;
     }
 
     public void cancel(String cancelledBy, String cancelReason) {
+        if (!isCancellable()) {
+            throw new IllegalStateException("PAYMENT_PENDING 또는 CONFIRMED 상태에서만 취소할 수 있습니다. 현재 상태: " + this.status);
+        }
         this.status = ReservationStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();
         this.cancelledBy = cancelledBy;
@@ -84,11 +90,17 @@ public class Reservation extends BaseEntity {
     }
 
     public void visit() {
+        if (this.status != ReservationStatus.CONFIRMED) {
+            throw new IllegalStateException("CONFIRMED 상태에서만 방문 처리할 수 있습니다. 현재 상태: " + this.status);
+        }
         this.status = ReservationStatus.VISITED;
         this.visitedAt = LocalDateTime.now();
     }
 
     public void noShow() {
+        if (this.status != ReservationStatus.CONFIRMED) {
+            throw new IllegalStateException("CONFIRMED 상태에서만 노쇼 처리할 수 있습니다. 현재 상태: " + this.status);
+        }
         this.status = ReservationStatus.NO_SHOW;
     }
 

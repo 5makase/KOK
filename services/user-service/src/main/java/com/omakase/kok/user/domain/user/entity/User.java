@@ -67,4 +67,22 @@ public class User {
 
     @Column(name = "deleted_by")
     private UUID deletedBy;
+
+    @Column(name = "approved")
+    private Boolean approved;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+
+        if (this.approved == null) {
+            this.approved = false;
+        }
+    }
+
+    public void approve(UUID approvedBy) {
+        this.approved = true;
+        this.approvedAt = LocalDateTime.now();
+        this.approvedBy = approvedBy;
+    }
 }

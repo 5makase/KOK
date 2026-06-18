@@ -2,6 +2,8 @@ package com.omakase.kok.waiting.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
 import com.omakase.kok.waiting.domain.enums.WaitingStatus;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -89,22 +91,34 @@ public class Waiting extends BaseEntity {
     }
 
     public void call() {
+        if (this.status != WaitingStatus.WAITING) {
+            throw new WaitingException(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED);
+        }
         this.status = WaitingStatus.CALLED;
         this.calledAt = LocalDateTime.now();
     }
 
     public void enter() {
+        if (this.status != WaitingStatus.CALLED) {
+            throw new WaitingException(WaitingErrorCode.WAITING_ENTER_NOT_ALLOWED);
+        }
         this.status = WaitingStatus.ENTERED;
         this.enteredAt = LocalDateTime.now();
     }
 
     public void cancel(String cancelReason) {
+        if (this.status != WaitingStatus.WAITING && this.status != WaitingStatus.CALLED) {
+            throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_NOT_ALLOWED);
+        }
         this.status = WaitingStatus.CANCELLED;
         this.cancelReason = cancelReason;
         this.cancelledAt = LocalDateTime.now();
     }
 
     public void noShow(String noShowReason) {
+        if (this.status != WaitingStatus.CALLED) {
+            throw new WaitingException(WaitingErrorCode.WAITING_NO_SHOW_NOT_ALLOWED);
+        }
         this.status = WaitingStatus.NO_SHOW;
         this.noShowReason = noShowReason;
         this.noShowedAt = LocalDateTime.now();

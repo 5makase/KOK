@@ -1,6 +1,8 @@
 package com.omakase.kok.waiting.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -53,9 +55,25 @@ public class WaitingSetting extends BaseEntity {
 
     public void update(Boolean waitingEnabled, Integer maxWaitingCount, Integer callTimeoutMinutes,
                        Boolean allowUserCancel) {
-        this.waitingEnabled = waitingEnabled;
-        this.maxWaitingCount = maxWaitingCount;
-        this.callTimeoutMinutes = callTimeoutMinutes;
-        this.allowUserCancel = allowUserCancel;
+        validateUpdateValues(maxWaitingCount, callTimeoutMinutes);
+        if (waitingEnabled != null) {
+            this.waitingEnabled = waitingEnabled;
+        }
+        if (maxWaitingCount != null) {
+            this.maxWaitingCount = maxWaitingCount;
+        }
+        if (callTimeoutMinutes != null) {
+            this.callTimeoutMinutes = callTimeoutMinutes;
+        }
+        if (allowUserCancel != null) {
+            this.allowUserCancel = allowUserCancel;
+        }
+    }
+
+    private void validateUpdateValues(Integer maxWaitingCount, Integer callTimeoutMinutes) {
+        if ((maxWaitingCount != null && maxWaitingCount <= 0)
+                || (callTimeoutMinutes != null && callTimeoutMinutes <= 0)) {
+            throw new WaitingException(WaitingErrorCode.WAITING_SETTING_INVALID);
+        }
     }
 }

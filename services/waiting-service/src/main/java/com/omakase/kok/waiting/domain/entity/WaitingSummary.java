@@ -1,6 +1,8 @@
 package com.omakase.kok.waiting.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -60,6 +62,9 @@ public class WaitingSummary extends BaseEntity {
     }
 
     public void updateAverageWaitingMinutes(Integer averageWaitingMinutes) {
+        if (averageWaitingMinutes == null || averageWaitingMinutes < 0) {
+            throw new WaitingException(WaitingErrorCode.WAITING_SUMMARY_INVALID);
+        }
         this.averageWaitingMinutes = averageWaitingMinutes;
     }
 }

@@ -2,6 +2,8 @@ package com.omakase.kok.waiting.domain.entity;
 
 import com.omakase.kok.waiting.domain.enums.OutboxStatus;
 import com.omakase.kok.waiting.domain.enums.WaitingEventType;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -81,18 +83,27 @@ public class WaitingOutboxEvent {
     }
 
     public void publish() {
+        if (this.status != OutboxStatus.PENDING) {
+            throw new WaitingException(WaitingErrorCode.WAITING_OUTBOX_STATUS_NOT_ALLOWED);
+        }
         this.status = OutboxStatus.PUBLISHED;
         this.publishedAt = LocalDateTime.now();
         this.failedReason = null;
     }
 
     public void fail(String failedReason) {
+        if (this.status != OutboxStatus.PENDING) {
+            throw new WaitingException(WaitingErrorCode.WAITING_OUTBOX_STATUS_NOT_ALLOWED);
+        }
         this.status = OutboxStatus.FAILED;
         this.retryCount += 1;
         this.failedReason = failedReason;
     }
 
     public void retry() {
+        if (this.status != OutboxStatus.FAILED) {
+            throw new WaitingException(WaitingErrorCode.WAITING_OUTBOX_STATUS_NOT_ALLOWED);
+        }
         this.status = OutboxStatus.PENDING;
         this.failedReason = null;
     }

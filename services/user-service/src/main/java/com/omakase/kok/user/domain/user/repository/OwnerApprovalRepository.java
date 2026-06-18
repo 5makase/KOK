@@ -10,7 +10,7 @@ import java.util.UUID;
 public interface OwnerApprovalRepository extends JpaRepository<OwnerApproval, UUID> {
 
     // 승인 요청별 목록 가져오기
-    List<OwnerApproval> findByUserStatus(ApprovalStatus status);
+    List<OwnerApproval> findByStatus(ApprovalStatus status);
 
     // 여러번 승인 요청을 할 수 있으므로, 중복 승인 요청 방지용
     boolean existsByUser_UserIdAndStatus(UUID userId, ApprovalStatus status);

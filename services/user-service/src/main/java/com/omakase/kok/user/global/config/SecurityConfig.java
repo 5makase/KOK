@@ -9,13 +9,12 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 public class SecurityConfig {
-    /*
+
         @Bean
         public PasswordEncoder passwordEncoder() {
             return new BCryptPasswordEncoder();
         }
 
-     */
     // 테스트를 위해 임시로 회원가입 경로를 열어둠
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {

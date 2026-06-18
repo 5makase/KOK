@@ -6,8 +6,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -26,15 +24,20 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Waiting extends BaseEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "waiting_id", nullable = false, updatable = false)
     private UUID id;
 
     @Column(name = "store_id", nullable = false)
     private UUID storeId;
 
+    @Column(name = "store_name", nullable = false, length = 100)
+    private String storeName;
+
     @Column(name = "user_id", nullable = false)
     private UUID userId;
+
+    @Column(name = "visitor_name", nullable = false, length = 100)
+    private String visitorName;
 
     @Column(name = "waiting_number", nullable = false)
     private Long waitingNumber;
@@ -71,10 +74,13 @@ public class Waiting extends BaseEntity {
     private String noShowReason;
 
     @Builder
-    private Waiting(UUID storeId, UUID userId, Long waitingNumber, Integer peopleCount,
-                    Integer expectedWaitingMinutes, String requestMessage) {
+    private Waiting(UUID id, UUID storeId, String storeName, UUID userId, String visitorName, Long waitingNumber,
+                    Integer peopleCount, Integer expectedWaitingMinutes, String requestMessage) {
+        this.id = id != null ? id : UUID.randomUUID();
         this.storeId = storeId;
+        this.storeName = storeName;
         this.userId = userId;
+        this.visitorName = visitorName;
         this.waitingNumber = waitingNumber;
         this.peopleCount = peopleCount;
         this.expectedWaitingMinutes = expectedWaitingMinutes;

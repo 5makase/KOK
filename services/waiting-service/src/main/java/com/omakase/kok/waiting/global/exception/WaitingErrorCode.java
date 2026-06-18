@@ -19,7 +19,8 @@ public enum WaitingErrorCode implements ErrorCode {
     WAITING_NO_SHOW_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "WAITING-009", "미입장 처리할 수 없는 웨이팅 상태입니다."),
     WAITING_CALL_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITING-010", "호출할 다음 웨이팅이 없습니다."),
     WAITING_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITING-011", "웨이팅 설정을 찾을 수 없습니다."),
-    WAITING_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITING-012", "웨이팅 요약 정보를 찾을 수 없습니다.");
+    WAITING_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITING-012", "웨이팅 요약 정보를 찾을 수 없습니다."),
+    WAITING_REGISTER_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "WAITING-013", "웨이팅 등록에 실패했습니다.");
 
     private final HttpStatus status;
     private final String code;

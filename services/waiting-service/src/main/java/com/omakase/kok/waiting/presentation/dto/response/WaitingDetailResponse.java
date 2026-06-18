@@ -30,14 +30,10 @@ public class WaitingDetailResponse {
     private LocalDateTime createdAt;
 
     public static WaitingDetailResponse of(Waiting waiting, Long currentRank) {
-        return of(waiting, null, currentRank);
-    }
-
-    public static WaitingDetailResponse of(Waiting waiting, String storeName, Long currentRank) {
         return new WaitingDetailResponse(
                 waiting.getId(),
                 waiting.getStoreId(),
-                storeName,
+                waiting.getStoreName(),
                 waiting.getUserId(),
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),

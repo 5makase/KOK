@@ -25,14 +25,10 @@ public class WaitingResponse {
     private LocalDateTime createdAt;
 
     public static WaitingResponse of(Waiting waiting, Long currentRank) {
-        return of(waiting, null, currentRank);
-    }
-
-    public static WaitingResponse of(Waiting waiting, String storeName, Long currentRank) {
         return new WaitingResponse(
                 waiting.getId(),
                 waiting.getStoreId(),
-                storeName,
+                waiting.getStoreName(),
                 waiting.getUserId(),
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),

@@ -40,24 +40,15 @@ public class User {
     @Column(name = "slack_id", length = 100)
     private String slackId;
 
+    // 나중에 Enum으로 변경하기
     @Column(name = "role", nullable = false, length = 20)
     private String role;
-
-    @Column(name = "approved_at")
-    private LocalDateTime approvedAt;
-
-    @Column(name = "approved_by")
-    private UUID approvedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "created_by", nullable = false)
+    @Column(name = "created_by")
     private UUID createdBy;
-
-    @Column(name = "updated_at")
-    @CurrentTimestamp
-    private LocalDateTime updatedAt;
 
     @Column(name = "updated_by")
     private UUID updatedBy;
@@ -68,21 +59,8 @@ public class User {
     @Column(name = "deleted_by")
     private UUID deletedBy;
 
-    @Column(name = "approved")
-    private Boolean approved;
-
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
-
-        if (this.approved == null) {
-            this.approved = false;
-        }
-    }
-
-    public void approve(UUID approvedBy) {
-        this.approved = true;
-        this.approvedAt = LocalDateTime.now();
-        this.approvedBy = approvedBy;
     }
 }

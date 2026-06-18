@@ -33,15 +33,17 @@ public class OwnerApproval {
     @Column(name = "reject_reason", length = 200)
     private String rejectReason;
 
+    @Column(name = "processed_at")
+    private LocalDateTime processedAt;
+
+    @Column(name = "processed_by")
+    private UUID processedBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "created_by", nullable = false)
+    @Column(name = "created_by")
     private UUID createdBy;
-
-    @Column(name = "updated_at")
-    @CurrentTimestamp
-    private LocalDateTime updatedAt;
 
     @Column(name = "updated_by")
     private UUID updatedBy;
@@ -60,5 +62,20 @@ public class OwnerApproval {
         if (this.status == null) {
             this.status = "PENDING";
         }
+    }
+
+    public void approve(UUID processedBy) {
+        // Enum 참조하도록 나중에 변경하기
+        this.status = "APPROVED";
+        this.processedAt = LocalDateTime.now();
+        this.processedBy = processedBy;
+    }
+
+    public void reject(UUID processedBy, String rejectReason) {
+        // 나중에 Enum으로 변경
+        this.status = "REJECTED";
+        this.rejectReason = rejectReason;
+        this.processedAt = LocalDateTime.now();
+        this.processedBy = processedBy;
     }
 }

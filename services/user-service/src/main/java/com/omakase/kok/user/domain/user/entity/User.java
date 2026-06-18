@@ -10,6 +10,8 @@ import org.hibernate.annotations.CurrentTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import com.omakase.kok.user.domain.user.enums.Role;
+
 @Entity
 @Table(name = "p_users")
 @Getter
@@ -40,9 +42,9 @@ public class User {
     @Column(name = "slack_id", length = 100)
     private String slackId;
 
-    // 나중에 Enum으로 변경하기
+    @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)
-    private String role;
+    private Role role;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -62,5 +64,9 @@ public class User {
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+
+        if (this.role == null) {
+            this.role = Role.USER;
+        }
     }
 }

@@ -51,6 +51,9 @@ public class ReservationSlot extends BaseEntity {
     @Builder
     public ReservationSlot(UUID storeId, LocalDate slotDate, LocalTime slotTime,
                            int maxCapacity, boolean depositRequired, Long depositAmount) {
+        if (depositRequired && (depositAmount == null || depositAmount <= 0)) {
+            throw new IllegalArgumentException("예약금이 필요한 슬롯은 depositAmount가 0보다 커야 합니다.");
+        }
         this.storeId = storeId;
         this.slotDate = slotDate;
         this.slotTime = slotTime;

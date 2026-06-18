@@ -19,7 +19,25 @@ public enum StoreErrorCode implements ErrorCode {
 
     // 메뉴
     MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-101", "메뉴를 찾을 수 없습니다."),
-    MENU_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-102", "본인 매장의 메뉴만 수정할 수 있습니다.");
+    MENU_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-102", "본인 매장의 메뉴만 수정할 수 있습니다."),
+
+    // 영업시간
+    STORE_HOURS_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-201", "영업시간을 찾을 수 없습니다."),
+    STORE_HOURS_REQUIRED_FOR_OPEN(HttpStatus.BAD_REQUEST, "STORE-202", "영업 중 전환을 위해 영업시간 등록이 필요합니다."),
+    INVALID_STORE_HOURS(HttpStatus.BAD_REQUEST, "STORE-203", "영업일에는 영업시간이 필요합니다."),
+    STORE_HOURS_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-204", "본인 매장의 영업시간만 수정할 수 있습니다."),
+    STORE_HOURS_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-205", "이미 삭제된 영업시간입니다."),
+    STORE_HOURS_CANNOT_DELETE_WHILE_OPEN(HttpStatus.BAD_REQUEST, "STORE-206", "영업 중인 매장의 영업시간은 삭제할 수 없습니다. 휴무일 변경을 이용해 주세요."),
+
+    // 편의시설
+    AMENITY_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-301", "편의시설을 찾을 수 없습니다."),
+    AMENITY_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-302", "본인 매장의 편의시설만 수정할 수 있습니다."),
+    AMENITY_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-303", "이미 삭제된 편의시설입니다."),
+
+    // 이미지
+    STORE_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-401", "이미지를 찾을 수 없습니다."),
+    STORE_IMAGE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-402", "본인 매장의 이미지만 수정할 수 있습니다."),
+    STORE_IMAGE_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-403", "이미 삭제된 이미지입니다.");
 
     private final HttpStatus status;
     private final String code;

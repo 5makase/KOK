@@ -59,11 +59,17 @@ public class ReservationOutboxEvent {
     }
 
     public void published() {
+        if (this.status != OutboxEventStatus.PENDING) {
+            throw new IllegalStateException("PENDING 상태에서만 발행 처리할 수 있습니다. 현재 상태: " + this.status);
+        }
         this.status = OutboxEventStatus.PUBLISHED;
         this.publishedAt = LocalDateTime.now();
     }
 
     public void failed(String reason) {
+        if (this.status != OutboxEventStatus.PENDING) {
+            throw new IllegalStateException("PENDING 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
+        }
         this.retryCount++;
         if (this.retryCount >= 5) {
             this.status = OutboxEventStatus.FAILED;

@@ -33,9 +33,12 @@ import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSummaryResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +48,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class WaitingService {
     private final WaitingRepository waitingRepository;
@@ -169,7 +173,7 @@ public class WaitingService {
         return WaitingSummaryResponse.of(
                 storeId,
                 waitingAvailable,
-                Math.toIntExact(currentWaitingCount),
+                toIntWaitingCount(currentWaitingCount),
                 storeWaitingValues.averageWaitingMinutes()
         );
     }
@@ -183,11 +187,40 @@ public class WaitingService {
 
     // 웨이팅 저장 실패 시 Redis 롤백
     private Waiting saveWaitingOrRollbackQueue(UUID storeId, Waiting waiting) {
+        registerQueueRollbackCleanup(storeId, waiting);
         try {
             return waitingRepository.saveAndFlush(waiting);
         } catch (RuntimeException e) {
-            waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
+            if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+                removeQueueAfterPersistenceFailure(storeId, waiting, e);
+            }
             throw e;
+        }
+    }
+
+    private void registerQueueRollbackCleanup(UUID storeId, Waiting waiting) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    removeQueueAfterPersistenceFailure(storeId, waiting, null);
+                }
+            }
+        });
+    }
+
+    private void removeQueueAfterPersistenceFailure(UUID storeId, Waiting waiting, RuntimeException originalException) {
+        try {
+            waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
+        } catch (RuntimeException rollbackException) {
+            log.warn("Failed to rollback waiting queue. storeId={}, userId={}, waitingId={}",
+                    storeId, waiting.getUserId(), waiting.getId(), rollbackException);
+            if (originalException != null) {
+                originalException.addSuppressed(rollbackException);
+            }
         }
     }
 
@@ -197,6 +230,13 @@ public class WaitingService {
             return 0;
         }
         return Math.toIntExact((currentRank - 1) * storeWaitingValues.averageWaitingMinutes());
+    }
+
+    private Integer toIntWaitingCount(Long currentWaitingCount) {
+        if (currentWaitingCount == null || currentWaitingCount < 0 || currentWaitingCount > Integer.MAX_VALUE) {
+            throw new WaitingException(WaitingErrorCode.WAITING_COUNT_INVALID);
+        }
+        return currentWaitingCount.intValue();
     }
 
     // 웨이팅 요약/세팅 캐싱 - cache-aside 패턴
@@ -257,7 +297,7 @@ public class WaitingService {
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
-            throw new WaitingException(WaitingErrorCode.WAITING_REGISTER_FAILED);
+            throw new WaitingException(WaitingErrorCode.WAITING_EVENT_PAYLOAD_SERIALIZE_FAILED);
         }
     }
 

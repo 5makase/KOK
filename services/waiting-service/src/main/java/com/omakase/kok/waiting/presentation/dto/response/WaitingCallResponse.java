@@ -15,18 +15,18 @@ public class WaitingCallResponse {
     private UUID waitingId;
     private UUID storeId;
     private UUID userId;
-    private String userName;
+    private String visitorName;
     private Long waitingNumber;
     private Integer peopleCount;
     private WaitingStatus status;
     private LocalDateTime calledAt;
 
-    public static WaitingCallResponse of(Waiting waiting, String userName) {
+    public static WaitingCallResponse from(Waiting waiting) {
         return new WaitingCallResponse(
                 waiting.getId(),
                 waiting.getStoreId(),
                 waiting.getUserId(),
-                userName,
+                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),
                 waiting.getStatus(),

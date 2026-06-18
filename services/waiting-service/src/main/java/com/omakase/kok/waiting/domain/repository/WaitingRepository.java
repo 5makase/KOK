@@ -27,4 +27,7 @@ public interface WaitingRepository extends JpaRepository<Waiting, UUID> {
 
     // 중복 웨이팅 여부 확인
     boolean existsByStoreIdAndUserIdAndStatus(UUID storeId, UUID userId, WaitingStatus status);
+
+    // 진행 중인 웨이팅 여부 확인
+    boolean existsByStoreIdAndUserIdAndStatusIn(UUID storeId, UUID userId, List<WaitingStatus> statuses);
 }

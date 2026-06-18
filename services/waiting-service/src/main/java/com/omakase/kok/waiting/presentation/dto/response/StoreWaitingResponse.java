@@ -14,7 +14,7 @@ import java.util.UUID;
 public class StoreWaitingResponse {
     private UUID waitingId;
     private UUID userId;
-    private String userName;
+    private String visitorName;
     private Long waitingNumber;
     private Integer peopleCount;
     private WaitingStatus status;
@@ -25,14 +25,10 @@ public class StoreWaitingResponse {
     private LocalDateTime createdAt;
 
     public static StoreWaitingResponse of(Waiting waiting, Long currentRank) {
-        return of(waiting, null, currentRank);
-    }
-
-    public static StoreWaitingResponse of(Waiting waiting, String userName, Long currentRank) {
         return new StoreWaitingResponse(
                 waiting.getId(),
                 waiting.getUserId(),
-                userName,
+                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),
                 waiting.getStatus(),

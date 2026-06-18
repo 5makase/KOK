@@ -10,6 +10,8 @@ import org.hibernate.annotations.CurrentTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import com.omakase.kok.user.domain.user.enums.ApprovalStatus;
+
 @Entity
 @Table(name = "p_owner_approvals")
 @Getter
@@ -26,9 +28,9 @@ public class OwnerApproval {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    // 상태 Enum 참조하도록 변경하기
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private String status;
+    private ApprovalStatus status;
 
     @Column(name = "reject_reason", length = 200)
     private String rejectReason;
@@ -58,22 +60,19 @@ public class OwnerApproval {
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
 
-        // Enum 참조하도록 나중에 변경하기
         if (this.status == null) {
-            this.status = "PENDING";
+            this.status = ApprovalStatus.PENDING;
         }
     }
 
     public void approve(UUID processedBy) {
-        // Enum 참조하도록 나중에 변경하기
-        this.status = "APPROVED";
+        this.status = ApprovalStatus.APPROVED;
         this.processedAt = LocalDateTime.now();
         this.processedBy = processedBy;
     }
 
     public void reject(UUID processedBy, String rejectReason) {
-        // 나중에 Enum으로 변경
-        this.status = "REJECTED";
+        this.status = ApprovalStatus.REJECTED;
         this.rejectReason = rejectReason;
         this.processedAt = LocalDateTime.now();
         this.processedBy = processedBy;

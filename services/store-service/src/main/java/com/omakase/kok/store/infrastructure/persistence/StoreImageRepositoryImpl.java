@@ -44,4 +44,9 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
     public List<StoreImage> findAllImages(UUID storeId) {
         return storeImageJpaRepository.findAllByStoreStoreIdAndDeletedAtIsNullOrderByDisplayOrderAsc(storeId);
     }
+
+    @Override
+    public List<StoreImage> findImagePreview(UUID storeId) {
+        return storeImageJpaRepository.findTop5ByStoreStoreIdAndDeletedAtIsNullOrderByDisplayOrderAsc(storeId);
+    }
 }

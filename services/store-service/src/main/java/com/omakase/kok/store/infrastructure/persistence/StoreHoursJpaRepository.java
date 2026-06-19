@@ -18,5 +18,8 @@ public interface StoreHoursJpaRepository extends JpaRepository<StoreHours, UUID>
 
     Optional<StoreHours> findByStoreAndDayOfWeek(Store store, DayOfWeek dayOfWeek);
 
+    // 오늘 요일 활성 영업시간 단건 조회 (매장 상세)
+    Optional<StoreHours> findByStoreStoreIdAndDayOfWeekAndDeletedAtIsNull(UUID storeId, DayOfWeek dayOfWeek);
+
     long countByStoreAndDeletedAtIsNull(Store store);
 }

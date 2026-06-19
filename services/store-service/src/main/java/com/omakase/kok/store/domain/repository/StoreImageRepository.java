@@ -23,4 +23,7 @@ public interface StoreImageRepository {
 
     // 매장의 활성 이미지 목록 조회 (displayOrder 오름차순)
     List<StoreImage> findAllImages(UUID storeId);
+
+    // 매장 상세 - 이미지 미리보기 (displayOrder 오름차순 최대 5개)
+    List<StoreImage> findImagePreview(UUID storeId);
 }

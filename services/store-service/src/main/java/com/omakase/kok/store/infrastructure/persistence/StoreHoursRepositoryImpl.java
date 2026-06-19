@@ -24,7 +24,6 @@ public class StoreHoursRepositoryImpl implements StoreHoursRepository {
 
     @Override
     public void saveAll(List<StoreHours> storeHoursList) {
-        // 영업시간 일괄 등록 (7일치 한 번에 저장)
         storeHoursJpaRepository.saveAll(storeHoursList);
     }
 
@@ -36,6 +35,11 @@ public class StoreHoursRepositoryImpl implements StoreHoursRepository {
     @Override
     public List<StoreHours> findAllHours(Store store) {
         return storeHoursJpaRepository.findAllByStoreAndDeletedAtIsNullOrderByDayOfWeekAsc(store);
+    }
+
+    @Override
+    public Optional<StoreHours> findTodayHours(UUID storeId, DayOfWeek dayOfWeek) {
+        return storeHoursJpaRepository.findByStoreStoreIdAndDayOfWeekAndDeletedAtIsNull(storeId, dayOfWeek);
     }
 
     @Override

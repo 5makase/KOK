@@ -72,12 +72,13 @@ public class StoreController {
         return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(result)));
     }
 
-    // 매장 상세 조회
+    // 매장 상세 조회 - MASTER는 soft delete된 매장도 조회 가능
     @GetMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StoreResponse>> getStore(
-            @PathVariable UUID storeId
+            @PathVariable UUID storeId,
+            @RequestHeader(value = "X-User-Role", required = false) String role
     ) {
-        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.getStore(storeId))));
+        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.getStore(storeId, role))));
     }
 
     // 매장 목록 검색 - 역할별 동작 차이는 Service에서 처리

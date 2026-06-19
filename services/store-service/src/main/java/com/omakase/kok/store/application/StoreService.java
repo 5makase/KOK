@@ -4,13 +4,18 @@ import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
+import com.omakase.kok.store.application.result.StoreAmenityResult;
 import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.entity.StoreHours;
+import com.omakase.kok.store.domain.entity.StoreImage;
 import com.omakase.kok.store.domain.enums.StoreStatus;
+import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
+import com.omakase.kok.store.domain.repository.StoreImageRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
@@ -21,6 +26,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -31,6 +39,8 @@ public class StoreService {
     private final StoreRepository storeRepository;
     private final StoreCategoryRepository storeCategoryRepository;
     private final StoreHoursRepository storeHoursRepository;
+    private final StoreAmenityRepository storeAmenityRepository;
+    private final StoreImageRepository storeImageRepository;
     private final StoreFinder storeFinder;
 
     @Transactional
@@ -112,18 +122,31 @@ public class StoreService {
         return StoreResult.from(store);
     }
 
-    public StoreResult getStore(UUID storeId) {
-        return StoreResult.from(storeFinder.findActiveOrThrow(storeId));
+    // 매장 상세 조회 - 서브 데이터(todayHours/amenities/imagePreview/menuPreview) 포함
+    // MASTER: soft delete된 매장도 조회 가능
+    public StoreResult getStore(UUID storeId, String role) {
+        Store store = "MASTER".equals(role)
+                ? storeRepository.findById(storeId)
+                        .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_NOT_FOUND))
+                : storeFinder.findActiveOrThrow(storeId);
+
+        DayOfWeek today = LocalDate.now().getDayOfWeek();
+        StoreHours todayHours = storeHoursRepository.findTodayHours(storeId, today).orElse(null);
+
+        List<StoreAmenityResult> amenities = storeAmenityRepository.findAllAmenities(store)
+                .stream().map(StoreAmenityResult::from).toList();
+
+        List<StoreImage> imagePreview = storeImageRepository.findImagePreview(storeId);
+
+        // TODO: Menu 도메인 구현 후 menuPreview 조회 연결
+        return StoreResult.of(store, todayHours, amenities, imagePreview, List.of());
     }
 
     public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID userId, String role, Pageable pageable) {
         return storeRepository.search(resolveCondition(condition, userId, role), pageable).map(StoreResult::from);
     }
 
-    // 역할별 검색 조건 결정
-    // OWNER: 헤더의 userId를 ownerId로 자동 주입, status 미지정 시 전체 상태 조회
-    // MASTER: 요청 조건 그대로 적용
-    // USER/비로그인: status 무시하고 OPEN 강제
+    // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로
     // TODO: Gateway 인가 필터 구현 후 role/userId 헤더 위조 방어 검토 필요
     private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
         if ("OWNER".equals(role)) {

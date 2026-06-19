@@ -1,6 +1,7 @@
 package com.omakase.kok.store.domain.repository;
 
 import com.omakase.kok.store.domain.entity.Store;
+import com.omakase.kok.store.domain.entity.StoreCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -19,4 +20,7 @@ public interface StoreRepository {
 
     // 조건 기반 매장 목록 검색
     Page<Store> search(StoreSearchCondition condition, Pageable pageable);
+
+    // 해당 카테고리에 활성 매장 존재 여부 (소분류 삭제 전 체크)
+    boolean existsActiveStoreByCategory(StoreCategory category);
 }

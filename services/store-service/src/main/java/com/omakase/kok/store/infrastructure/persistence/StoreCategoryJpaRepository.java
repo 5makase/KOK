@@ -12,7 +12,10 @@ public interface StoreCategoryJpaRepository extends JpaRepository<StoreCategory,
 
     Optional<StoreCategory> findByCategoryIdAndDeletedAtIsNull(UUID categoryId);
 
-    // 1뎁스 기준 전체 트리 조회 (children LAZY 로딩 방지)
-    @Query("SELECT c FROM StoreCategory c LEFT JOIN FETCH c.children WHERE c.parent IS NULL AND c.deletedAt IS NULL")
+    // 1뎁스 기준 전체 트리 조회 - 부모,자식 모두 활성(deletedAt IS NULL)만 포함
+    @Query("SELECT DISTINCT c FROM StoreCategory c LEFT JOIN FETCH c.children ch WHERE c.parent IS NULL AND c.deletedAt IS NULL AND (ch IS NULL OR ch.deletedAt IS NULL)")
     List<StoreCategory> findAllRootCategoriesWithChildren();
+
+    // 활성 자식 카테고리 존재 여부
+    boolean existsByParentAndDeletedAtIsNull(StoreCategory parent);
 }

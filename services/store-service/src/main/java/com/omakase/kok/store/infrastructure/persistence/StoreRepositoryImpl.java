@@ -1,6 +1,7 @@
 package com.omakase.kok.store.infrastructure.persistence;
 
 import com.omakase.kok.store.domain.entity.Store;
+import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import lombok.RequiredArgsConstructor;
@@ -39,5 +40,10 @@ public class StoreRepositoryImpl implements StoreRepository {
     public Page<Store> search(StoreSearchCondition condition, Pageable pageable) {
         // 카테고리·지역·편의시설·키워드 조건을 조합한 QueryDSL 동적 쿼리
         return storeQueryRepository.search(condition, pageable);
+    }
+
+    @Override
+    public boolean existsActiveStoreByCategory(StoreCategory category) {
+        return storeJpaRepository.existsByCategoryAndDeletedAtIsNull(category);
     }
 }

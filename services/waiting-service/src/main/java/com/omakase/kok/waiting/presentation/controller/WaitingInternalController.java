@@ -17,7 +17,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/internal/api/v1/waitings")
+@RequestMapping("/api/v1/internal/waitings")
 public class WaitingInternalController {
     private final StoreWaitingService storeWaitingService;
 

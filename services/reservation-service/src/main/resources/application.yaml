@@ -27,6 +27,18 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
+feign:
+  client:
+    config:
+      default:
+        connect-timeout: 3000
+        read-timeout: 3000
+        logger-level: BASIC
+
+logging:
+  level:
+    com.omakase.kok.reservation.infrastructure.client: DEBUG
+
 eureka:
   client:
     service-url:

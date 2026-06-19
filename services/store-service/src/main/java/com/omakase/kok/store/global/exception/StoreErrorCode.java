@@ -16,6 +16,8 @@ public enum StoreErrorCode implements ErrorCode {
     STORE_NOT_OPEN(HttpStatus.BAD_REQUEST, "STORE-004", "영업 중인 매장이 아닙니다."),
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-005", "카테고리를 찾을 수 없습니다."),
     INVALID_CATEGORY(HttpStatus.BAD_REQUEST, "STORE-006", "소분류 카테고리만 선택할 수 있습니다."),
+    CATEGORY_HAS_CHILDREN(HttpStatus.CONFLICT, "STORE-007", "하위 카테고리가 존재하여 삭제할 수 없습니다."),
+    CATEGORY_HAS_STORES(HttpStatus.CONFLICT, "STORE-008", "해당 카테고리를 사용 중인 매장이 존재하여 삭제할 수 없습니다."),
 
     // 메뉴
     MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-101", "메뉴를 찾을 수 없습니다."),

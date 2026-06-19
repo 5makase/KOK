@@ -37,4 +37,9 @@ public class StoreCategoryRepositoryImpl implements StoreCategoryRepository {
         // 1뎁스 루트 카테고리와 하위 카테고리를 함께 조회
         return storeCategoryJpaRepository.findAllRootCategoriesWithChildren();
     }
+
+    @Override
+    public boolean existsActiveChildren(StoreCategory parent) {
+        return storeCategoryJpaRepository.existsByParentAndDeletedAtIsNull(parent);
+    }
 }

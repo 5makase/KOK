@@ -18,4 +18,7 @@ public interface StoreCategoryRepository {
 
     // 활성 카테고리 전체 목록 (1뎁스 기준 트리 구조)
     List<StoreCategory> findAllCategories();
+
+    // 활성 자식 카테고리 존재 여부 (대분류 삭제 전 체크)
+    boolean existsActiveChildren(StoreCategory parent);
 }

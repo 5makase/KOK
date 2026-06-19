@@ -6,6 +6,7 @@ import com.omakase.kok.store.application.command.UpdateStoreCategoryCommand;
 import com.omakase.kok.store.application.result.StoreCategoryResult;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
+import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import java.util.UUID;
 public class StoreCategoryService {
 
     private final StoreCategoryRepository storeCategoryRepository;
+    private final StoreRepository storeRepository;
 
     @Transactional
     public StoreCategoryResult createCategory(CreateStoreCategoryCommand command) {
@@ -52,6 +54,18 @@ public class StoreCategoryService {
     public void deleteCategory(UUID categoryId, UUID deletedBy) {
         StoreCategory category = storeCategoryRepository.findCategory(categoryId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
+
+        // 대분류: 활성 자식 카테고리가 있으면 삭제 불가
+        if (!category.isSubCategory()
+                && storeCategoryRepository.existsActiveChildren(category)) {
+            throw new BaseException(StoreErrorCode.CATEGORY_HAS_CHILDREN);
+        }
+
+        // 소분류: 해당 카테고리를 사용 중인 활성 매장이 있으면 삭제 불가
+        if (category.isSubCategory()
+                && storeRepository.existsActiveStoreByCategory(category)) {
+            throw new BaseException(StoreErrorCode.CATEGORY_HAS_STORES);
+        }
 
         category.delete(deletedBy);
     }

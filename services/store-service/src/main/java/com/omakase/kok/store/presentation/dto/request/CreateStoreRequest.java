@@ -16,6 +16,7 @@ public class CreateStoreRequest {
     @NotBlank
     private String name;
 
+    @NotBlank
     private String phone;
 
     @NotBlank
@@ -28,11 +29,14 @@ public class CreateStoreRequest {
 
     private String addressDetail;
 
+    @NotNull
     private BigDecimal latitude;
 
+    @NotNull
     private BigDecimal longitude;
 
     private String description;
 
+    @NotNull
     private Integer maxCapacity;
 }

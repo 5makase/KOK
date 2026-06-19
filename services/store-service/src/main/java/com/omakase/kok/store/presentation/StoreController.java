@@ -71,11 +71,12 @@ public class StoreController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody UpdateStoreRequest request
     ) {
-        Address address = new Address(
-                request.getAddressSido(), request.getAddressSigungu(),
-                request.getAddressDong(), request.getAddressDetail(),
-                request.getLatitude(), request.getLongitude()
-        );
+        // addressSido가 없으면 주소 변경 없음 - null 전달 시 Store.update()에서 기존 값 유지
+        Address address = request.getAddressSido() != null
+                ? new Address(request.getAddressSido(), request.getAddressSigungu(),
+                        request.getAddressDong(), request.getAddressDetail(),
+                        request.getLatitude(), request.getLongitude())
+                : null;
         UpdateStoreCommand command = UpdateStoreCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)

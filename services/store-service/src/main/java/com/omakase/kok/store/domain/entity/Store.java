@@ -102,14 +102,14 @@ public class Store extends BaseEntity {
         return store;
     }
 
-    // 가게 기본 정보 수정
+    // 가게 기본 정보 수정 - null 필드는 기존 값 유지 (부분 수정 지원)
     public void update(String name, String phone, Address address,
                        String description, Integer maxCapacity, StoreCategory category) {
-        this.name = name;
-        this.phone = phone;
-        this.address = address;
-        this.description = description;
-        this.maxCapacity = maxCapacity;
+        if (name != null) this.name = name;
+        if (phone != null) this.phone = phone;
+        if (address != null) this.address = address;
+        if (description != null) this.description = description;
+        if (maxCapacity != null) this.maxCapacity = maxCapacity;
         this.category = category;
     }
 

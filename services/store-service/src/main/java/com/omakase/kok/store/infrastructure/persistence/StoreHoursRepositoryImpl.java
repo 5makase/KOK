@@ -29,15 +29,13 @@ public class StoreHoursRepositoryImpl implements StoreHoursRepository {
     }
 
     @Override
-    public Optional<StoreHours> findHours(UUID hoursId) {
-        // 활성 영업시간 단건 조회 (deletedAt IS NULL)
-        return storeHoursJpaRepository.findByHoursIdAndDeletedAtIsNull(hoursId);
+    public Optional<StoreHours> findHours(UUID storeId, UUID hoursId) {
+        return storeHoursJpaRepository.findByStoreStoreIdAndHoursIdAndDeletedAtIsNull(storeId, hoursId);
     }
 
     @Override
     public List<StoreHours> findAllHours(Store store) {
-        // 해당 매장의 활성 영업시간 전체 조회
-        return storeHoursJpaRepository.findAllByStoreAndDeletedAtIsNull(store);
+        return storeHoursJpaRepository.findAllByStoreAndDeletedAtIsNullOrderByDayOfWeekAsc(store);
     }
 
     @Override

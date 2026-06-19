@@ -11,6 +11,7 @@ import java.util.UUID;
 @Builder
 public class UpdateStoreHoursCommand {
 
+    private UUID storeId;
     private UUID hoursId;
     private UUID requesterId;
     private LocalTime openTime;
@@ -19,8 +20,9 @@ public class UpdateStoreHoursCommand {
     private LocalTime breakEndTime;
     private boolean isDayOff;
 
-    public static UpdateStoreHoursCommand of(UUID hoursId, UUID requesterId, UpdateStoreHoursRequest request) {
+    public static UpdateStoreHoursCommand of(UUID storeId, UUID hoursId, UUID requesterId, UpdateStoreHoursRequest request) {
         return UpdateStoreHoursCommand.builder()
+                .storeId(storeId)
                 .hoursId(hoursId)
                 .requesterId(requesterId)
                 .openTime(request.getOpenTime())

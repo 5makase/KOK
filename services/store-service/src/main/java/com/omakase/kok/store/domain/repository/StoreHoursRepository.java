@@ -14,10 +14,10 @@ public interface StoreHoursRepository {
 
     void saveAll(List<StoreHours> storeHoursList);
 
-    // 활성 영업시간 단건 조회
-    Optional<StoreHours> findHours(UUID hoursId);
+    // 매장 소속 활성 영업시간 단건 조회 - storeId + hoursId 복합 조건으로 교차 접근 차단
+    Optional<StoreHours> findHours(UUID storeId, UUID hoursId);
 
-    // 매장의 활성 영업시간 목록 조회
+    // 매장의 활성 영업시간 목록 조회 (MONDAY → SUNDAY 정렬)
     List<StoreHours> findAllHours(Store store);
 
     // 요일로 영업시간 조회 (삭제 포함 — restore 처리용)

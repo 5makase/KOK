@@ -23,7 +23,7 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
         String userId = request.getHeader(HEADER_USER_ID);
         String role = request.getHeader(HEADER_ROLE);
 
-        if (userId != null && role != null) {
+        if (userId != null && !userId.isBlank() && role != null && !role.isBlank()) {
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     userId,
                     null,

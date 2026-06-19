@@ -97,7 +97,8 @@ public class StoreService {
     @Transactional
     public void deleteStore(UUID storeId, UUID requesterId) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        // TODO: MASTER 역할이면 소유자 검증 스킵 - Gateway 인가 처리 방식 협의 후 반영
+        // TODO: 인가 구현 시 role 파라미터 추가 후 MASTER면 validateOwner 스킵
+        //       현재 AdminStoreController(MASTER 전용)에서 호출 시 소유자 검증에 막혀 403 반환됨
         validateOwner(store, requesterId);
         store.delete(requesterId);
     }
@@ -105,7 +106,7 @@ public class StoreService {
     @Transactional
     public StoreResult changeStatus(ChangeStoreStatusCommand command) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        // TODO: MASTER 역할이면 소유자 검증 스킵 - Gateway 인가 처리 방식 협의 후 반영
+        // TODO: 인가 구현 시 role 파라미터 추가 후 MASTER면 validateOwner 스킵
         validateOwner(store, command.getRequesterId());
 
         // OPEN 전환 시 영업시간 7일치 등록 여부 확인

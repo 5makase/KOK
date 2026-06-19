@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 // MASTER 전용 매장 관리 API
+// TODO: 인가 구현 시 role 체크 추가 및 Service 소유자 검증 스킵 처리
 @RestController
 @RequestMapping("/api/v1/admin/stores")
 @RequiredArgsConstructor

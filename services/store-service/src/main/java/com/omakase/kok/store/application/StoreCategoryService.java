@@ -70,8 +70,14 @@ public class StoreCategoryService {
         category.delete(deletedBy);
     }
 
-    public List<StoreCategoryResult> getAllCategories() {
-        return storeCategoryRepository.findAllCategories().stream()
+    public List<StoreCategoryResult> getAllCategories(String role) {
+        // TODO: 인가 처리 - MASTER 여부 확인
+        boolean isMaster = "MASTER".equals(role);
+        List<StoreCategory> categories = isMaster
+                ? storeCategoryRepository.findAllCategoriesIncludingDeleted()
+                : storeCategoryRepository.findAllCategories();
+
+        return categories.stream()
                 .map(StoreCategoryResult::withChildren)
                 .toList();
     }

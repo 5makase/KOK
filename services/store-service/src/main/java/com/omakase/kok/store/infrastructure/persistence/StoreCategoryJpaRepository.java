@@ -16,6 +16,10 @@ public interface StoreCategoryJpaRepository extends JpaRepository<StoreCategory,
     @Query("SELECT DISTINCT c FROM StoreCategory c LEFT JOIN FETCH c.children ch WHERE c.parent IS NULL AND c.deletedAt IS NULL AND (ch IS NULL OR ch.deletedAt IS NULL)")
     List<StoreCategory> findAllRootCategoriesWithChildren();
 
+    // soft delete 포함 전체 트리 조회 - MASTER 전용
+    @Query("SELECT DISTINCT c FROM StoreCategory c LEFT JOIN FETCH c.children WHERE c.parent IS NULL")
+    List<StoreCategory> findAllRootCategoriesWithChildrenIncludingDeleted();
+
     // 활성 자식 카테고리 존재 여부
     boolean existsByParentAndDeletedAtIsNull(StoreCategory parent);
 }

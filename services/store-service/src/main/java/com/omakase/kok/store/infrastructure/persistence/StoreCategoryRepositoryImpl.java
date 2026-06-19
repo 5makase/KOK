@@ -39,6 +39,11 @@ public class StoreCategoryRepositoryImpl implements StoreCategoryRepository {
     }
 
     @Override
+    public List<StoreCategory> findAllCategoriesIncludingDeleted() {
+        return storeCategoryJpaRepository.findAllRootCategoriesWithChildrenIncludingDeleted();
+    }
+
+    @Override
     public boolean existsActiveChildren(StoreCategory parent) {
         return storeCategoryJpaRepository.existsByParentAndDeletedAtIsNull(parent);
     }

@@ -52,10 +52,10 @@ public class StoreCategory extends BaseEntity {
         return category;
     }
 
-    // 카테고리명 및 정렬순서 수정
-    public void update(String name, int sortOrder) {
-        this.name = name;
-        this.sortOrder = sortOrder;
+    // 카테고리명 및 정렬순서 수정 -  null 필드는 기존 값 유지 (부분 수정 지원)
+    public void update(String name, Integer sortOrder) {
+        if (name != null) this.name = name;
+        if (sortOrder != null) this.sortOrder = sortOrder;
     }
 
     // 하위 카테고리 여부 확인

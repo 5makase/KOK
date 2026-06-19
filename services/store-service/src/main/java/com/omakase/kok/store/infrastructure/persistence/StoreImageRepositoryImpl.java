@@ -27,7 +27,7 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
 
     @Override
     public Optional<StoreImage> findImage(UUID storeId, UUID imageId) {
-        return storeImageJpaRepository.findByStoreStoreIdAndImageIdAndDeletedAtIsNull(storeId, imageId);
+        return storeImageJpaRepository.findByStoreStoreIdAndImageId(storeId, imageId);
     }
 
     @Override

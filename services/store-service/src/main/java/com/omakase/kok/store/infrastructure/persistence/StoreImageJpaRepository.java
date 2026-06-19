@@ -9,8 +9,8 @@ import java.util.UUID;
 
 public interface StoreImageJpaRepository extends JpaRepository<StoreImage, UUID> {
 
-    // storeId + imageId 복합 조건 - 다중 매장 점주의 교차 접근 차단
-    Optional<StoreImage> findByStoreStoreIdAndImageIdAndDeletedAtIsNull(UUID storeId, UUID imageId);
+    // storeId + imageId 복합 조건 - 다중 매장 점주의 교차 접근 차단 (soft delete 포함)
+    Optional<StoreImage> findByStoreStoreIdAndImageId(UUID storeId, UUID imageId);
 
     // displayOrder로 조회 - soft delete 포함 (restore 패턴 및 슬롯 충돌 확인용)
     Optional<StoreImage> findByStoreStoreIdAndDisplayOrder(UUID storeId, int displayOrder);

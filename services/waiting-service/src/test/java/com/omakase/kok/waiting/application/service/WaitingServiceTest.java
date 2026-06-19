@@ -2,20 +2,14 @@ package com.omakase.kok.waiting.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omakase.kok.waiting.domain.entity.Waiting;
-import com.omakase.kok.waiting.domain.entity.WaitingSetting;
-import com.omakase.kok.waiting.domain.entity.WaitingSummary;
 import com.omakase.kok.waiting.domain.enums.WaitingStatus;
 import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
-import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
-import com.omakase.kok.waiting.domain.repository.WaitingSummaryRepository;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.WaitingRegistration;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
-import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
-import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,7 +28,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class WaitingServiceTest {
@@ -42,16 +35,13 @@ class WaitingServiceTest {
     private WaitingRepository waitingRepository;
 
     @Mock
-    private WaitingSettingRepository waitingSettingRepository;
-
-    @Mock
-    private WaitingSummaryRepository waitingSummaryRepository;
-
-    @Mock
     private WaitingOutboxEventRepository waitingOutboxEventRepository;
 
     @Mock
     private WaitingQueueRedisStore waitingQueueRedisStore;
+
+    @Mock
+    private StoreWaitingService storeWaitingService;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -66,8 +56,8 @@ class WaitingServiceTest {
         UUID userId = UUID.randomUUID();
         WaitingCreateRequest request = waitingCreateRequest(storeId, 3, "창가 자리 부탁드립니다.");
 
-        given(waitingQueueRedisStore.getStoreValues(storeId))
-                .willReturn(Optional.of(new StoreWaitingValues(true, 50, 10, true, 15)));
+        given(storeWaitingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
         given(waitingQueueRedisStore.register(eq(storeId), eq(userId), any(UUID.class), eq(50)))
                 .willReturn(Optional.of(new WaitingRegistration(7L, 3L)));
         given(waitingRepository.saveAndFlush(any(Waiting.class)))
@@ -94,85 +84,7 @@ class WaitingServiceTest {
         assertThat(savedWaiting.getWaitingNumber()).isEqualTo(7L);
         assertThat(savedWaiting.getRequestMessage()).isEqualTo("창가 자리 부탁드립니다.");
 
-        then(waitingSettingRepository).should(never()).findByStoreId(any());
-        then(waitingSummaryRepository).should(never()).findByStoreId(any());
-    }
-
-    @Test
-    @DisplayName("웨이팅 설정 초기화 시 기존 설정이 없으면 요청값으로 생성하고 Redis에 캐싱한다")
-    void initializeWaitingSetting_createNewSettingAndSummary() {
-        UUID storeId = UUID.randomUUID();
-        WaitingSettingInitializeRequest request = waitingSettingInitializeRequest(true, 30, 5, false, 12);
-
-        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
-        given(waitingSummaryRepository.findByStoreId(storeId)).willReturn(Optional.empty());
-        given(waitingSettingRepository.save(any(WaitingSetting.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-        given(waitingSummaryRepository.save(any(WaitingSummary.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-
-        WaitingSettingInitializeResponse response = waitingService.initializeWaitingSetting(storeId, request);
-
-        assertThat(response.getStoreId()).isEqualTo(storeId);
-        assertThat(response.getSettingCreated()).isTrue();
-        assertThat(response.getSummaryCreated()).isTrue();
-
-        ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
-        ArgumentCaptor<WaitingSummary> summaryCaptor = ArgumentCaptor.forClass(WaitingSummary.class);
-        then(waitingSettingRepository).should().save(settingCaptor.capture());
-        then(waitingSummaryRepository).should().save(summaryCaptor.capture());
-
-        WaitingSetting setting = settingCaptor.getValue();
-        assertThat(setting.getStoreId()).isEqualTo(storeId);
-        assertThat(setting.getWaitingEnabled()).isTrue();
-        assertThat(setting.getMaxWaitingCount()).isEqualTo(30);
-        assertThat(setting.getCallTimeoutMinutes()).isEqualTo(5);
-        assertThat(setting.getAllowUserCancel()).isFalse();
-
-        WaitingSummary summary = summaryCaptor.getValue();
-        assertThat(summary.getStoreId()).isEqualTo(storeId);
-        assertThat(summary.getCurrentWaitingCount()).isZero();
-        assertThat(summary.getAverageWaitingMinutes()).isEqualTo(12);
-        assertThat(summary.getLastWaitingNumber()).isZero();
-
-        then(waitingQueueRedisStore).should()
-                .cacheStoreValues(storeId, true, 30, 5, false, 12);
-    }
-
-    @Test
-    @DisplayName("웨이팅 설정 초기화 시 기존 설정이 있으면 새로 만들지 않고 기존값을 Redis에 캐싱한다")
-    void initializeWaitingSetting_useExistingSettingAndSummary() {
-        UUID storeId = UUID.randomUUID();
-        WaitingSetting existingSetting = WaitingSetting.builder()
-                .storeId(storeId)
-                .waitingEnabled(true)
-                .maxWaitingCount(20)
-                .callTimeoutMinutes(8)
-                .allowUserCancel(true)
-                .build();
-        WaitingSummary existingSummary = WaitingSummary.builder()
-                .storeId(storeId)
-                .currentWaitingCount(4)
-                .averageWaitingMinutes(11)
-                .lastWaitingNumber(9L)
-                .build();
-
-        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSetting));
-        given(waitingSummaryRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSummary));
-
-        WaitingSettingInitializeResponse response = waitingService.initializeWaitingSetting(
-                storeId,
-                waitingSettingInitializeRequest(false, 100, 10, false, 30)
-        );
-
-        assertThat(response.getStoreId()).isEqualTo(storeId);
-        assertThat(response.getSettingCreated()).isFalse();
-        assertThat(response.getSummaryCreated()).isFalse();
-
-        then(waitingSettingRepository).should(never()).save(any());
-        then(waitingSummaryRepository).should(never()).save(any());
-        then(waitingQueueRedisStore).should()
-                .cacheStoreValues(storeId, true, 20, 8, true, 11);
+        then(storeWaitingService).should().getStoreWaitingValues(storeId);
     }
 
     private WaitingCreateRequest waitingCreateRequest(UUID storeId, Integer peopleCount, String requestMessage) {
@@ -180,22 +92,6 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(request, "storeId", storeId);
         ReflectionTestUtils.setField(request, "peopleCount", peopleCount);
         ReflectionTestUtils.setField(request, "requestMessage", requestMessage);
-        return request;
-    }
-
-    private WaitingSettingInitializeRequest waitingSettingInitializeRequest(
-            Boolean waitingEnabled,
-            Integer maxWaitingCount,
-            Integer callTimeoutMinutes,
-            Boolean allowUserCancel,
-            Integer averageWaitingMinutes
-    ) {
-        WaitingSettingInitializeRequest request = newInstance(WaitingSettingInitializeRequest.class);
-        ReflectionTestUtils.setField(request, "waitingEnabled", waitingEnabled);
-        ReflectionTestUtils.setField(request, "maxWaitingCount", maxWaitingCount);
-        ReflectionTestUtils.setField(request, "callTimeoutMinutes", callTimeoutMinutes);
-        ReflectionTestUtils.setField(request, "allowUserCancel", allowUserCancel);
-        ReflectionTestUtils.setField(request, "averageWaitingMinutes", averageWaitingMinutes);
         return request;
     }
 

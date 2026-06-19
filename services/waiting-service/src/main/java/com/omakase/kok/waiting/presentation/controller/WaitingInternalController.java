@@ -1,7 +1,7 @@
 package com.omakase.kok.waiting.presentation.controller;
 
 import com.omakase.kok.common.dto.ApiResponse;
-import com.omakase.kok.waiting.application.service.WaitingService;
+import com.omakase.kok.waiting.application.service.StoreWaitingService;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import jakarta.validation.Valid;
@@ -19,7 +19,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @RequestMapping("/internal/api/v1/waitings")
 public class WaitingInternalController {
-    private final WaitingService waitingService;
+    private final StoreWaitingService storeWaitingService;
 
     // 매장 웨이팅 설정 초기화
     @PostMapping("/stores/{storeId}/settings")
@@ -27,7 +27,7 @@ public class WaitingInternalController {
             @PathVariable UUID storeId,
             @Valid @RequestBody WaitingSettingInitializeRequest request
     ) {
-        WaitingSettingInitializeResponse response = waitingService.initializeWaitingSetting(storeId, request);
+        WaitingSettingInitializeResponse response = storeWaitingService.initializeWaitingSetting(storeId, request);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }

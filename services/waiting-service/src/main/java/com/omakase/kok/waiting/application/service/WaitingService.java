@@ -5,14 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omakase.kok.common.dto.PageResponse;
 import com.omakase.kok.waiting.domain.entity.Waiting;
 import com.omakase.kok.waiting.domain.entity.WaitingOutboxEvent;
-import com.omakase.kok.waiting.domain.entity.WaitingSetting;
-import com.omakase.kok.waiting.domain.entity.WaitingSummary;
 import com.omakase.kok.waiting.domain.enums.WaitingEventType;
 import com.omakase.kok.waiting.domain.enums.WaitingStatus;
 import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
-import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
-import com.omakase.kok.waiting.domain.repository.WaitingSummaryRepository;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
@@ -21,7 +17,6 @@ import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.Waiti
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingNoShowRequest;
-import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
 import com.omakase.kok.waiting.presentation.dto.response.NearTurnWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
@@ -30,8 +25,6 @@ import com.omakase.kok.waiting.presentation.dto.response.WaitingDetailResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
-import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
-import com.omakase.kok.waiting.presentation.dto.response.WaitingSummaryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
@@ -43,7 +36,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -52,10 +44,9 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class WaitingService {
     private final WaitingRepository waitingRepository;
-    private final WaitingSettingRepository waitingSettingRepository;
-    private final WaitingSummaryRepository waitingSummaryRepository;
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
+    private final StoreWaitingService storeWaitingService;
     private final ObjectMapper objectMapper;
 
     // 웨이팅 등록
@@ -66,7 +57,7 @@ public class WaitingService {
         // TODO: Store Service 내부 API 연동 후 본인 매장 웨이팅 등록 제한 검증 추가
 
         // 매장 웨이팅 설정/평균 대기시간 조회
-        StoreWaitingValues storeWaitingValues = getStoreWaitingValues(storeId);
+        StoreWaitingValues storeWaitingValues = storeWaitingService.getStoreWaitingValues(storeId);
         // 웨이팅 활성화 여부 검증
         validateWaitingEnabled(storeWaitingValues);
         // Redis 기준 웨이팅 등록
@@ -98,84 +89,48 @@ public class WaitingService {
         return WaitingResponse.of(savedWaiting, registration.currentRank());
     }
 
-    // 매장 웨이팅 설정 초기화
-    @Transactional
-    public WaitingSettingInitializeResponse initializeWaitingSetting(
-            UUID storeId,
-            WaitingSettingInitializeRequest request
-    ) {
-        Optional<WaitingSetting> existingSetting = waitingSettingRepository.findByStoreId(storeId);
-        Boolean settingCreated = existingSetting.isEmpty();
-        WaitingSetting setting = existingSetting.orElseGet(() -> waitingSettingRepository.save(WaitingSetting.builder()
-                .storeId(storeId)
-                .waitingEnabled(defaultBoolean(request.getWaitingEnabled(), false))
-                .maxWaitingCount(defaultInteger(request.getMaxWaitingCount(), 100))
-                .callTimeoutMinutes(defaultInteger(request.getCallTimeoutMinutes(), 10))
-                .allowUserCancel(defaultBoolean(request.getAllowUserCancel(), true))
-                .build()));
-
-        Optional<WaitingSummary> existingSummary = waitingSummaryRepository.findByStoreId(storeId);
-        Boolean summaryCreated = existingSummary.isEmpty();
-        WaitingSummary summary = existingSummary.orElseGet(() -> waitingSummaryRepository.save(WaitingSummary.builder()
-                .storeId(storeId)
-                .currentWaitingCount(0)
-                .averageWaitingMinutes(defaultInteger(request.getAverageWaitingMinutes(), 10))
-                .lastWaitingNumber(0L)
-                .build()));
-
-        cacheStoreWaitingValues(setting, summary);
-
-        return WaitingSettingInitializeResponse.of(setting, summary, settingCreated, summaryCreated);
-    }
-
+    // 내 웨이팅 목록 조회
     public PageResponse<WaitingResponse> getMyWaitings(UUID userId, WaitingStatus status, Pageable pageable) {
         throw new UnsupportedOperationException("내 웨이팅 목록 조회 로직 구현 예정입니다.");
     }
 
+    // 웨이팅 상세 조회
     public WaitingDetailResponse getWaiting(UUID userId, UUID waitingId) {
         throw new UnsupportedOperationException("웨이팅 상세 조회 로직 구현 예정입니다.");
     }
 
+    // 매장별 웨이팅 목록 조회
     public PageResponse<StoreWaitingResponse> getStoreWaitings(UUID storeId, WaitingStatus status, Pageable pageable) {
         throw new UnsupportedOperationException("매장별 웨이팅 현황 조회 로직 구현 예정입니다.");
     }
 
+    // 웨이팅 취소
     @Transactional
     public WaitingCancelResponse cancelWaiting(UUID userId, UUID waitingId, WaitingCancelRequest request) {
         throw new UnsupportedOperationException("웨이팅 취소 로직 구현 예정입니다.");
     }
 
+    // 다음 순번 웨이팅 호출
     @Transactional
     public WaitingCallResponse callNextWaiting(UUID storeId) {
         throw new UnsupportedOperationException("다음 순번 호출 로직 구현 예정입니다.");
     }
 
+    // 웨이팅 입장 완료 처리
     @Transactional
     public WaitingEnterResponse enterWaiting(UUID waitingId) {
         throw new UnsupportedOperationException("입장 완료 처리 로직 구현 예정입니다.");
     }
 
+    // 웨이팅 미입장 처리
     @Transactional
     public WaitingNoShowResponse noShowWaiting(UUID waitingId, WaitingNoShowRequest request) {
         throw new UnsupportedOperationException("미입장 처리 로직 구현 예정입니다.");
     }
 
+    // 순번 임박 알림 대상 조회
     public List<NearTurnWaitingResponse> getNearTurnWaitings(UUID storeId, int threshold) {
         throw new UnsupportedOperationException("순번 임박 알림 대상 조회 로직 구현 예정입니다.");
-    }
-
-    public WaitingSummaryResponse getWaitingSummary(UUID storeId) {
-        StoreWaitingValues storeWaitingValues = getStoreWaitingValues(storeId);
-        Long currentWaitingCount = waitingQueueRedisStore.count(storeId);
-        Boolean waitingAvailable = Boolean.TRUE.equals(storeWaitingValues.waitingEnabled())
-                && currentWaitingCount < storeWaitingValues.maxWaitingCount();
-
-        return WaitingSummaryResponse.of(
-                storeId,
-                waitingAvailable,
-                toIntWaitingCount(currentWaitingCount),
-                storeWaitingValues.averageWaitingMinutes()
-        );
     }
 
     // 웨이팅 가능 여부 판단 - 가게 웨이팅 활성화 여부
@@ -198,6 +153,7 @@ public class WaitingService {
         }
     }
 
+    // 트랜잭션 롤백 시 Redis 대기열 정리를 예약
     private void registerQueueRollbackCleanup(UUID storeId, Waiting waiting) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             return;
@@ -212,6 +168,7 @@ public class WaitingService {
         });
     }
 
+    // DB 저장 실패 또는 트랜잭션 롤백 후 Redis 대기열/중복 방지 키 제거
     private void removeQueueAfterPersistenceFailure(UUID storeId, Waiting waiting, RuntimeException originalException) {
         try {
             waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
@@ -230,47 +187,6 @@ public class WaitingService {
             return 0;
         }
         return Math.toIntExact((currentRank - 1) * storeWaitingValues.averageWaitingMinutes());
-    }
-
-    private Integer toIntWaitingCount(Long currentWaitingCount) {
-        if (currentWaitingCount == null || currentWaitingCount < 0 || currentWaitingCount > Integer.MAX_VALUE) {
-            throw new WaitingException(WaitingErrorCode.WAITING_COUNT_INVALID);
-        }
-        return currentWaitingCount.intValue();
-    }
-
-    // 웨이팅 요약/세팅 캐싱 - cache-aside 패턴
-    private StoreWaitingValues getStoreWaitingValues(UUID storeId) {
-        return waitingQueueRedisStore.getStoreValues(storeId)
-                .orElseGet(() -> {
-                    // 캐시 미스 시 DB 조회
-                    WaitingSetting setting = waitingSettingRepository.findByStoreId(storeId)
-                            .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_SETTING_NOT_FOUND));
-                    WaitingSummary summary = waitingSummaryRepository.findByStoreId(storeId)
-                            .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_SUMMARY_NOT_FOUND));
-
-                    cacheStoreWaitingValues(setting, summary);
-
-                    return new StoreWaitingValues(
-                            setting.getWaitingEnabled(),
-                            setting.getMaxWaitingCount(),
-                            setting.getCallTimeoutMinutes(),
-                            setting.getAllowUserCancel(),
-                            summary.getAverageWaitingMinutes()
-                    );
-                });
-    }
-
-    // 매장 웨이팅 기준값 캐싱
-    private void cacheStoreWaitingValues(WaitingSetting setting, WaitingSummary summary) {
-        waitingQueueRedisStore.cacheStoreValues(
-                setting.getStoreId(),
-                setting.getWaitingEnabled(),
-                setting.getMaxWaitingCount(),
-                setting.getCallTimeoutMinutes(),
-                setting.getAllowUserCancel(),
-                summary.getAverageWaitingMinutes()
-        );
     }
 
     // 아웃박스 테이블 저장
@@ -301,11 +217,4 @@ public class WaitingService {
         }
     }
 
-    // 기본값 설정
-    private Boolean defaultBoolean(Boolean value, Boolean defaultValue) {
-        return value != null ? value : defaultValue;
-    }
-    private Integer defaultInteger(Integer value, Integer defaultValue) {
-        return value != null ? value : defaultValue;
-    }
 }

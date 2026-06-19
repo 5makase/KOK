@@ -49,8 +49,11 @@ public class WaitingQueueRedisStore {
             local waitingNumber = redis.call('INCR', sequenceKey)
             redis.call('ZADD', queueKey, waitingNumber, waitingId)
             redis.call('SET', activeUserKey, waitingId, 'EX', ttlSeconds)
+            
             redis.call('EXPIRE', queueKey, ttlSeconds)
-            redis.call('EXPIRE', sequenceKey, ttlSeconds)
+            if redis.call('TTL', sequenceKey) == -1 then
+                redis.call('EXPIRE', sequenceKey, ttlSeconds)
+            end
 
             local rank = redis.call('ZRANK', queueKey, waitingId)
             return {waitingNumber, rank + 1}
@@ -99,7 +102,7 @@ public class WaitingQueueRedisStore {
         if (result.size() < 2) {
             throw new WaitingException(WaitingErrorCode.WAITING_REGISTER_FAILED);
         }
-        Long waitingNumber = result.get(0);
+        long waitingNumber = ((Number) result.get(0)).longValue();
         Long currentRank = result.get(1);
 
         if (waitingNumber == -2) {
@@ -120,11 +123,6 @@ public class WaitingQueueRedisStore {
             return null;
         }
         return rank + 1;
-    }
-
-    // 대기열 제거
-    public void remove(UUID storeId, UUID waitingId) {
-        redisTemplate.opsForZSet().remove(queueKey(storeId), waitingId.toString());
     }
 
     // 대기열/사용자 중복 방지 키 제거
@@ -149,7 +147,8 @@ public class WaitingQueueRedisStore {
 
     // 순번 임박 대상 조회
     public List<UUID> findNearTurn(UUID storeId, int threshold) {
-        if (threshold <= 0) {
+        // 최대 상한선 가드문 배치 (과도한 량 조회 방지)
+        if (threshold <= 0 || threshold > 50) {
             return List.of();
         }
         Set<String> waitingIds = redisTemplate.opsForZSet().range(queueKey(storeId), 0, threshold - 1L);

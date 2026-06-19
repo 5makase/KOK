@@ -73,13 +73,13 @@ class WaitingDomainTest {
     @Test
     @DisplayName("웨이팅 설정 수정값은 null을 유지하고 숫자 값만 양수를 검증한다")
     void waitingSettingUpdateValidation() {
-        WaitingSetting setting = WaitingSetting.create(UUID.randomUUID(), true, 10, 5, true);
+        WaitingSetting setting = WaitingSetting.create(UUID.randomUUID(), true, 10, 5, true, 10);
 
-        assertThatThrownBy(() -> setting.update(true, 0, 5, true))
+        assertThatThrownBy(() -> setting.update(true, 0, 5, true, 10))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_SETTING_INVALID));
 
-        setting.update(null, 20, null, null);
+        setting.update(null, 20, null, null, null);
 
         assertThat(setting.getWaitingEnabled()).isTrue();
         assertThat(setting.getMaxWaitingCount()).isEqualTo(20);
@@ -88,18 +88,13 @@ class WaitingDomainTest {
     }
 
     @Test
-    @DisplayName("평균 대기 시간은 0 이상이어야 한다")
-    void updateAverageWaitingMinutes_nonNegative() {
-        WaitingSummary summary = WaitingSummary.builder()
-                .storeId(UUID.randomUUID())
-                .currentWaitingCount(0)
-                .averageWaitingMinutes(10)
-                .lastWaitingNumber(0L)
-                .build();
+    @DisplayName("웨이팅 설정 수정값은 평균 대기 시간을 0 이상으로만 허용한다")
+    void waitingSettingUpdateAverageWaitingMinutes_nonNegative() {
+        WaitingSetting setting = WaitingSetting.create(UUID.randomUUID(), true, 10, 5, true, 10);
 
-        assertThatThrownBy(() -> summary.updateAverageWaitingMinutes(-1))
+        assertThatThrownBy(() -> setting.update(null, null, null, null, -1))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->
-                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_SUMMARY_INVALID));
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_SETTING_INVALID));
     }
 
     private Waiting waiting() {
@@ -110,7 +105,6 @@ class WaitingDomainTest {
                 .visitorName("UNKNOWN")
                 .waitingNumber(1L)
                 .peopleCount(2)
-                .expectedWaitingMinutes(0)
                 .requestMessage(null)
                 .build();
     }

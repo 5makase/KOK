@@ -71,11 +71,15 @@ public class StoreService {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         validateOwner(store, command.getRequesterId());
 
-        StoreCategory category = storeCategoryRepository.findCategory(command.getCategoryId())
-                .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
-
-        if (!category.isSubCategory()) {
-            throw new BaseException(StoreErrorCode.INVALID_CATEGORY);
+        StoreCategory category;
+        if (command.getCategoryId() != null) {
+            category = storeCategoryRepository.findCategory(command.getCategoryId())
+                    .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
+            if (!category.isSubCategory()) {
+                throw new BaseException(StoreErrorCode.INVALID_CATEGORY);
+            }
+        } else {
+            category = store.getCategory();
         }
 
         store.update(

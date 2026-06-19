@@ -39,7 +39,8 @@ public enum StoreErrorCode implements ErrorCode {
     // 이미지
     STORE_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-401", "이미지를 찾을 수 없습니다."),
     STORE_IMAGE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-402", "본인 매장의 이미지만 수정할 수 있습니다."),
-    STORE_IMAGE_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-403", "이미 삭제된 이미지입니다.");
+    STORE_IMAGE_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-403", "이미 삭제된 이미지입니다."),
+    STORE_IMAGE_DUPLICATE_DISPLAY_ORDER(HttpStatus.BAD_REQUEST, "STORE-404", "노출 순서가 중복되었습니다.");
 
     private final HttpStatus status;
     private final String code;

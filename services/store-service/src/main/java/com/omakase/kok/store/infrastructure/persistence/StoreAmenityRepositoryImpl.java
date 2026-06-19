@@ -23,9 +23,8 @@ public class StoreAmenityRepositoryImpl implements StoreAmenityRepository {
     }
 
     @Override
-    public Optional<StoreAmenity> findAmenity(UUID amenityId) {
-        // 활성 편의시설 단건 조회 (deletedAt IS NULL)
-        return storeAmenityJpaRepository.findByAmenityIdAndDeletedAtIsNull(amenityId);
+    public Optional<StoreAmenity> findAmenity(UUID storeId, UUID amenityId) {
+        return storeAmenityJpaRepository.findByStoreStoreIdAndAmenityIdAndDeletedAtIsNull(storeId, amenityId);
     }
 
     @Override

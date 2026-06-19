@@ -12,12 +12,12 @@ public interface StoreAmenityRepository {
 
     StoreAmenity save(StoreAmenity amenity);
 
-    // 활성 편의시설 단건 조회
-    Optional<StoreAmenity> findAmenity(UUID amenityId);
+    // 매장 소속 활성 편의시설 단건 조회 - storeId + amenityId 복합 조건으로 교차 접근 차단
+    Optional<StoreAmenity> findAmenity(UUID storeId, UUID amenityId);
 
     // 매장의 활성 편의시설 목록 조회
     List<StoreAmenity> findAllAmenities(Store store);
 
-    // 편의시설 타입으로 조회 (삭제 포함 — restore 처리용)
+    // 편의시설 타입으로 조회 (삭제 포함 - restore 처리용)
     Optional<StoreAmenity> findAmenityByType(Store store, AmenityType amenityType);
 }

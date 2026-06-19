@@ -11,7 +11,8 @@ import java.util.UUID;
 
 public interface StoreAmenityJpaRepository extends JpaRepository<StoreAmenity, UUID> {
 
-    Optional<StoreAmenity> findByAmenityIdAndDeletedAtIsNull(UUID amenityId);
+    // storeId + amenityId 복합 조건 - 다중 매장 점주의 교차 접근 차단
+    Optional<StoreAmenity> findByStoreStoreIdAndAmenityIdAndDeletedAtIsNull(UUID storeId, UUID amenityId);
 
     List<StoreAmenity> findAllByStoreAndDeletedAtIsNull(Store store);
 

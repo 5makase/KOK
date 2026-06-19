@@ -84,8 +84,9 @@ public class StoreQueryRepository {
     }
 
     private BooleanExpression eqStatus(QStore store, StoreStatus status) {
-        // status 미지정 시 OPEN 매장만 기본 노출
-        return status != null ? store.status.eq(status) : store.status.eq(StoreStatus.OPEN);
+        // OPEN 강제 여부는 Service.resolveCondition()에서 결정
+        // null이면 전체 조회
+        return status != null ? store.status.eq(status) : null;
     }
 
     private BooleanExpression eqOwner(QStore store, UUID ownerId) {

@@ -8,7 +8,9 @@ import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
+import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
@@ -27,6 +29,7 @@ public class StoreService {
 
     private final StoreRepository storeRepository;
     private final StoreCategoryRepository storeCategoryRepository;
+    private final StoreHoursRepository storeHoursRepository;
 
     @Transactional
     public StoreResult createStore(CreateStoreCommand command) {
@@ -88,7 +91,7 @@ public class StoreService {
         Store store = findActiveStore(storeId);
         // TODO: MASTER 역할이면 소유자 검증 스킵 - Gateway 인가 처리 방식 협의 후 반영
         validateOwner(store, requesterId);
-        store.delete(requesterId.toString());
+        store.delete(requesterId);
     }
 
     @Transactional
@@ -96,7 +99,14 @@ public class StoreService {
         Store store = findActiveStore(command.getStoreId());
         // TODO: MASTER 역할이면 소유자 검증 스킵 - Gateway 인가 처리 방식 협의 후 반영
         validateOwner(store, command.getRequesterId());
-        store.changeStatus(command.getStatus(), command.getRequesterId().toString());
+
+        // OPEN 전환 시 영업시간 7일치 등록 여부 확인
+        if (command.getStatus() == StoreStatus.OPEN
+                && storeHoursRepository.countRegisteredHours(store) < 7) {
+            throw new BaseException(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
+        }
+
+        store.changeStatus(command.getStatus(), command.getRequesterId());
         return StoreResult.from(store);
     }
 

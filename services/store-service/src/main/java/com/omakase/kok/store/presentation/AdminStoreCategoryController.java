@@ -58,7 +58,7 @@ public class AdminStoreCategoryController {
             @PathVariable UUID categoryId,
             @RequestHeader("X-User-Id") UUID userId
     ) {
-        storeCategoryService.deleteCategory(categoryId, userId.toString());
+        storeCategoryService.deleteCategory(categoryId, userId);
         return ResponseEntity.ok(ApiResponse.deleted());
     }
 }

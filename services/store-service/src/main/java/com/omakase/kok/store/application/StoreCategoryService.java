@@ -49,7 +49,7 @@ public class StoreCategoryService {
     }
 
     @Transactional
-    public void deleteCategory(UUID categoryId, String deletedBy) {
+    public void deleteCategory(UUID categoryId, UUID deletedBy) {
         StoreCategory category = storeCategoryRepository.findCategory(categoryId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
 

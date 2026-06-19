@@ -71,14 +71,21 @@ public class StoreHours extends BaseEntity {
         return hours;
     }
 
-    // 영업시간 수정
+    // 영업시간 수정 - isDayOff=true이면 시간 필드 null 강제 (휴무일에 영업시간 없음)
     public void update(LocalTime openTime, LocalTime closeTime,
                        LocalTime breakStartTime, LocalTime breakEndTime, boolean isDayOff) {
-        this.openTime = openTime;
-        this.closeTime = closeTime;
-        this.breakStartTime = breakStartTime;
-        this.breakEndTime = breakEndTime;
         this.isDayOff = isDayOff;
+        if (isDayOff) {
+            this.openTime = null;
+            this.closeTime = null;
+            this.breakStartTime = null;
+            this.breakEndTime = null;
+        } else {
+            this.openTime = openTime;
+            this.closeTime = closeTime;
+            this.breakStartTime = breakStartTime;
+            this.breakEndTime = breakEndTime;
+        }
     }
 
     // soft delete된 영업시간 재활성화 (UniqueConstraint 충돌 방지)

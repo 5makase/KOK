@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.time.DayOfWeek;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,7 +35,11 @@ public class StoreHoursRepositoryImpl implements StoreHoursRepository {
 
     @Override
     public List<StoreHours> findAllHours(Store store) {
-        return storeHoursJpaRepository.findAllByStoreAndDeletedAtIsNullOrderByDayOfWeekAsc(store);
+        // DayOfWeek compareTo는 ordinal 기반 - MONDAY(1) → SUNDAY(7) 순서 보장
+        return storeHoursJpaRepository.findAllByStoreAndDeletedAtIsNull(store)
+                .stream()
+                .sorted(Comparator.comparing(StoreHours::getDayOfWeek))
+                .toList();
     }
 
     @Override

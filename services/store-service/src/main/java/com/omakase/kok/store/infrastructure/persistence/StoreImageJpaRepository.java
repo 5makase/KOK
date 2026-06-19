@@ -1,6 +1,5 @@
 package com.omakase.kok.store.infrastructure.persistence;
 
-import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreImage;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -14,7 +13,11 @@ public interface StoreImageJpaRepository extends JpaRepository<StoreImage, UUID>
     Optional<StoreImage> findByStoreStoreIdAndImageIdAndDeletedAtIsNull(UUID storeId, UUID imageId);
 
     // displayOrder로 조회 - soft delete 포함 (restore 패턴 및 슬롯 충돌 확인용)
-    Optional<StoreImage> findByStoreAndDisplayOrder(Store store, int displayOrder);
+    Optional<StoreImage> findByStoreStoreIdAndDisplayOrder(UUID storeId, int displayOrder);
 
-    List<StoreImage> findAllByStoreAndDeletedAtIsNullOrderByDisplayOrderAsc(Store store);
+    // 요청 슬롯 목록 한 번에 조회 - soft delete 포함 (bulk upsert용)
+    List<StoreImage> findAllByStoreStoreIdAndDisplayOrderIn(UUID storeId, List<Integer> displayOrders);
+
+    // 매장의 활성 이미지 목록 조회 (displayOrder 오름차순)
+    List<StoreImage> findAllByStoreStoreIdAndDeletedAtIsNullOrderByDisplayOrderAsc(UUID storeId);
 }

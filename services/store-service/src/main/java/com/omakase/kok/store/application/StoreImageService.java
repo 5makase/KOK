@@ -52,18 +52,14 @@ public class StoreImageService {
         StoreImage image = findImage(command.getStoreId(), command.getImageId());
         validateOwner(image.getStore(), command.getRequesterId());
 
-        // 미전달 필드는 기존 값 유지 (부분 수정 허용)
-        String newUrl = command.getImageUrl() != null ? command.getImageUrl() : image.getImageUrl();
-        int newOrder = command.getDisplayOrder() != null ? command.getDisplayOrder() : image.getDisplayOrder();
-
-        // displayOrder 변경 시 해당 슬롯에 기존 이미지가 있으면 soft delete
-        if (command.getDisplayOrder() != null && command.getDisplayOrder() != image.getDisplayOrder()) {
+        // displayOrder 변경 시 목표 슬롯에 다른 이미지가 있으면 soft delete (슬롯 교체)
+        if (command.getDisplayOrder() != image.getDisplayOrder()) {
             storeImageRepository.findImageByDisplayOrder(command.getStoreId(), command.getDisplayOrder())
                     .filter(existing -> !existing.getImageId().equals(image.getImageId()))
                     .ifPresent(existing -> existing.delete(command.getRequesterId()));
         }
 
-        image.update(newUrl, newOrder);
+        image.update(command.getImageUrl(), command.getDisplayOrder());
         return StoreImageResult.from(image);
     }
 
@@ -114,8 +110,13 @@ public class StoreImageService {
     }
 
     private StoreImage findImage(UUID storeId, UUID imageId) {
-        return storeImageRepository.findImage(storeId, imageId)
+        StoreImage image = storeImageRepository.findImage(storeId, imageId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_IMAGE_NOT_FOUND));
+        // soft delete 포함 조회 후 명시적 체크 - 이미 삭제된 경우
+        if (image.isDeleted()) {
+            throw new BaseException(StoreErrorCode.STORE_IMAGE_ALREADY_DELETED);
+        }
+        return image;
     }
 
     private void validateOwner(Store store, UUID requesterId) {

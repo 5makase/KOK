@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Getter
@@ -26,6 +27,10 @@ public class UpdateStoreRequest {
     private String addressDong;
 
     private String addressDetail;
+
+    private BigDecimal latitude;
+
+    private BigDecimal longitude;
 
     private String description;
 

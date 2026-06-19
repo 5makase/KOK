@@ -4,7 +4,6 @@ import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreCategoryService;
 import com.omakase.kok.store.application.command.CreateStoreCategoryCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCategoryCommand;
-import com.omakase.kok.store.application.result.StoreCategoryResult;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreCategoryRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreCategoryRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreCategoryResponse;
@@ -35,9 +34,12 @@ public class AdminStoreCategoryController {
     public ResponseEntity<ApiResponse<StoreCategoryResponse>> createCategory(
             @Valid @RequestBody CreateStoreCategoryRequest request
     ) {
-        StoreCategoryResult result = storeCategoryService.createCategory(
-                CreateStoreCategoryCommand.from(request));
-        return ResponseEntity.status(201).body(ApiResponse.created(StoreCategoryResponse.from(result)));
+        CreateStoreCategoryCommand command = CreateStoreCategoryCommand.builder()
+                .name(request.getName())
+                .sortOrder(request.getSortOrder())
+                .parentId(request.getParentId())
+                .build();
+        return ResponseEntity.status(201).body(ApiResponse.created(StoreCategoryResponse.from(storeCategoryService.createCategory(command))));
     }
 
     // 카테고리 수정
@@ -46,9 +48,12 @@ public class AdminStoreCategoryController {
             @PathVariable UUID categoryId,
             @Valid @RequestBody UpdateStoreCategoryRequest request
     ) {
-        StoreCategoryResult result = storeCategoryService.updateCategory(
-                UpdateStoreCategoryCommand.of(categoryId, request));
-        return ResponseEntity.ok(ApiResponse.success(StoreCategoryResponse.from(result)));
+        UpdateStoreCategoryCommand command = UpdateStoreCategoryCommand.builder()
+                .categoryId(categoryId)
+                .name(request.getName())
+                .sortOrder(request.getSortOrder())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(StoreCategoryResponse.from(storeCategoryService.updateCategory(command))));
     }
 
     // 카테고리 삭제

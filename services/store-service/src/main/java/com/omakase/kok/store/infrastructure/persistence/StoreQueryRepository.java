@@ -72,11 +72,11 @@ public class StoreQueryRepository {
     }
 
     private BooleanExpression eqSido(QStore store, String sido) {
-        return sido != null ? store.addressSido.eq(sido) : null;
+        return sido != null ? store.address.sido.eq(sido) : null;
     }
 
     private BooleanExpression eqSigungu(QStore store, String sigungu) {
-        return sigungu != null ? store.addressSigungu.eq(sigungu) : null;
+        return sigungu != null ? store.address.sigungu.eq(sigungu) : null;
     }
 
     private BooleanExpression containsKeyword(QStore store, String keyword) {

@@ -1,6 +1,5 @@
 package com.omakase.kok.store.application.command;
 
-import com.omakase.kok.store.presentation.dto.request.AddStoreImageRequest;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -20,20 +19,5 @@ public class AddStoreImageCommand {
     public static class ImageEntry {
         private String imageUrl;
         private int displayOrder;
-    }
-
-    public static AddStoreImageCommand of(UUID storeId, UUID requesterId, AddStoreImageRequest request) {
-        List<ImageEntry> entries = request.getImages().stream()
-                .map(e -> ImageEntry.builder()
-                        .imageUrl(e.getImageUrl())
-                        .displayOrder(e.getDisplayOrder())
-                        .build())
-                .toList();
-
-        return AddStoreImageCommand.builder()
-                .storeId(storeId)
-                .requesterId(requesterId)
-                .images(entries)
-                .build();
     }
 }

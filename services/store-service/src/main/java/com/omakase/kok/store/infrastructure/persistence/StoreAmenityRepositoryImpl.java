@@ -2,7 +2,6 @@ package com.omakase.kok.store.infrastructure.persistence;
 
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreAmenity;
-import com.omakase.kok.store.domain.enums.AmenityType;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -24,7 +23,7 @@ public class StoreAmenityRepositoryImpl implements StoreAmenityRepository {
 
     @Override
     public Optional<StoreAmenity> findAmenity(UUID storeId, UUID amenityId) {
-        return storeAmenityJpaRepository.findByStoreStoreIdAndAmenityIdAndDeletedAtIsNull(storeId, amenityId);
+        return storeAmenityJpaRepository.findByStoreStoreIdAndAmenityId(storeId, amenityId);
     }
 
     @Override
@@ -33,7 +32,12 @@ public class StoreAmenityRepositoryImpl implements StoreAmenityRepository {
     }
 
     @Override
-    public Optional<StoreAmenity> findAmenityByType(Store store, AmenityType amenityType) {
-        return storeAmenityJpaRepository.findByStoreAndAmenityType(store, amenityType);
+    public void saveAll(List<StoreAmenity> amenities) {
+        storeAmenityJpaRepository.saveAll(amenities);
+    }
+
+    @Override
+    public List<StoreAmenity> findAllAmenitiesIncludingDeleted(Store store) {
+        return storeAmenityJpaRepository.findAllByStore(store);
     }
 }

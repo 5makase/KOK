@@ -5,6 +5,7 @@ import com.omakase.kok.store.domain.enums.AmenityType;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -19,5 +20,12 @@ public class StoreAmenityResult {
                 .amenityId(amenity.getAmenityId())
                 .amenityType(amenity.getAmenityType())
                 .build();
+    }
+
+    @Getter
+    @Builder
+    public static class Bulk {
+        private UUID storeId;
+        private List<StoreAmenityResult> amenities;
     }
 }

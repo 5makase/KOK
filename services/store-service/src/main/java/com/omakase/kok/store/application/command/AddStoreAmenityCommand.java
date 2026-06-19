@@ -4,6 +4,7 @@ import com.omakase.kok.store.domain.enums.AmenityType;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -12,5 +13,5 @@ public class AddStoreAmenityCommand {
 
     private UUID storeId;
     private UUID requesterId;
-    private AmenityType amenityType;
+    private List<AmenityType> amenityTypes;
 }

@@ -80,15 +80,17 @@ public class StoreController {
         return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.getStore(storeId))));
     }
 
-    // 매장 목록 검색 (카테고리, 지역, 편의시설, 키워드, 정렬 조건 조합, ownerId 지정 시 내 매장 목록으로 동작)
+    // 매장 목록 검색 - 역할별 동작 차이는 Service에서 처리
+    // USER: status=OPEN 강제 / OWNER: 본인 매장 전체 상태 자동 적용 / MASTER: 모든 조건 자유
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<StoreResponse>>> searchStores(
+            @RequestHeader(value = "X-User-Id", required = false) UUID userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) String sido,
             @RequestParam(required = false) String sigungu,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) List<AmenityType> amenities,
-            @RequestParam(required = false) UUID ownerId,
             @RequestParam(required = false) StoreStatus status,
             @RequestParam(required = false) StoreSearchCondition.SortType sort,
             @PageableDefault(size = 20) Pageable pageable
@@ -99,12 +101,11 @@ public class StoreController {
                 .sigungu(sigungu)
                 .keyword(keyword)
                 .amenities(amenities)
-                .ownerId(ownerId)
                 .status(status)
                 .sort(sort)
                 .build();
 
-        Page<StoreResult> page = storeService.searchStores(condition, pageable);
+        Page<StoreResult> page = storeService.searchStores(condition, userId, role, pageable);
         return ResponseEntity.ok(ApiResponse.success(PageResponse.from(page.map(StoreResponse::from))));
     }
 }

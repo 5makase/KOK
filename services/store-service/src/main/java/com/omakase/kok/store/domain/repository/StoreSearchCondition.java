@@ -13,7 +13,7 @@ import java.util.UUID;
  * StoreRepository 인터페이스의 search() 파라미터로 사용되며, application 계층에서 생성해 domain 계층에 전달한다.
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class StoreSearchCondition {
 
     private UUID categoryId;

@@ -114,8 +114,26 @@ public class StoreService {
         return StoreResult.from(findActiveStore(storeId));
     }
 
-    public Page<StoreResult> searchStores(StoreSearchCondition condition, Pageable pageable) {
-        return storeRepository.search(condition, pageable).map(StoreResult::from);
+    public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID userId, String role, Pageable pageable) {
+        return storeRepository.search(resolveCondition(condition, userId, role), pageable).map(StoreResult::from);
+    }
+
+    // 역할별 검색 조건 결정
+    // OWNER: 헤더의 userId를 ownerId로 자동 주입, status 미지정 시 전체 상태 조회
+    // MASTER: 요청 조건 그대로 적용
+    // USER/비로그인: status 무시하고 OPEN 강제
+    private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
+        if ("OWNER".equals(role)) {
+            return condition.toBuilder()
+                    .ownerId(userId)
+                    .build();
+        }
+        if ("MASTER".equals(role)) {
+            return condition;
+        }
+        return condition.toBuilder()
+                .status(StoreStatus.OPEN)
+                .build();
     }
 
     // 내부 API — 웨이팅 서비스에서 매장 기본 정보 조회 시 사용

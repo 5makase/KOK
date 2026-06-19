@@ -1,6 +1,5 @@
 package com.omakase.kok.store.infrastructure.persistence;
 
-import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreImage;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,17 +21,27 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
     }
 
     @Override
+    public List<StoreImage> saveAll(List<StoreImage> images) {
+        return storeImageJpaRepository.saveAll(images);
+    }
+
+    @Override
     public Optional<StoreImage> findImage(UUID storeId, UUID imageId) {
         return storeImageJpaRepository.findByStoreStoreIdAndImageIdAndDeletedAtIsNull(storeId, imageId);
     }
 
     @Override
-    public Optional<StoreImage> findImageByDisplayOrder(Store store, int displayOrder) {
-        return storeImageJpaRepository.findByStoreAndDisplayOrder(store, displayOrder);
+    public Optional<StoreImage> findImageByDisplayOrder(UUID storeId, int displayOrder) {
+        return storeImageJpaRepository.findByStoreStoreIdAndDisplayOrder(storeId, displayOrder);
     }
 
     @Override
-    public List<StoreImage> findAllImages(Store store) {
-        return storeImageJpaRepository.findAllByStoreAndDeletedAtIsNullOrderByDisplayOrderAsc(store);
+    public List<StoreImage> findAllByDisplayOrders(UUID storeId, List<Integer> displayOrders) {
+        return storeImageJpaRepository.findAllByStoreStoreIdAndDisplayOrderIn(storeId, displayOrders);
+    }
+
+    @Override
+    public List<StoreImage> findAllImages(UUID storeId) {
+        return storeImageJpaRepository.findAllByStoreStoreIdAndDeletedAtIsNullOrderByDisplayOrderAsc(storeId);
     }
 }

@@ -137,10 +137,17 @@ public class Store extends BaseEntity {
         this.category = category;
     }
 
-    // 상태 전이 유효성 검증 후 변경
-    public void changeStatus(StoreStatus next) {
+    /**
+     * 상태 전이 유효성 검증 후 변경
+     * PERMANENTLY_CLOSED 전이 시 soft delete 동시 처리
+     * findActiveStore(deletedAt IS NULL) 조건에서 폐업 매장이 자동으로 제외되도록 보장
+     */
+    public void changeStatus(StoreStatus next, String userId) {
         this.status.validateTransitionTo(next);
         this.status = next;
+        if (next == StoreStatus.PERMANENTLY_CLOSED) {
+            this.delete(userId);
+        }
     }
 
     // 리뷰 서비스 이벤트 수신 시 평점 갱신

@@ -29,13 +29,11 @@ public class StoreAmenityRepositoryImpl implements StoreAmenityRepository {
 
     @Override
     public List<StoreAmenity> findAllAmenities(Store store) {
-        // 해당 매장의 활성 편의시설 전체 조회
         return storeAmenityJpaRepository.findAllByStoreAndDeletedAtIsNull(store);
     }
 
     @Override
     public Optional<StoreAmenity> findAmenityByType(Store store, AmenityType amenityType) {
-        // 타입으로 편의시설 조회 — soft delete된 로우도 포함 (restore 패턴용)
         return storeAmenityJpaRepository.findByStoreAndAmenityType(store, amenityType);
     }
 }

@@ -34,9 +34,14 @@ public class StoreAmenityService {
 
         StoreAmenity amenity;
         if (existing.isPresent()) {
-            // UniqueConstraint 충돌 방지 - soft delete된 로우 재활성화
-            amenity = existing.get();
-            amenity.restore();
+            StoreAmenity found = existing.get();
+            if (!found.isDeleted()) {
+                // active 상태의 동일 타입 재등록 시도 - 중복 등록 차단
+                throw new BaseException(StoreErrorCode.AMENITY_ALREADY_EXISTS);
+            }
+            // soft delete된 편의시설 재활성화 (UniqueConstraint 충돌 방지)
+            found.restore();
+            amenity = found;
         } else {
             amenity = StoreAmenity.create(store, command.getAmenityType());
         }

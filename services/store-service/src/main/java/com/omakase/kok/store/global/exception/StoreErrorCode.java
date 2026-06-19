@@ -35,6 +35,7 @@ public enum StoreErrorCode implements ErrorCode {
     AMENITY_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-301", "편의시설을 찾을 수 없습니다."),
     AMENITY_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-302", "본인 매장의 편의시설만 수정할 수 있습니다."),
     AMENITY_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-303", "이미 삭제된 편의시설입니다."),
+    AMENITY_ALREADY_EXISTS(HttpStatus.CONFLICT, "STORE-304", "이미 등록된 편의시설입니다."),
 
     // 이미지
     STORE_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-401", "이미지를 찾을 수 없습니다."),

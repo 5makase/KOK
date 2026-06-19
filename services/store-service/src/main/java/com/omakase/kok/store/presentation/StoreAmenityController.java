@@ -27,9 +27,9 @@ public class StoreAmenityController {
 
     private final StoreAmenityService storeAmenityService;
 
-    // 편의시설 등록 (이미 등록된 타입은 restore 후 재활성화)
+    // 편의시설 동기화 - 요청 목록으로 전체 교체 (restore/insert/soft delete 자동 처리)
     @PostMapping
-    public ResponseEntity<ApiResponse<StoreAmenityResponse>> addAmenity(
+    public ResponseEntity<ApiResponse<StoreAmenityResponse.Bulk>> syncAmenities(
             @PathVariable UUID storeId,
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody AddStoreAmenityRequest request
@@ -37,9 +37,9 @@ public class StoreAmenityController {
         AddStoreAmenityCommand command = AddStoreAmenityCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)
-                .amenityType(request.getAmenityType())
+                .amenityTypes(request.getAmenityTypes())
                 .build();
-        return ResponseEntity.status(201).body(ApiResponse.created(StoreAmenityResponse.from(storeAmenityService.addAmenity(command))));
+        return ResponseEntity.status(201).body(ApiResponse.created(StoreAmenityResponse.Bulk.from(storeAmenityService.syncAmenities(command))));
     }
 
     // 편의시설 삭제 (Soft Delete)

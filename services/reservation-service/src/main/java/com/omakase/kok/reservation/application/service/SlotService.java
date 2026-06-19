@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -41,8 +43,14 @@ public class SlotService {
 
         slotRepository.save(slot);
 
-        redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId())
-                .set(request.getMaxCapacity());
+        UUID slotId = slot.getSlotId();
+        int maxCapacity = request.getMaxCapacity();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId).set(maxCapacity);
+            }
+        });
 
         return SlotResponse.from(slot);
     }

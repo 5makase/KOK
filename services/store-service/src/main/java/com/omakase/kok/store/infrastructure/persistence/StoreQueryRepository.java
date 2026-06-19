@@ -90,7 +90,6 @@ public class StoreQueryRepository {
     }
 
     private BooleanExpression eqOwner(QStore store, UUID ownerId) {
-        // ownerId 지정 시 내 매장 목록 조회로 동작
         return ownerId != null ? store.ownerId.eq(ownerId) : null;
     }
 

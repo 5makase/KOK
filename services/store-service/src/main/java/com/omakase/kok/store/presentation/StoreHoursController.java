@@ -53,18 +53,18 @@ public class StoreHoursController {
             @Valid @RequestBody UpdateStoreHoursRequest request
     ) {
         StoreHoursResult result = storeHoursService.updateHours(
-                UpdateStoreHoursCommand.of(hoursId, userId, request));
+                UpdateStoreHoursCommand.of(storeId, hoursId, userId, request));
         return ResponseEntity.ok(ApiResponse.success(StoreHoursResponse.from(result)));
     }
 
-    // 영업시간 삭제 (OPEN 매장 불가 — isDayOff 변경 유도)
+    // 영업시간 삭제 (OPEN 매장 불가 - isDayOff 변경 유도)
     @DeleteMapping("/{hoursId}")
     public ResponseEntity<ApiResponse<Void>> deleteHours(
             @PathVariable UUID storeId,
             @PathVariable UUID hoursId,
             @RequestHeader("X-User-Id") UUID userId
     ) {
-        storeHoursService.deleteHours(hoursId, userId);
+        storeHoursService.deleteHours(storeId, hoursId, userId);
         return ResponseEntity.ok(ApiResponse.deleted());
     }
 

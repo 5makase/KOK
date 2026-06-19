@@ -124,6 +124,7 @@ public class StoreService {
     // OWNER: 헤더의 userId를 ownerId로 자동 주입, status 미지정 시 전체 상태 조회
     // MASTER: 요청 조건 그대로 적용
     // USER/비로그인: status 무시하고 OPEN 강제
+    // TODO: Gateway 인가 필터 구현 후 role/userId 헤더 위조 방어 검토 필요
     private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
         if ("OWNER".equals(role)) {
             return condition.toBuilder()

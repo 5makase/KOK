@@ -11,9 +11,10 @@ import java.util.UUID;
 
 public interface StoreHoursJpaRepository extends JpaRepository<StoreHours, UUID> {
 
-    Optional<StoreHours> findByHoursIdAndDeletedAtIsNull(UUID hoursId);
+    // storeId + hoursId 복합 조건 - 다중 매장 점주의 교차 접근 차단
+    Optional<StoreHours> findByStoreStoreIdAndHoursIdAndDeletedAtIsNull(UUID storeId, UUID hoursId);
 
-    List<StoreHours> findAllByStoreAndDeletedAtIsNull(Store store);
+    List<StoreHours> findAllByStoreAndDeletedAtIsNullOrderByDayOfWeekAsc(Store store);
 
     Optional<StoreHours> findByStoreAndDayOfWeek(Store store, DayOfWeek dayOfWeek);
 

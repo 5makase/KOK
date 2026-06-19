@@ -34,7 +34,7 @@ public class StoreHoursService {
         List<StoreHours> saved = command.getHours().stream()
                 .map(entry -> {
                     // restore/신규 경로 무관하게 선검증
-                    validateHoursEntry(entry.isDayOff(), entry.getOpenTime());
+                    validateHoursEntry(entry.isDayOff(), entry.getOpenTime(), entry.getCloseTime());
 
                     Optional<StoreHours> existing =
                             storeHoursRepository.findHoursByDay(store, entry.getDayOfWeek());
@@ -65,9 +65,9 @@ public class StoreHoursService {
 
     @Transactional
     public StoreHoursResult updateHours(UpdateStoreHoursCommand command) {
-        StoreHours hours = findHours(command.getHoursId());
+        StoreHours hours = findHours(command.getStoreId(), command.getHoursId());
         validateOwner(hours.getStore(), command.getRequesterId());
-        validateHoursEntry(command.isDayOff(), command.getOpenTime());
+        validateHoursEntry(command.isDayOff(), command.getOpenTime(), command.getCloseTime());
 
         hours.update(command.getOpenTime(), command.getCloseTime(),
                 command.getBreakStartTime(), command.getBreakEndTime(), command.isDayOff());
@@ -76,8 +76,8 @@ public class StoreHoursService {
     }
 
     @Transactional
-    public void deleteHours(UUID hoursId, UUID requesterId) {
-        StoreHours hours = findHours(hoursId);
+    public void deleteHours(UUID storeId, UUID hoursId, UUID requesterId) {
+        StoreHours hours = findHours(storeId, hoursId);
         validateOwner(hours.getStore(), requesterId);
 
         // OPEN 매장의 영업시간 삭제 차단 — 7개 미만 시 OPEN 상태가 깨지므로
@@ -95,8 +95,8 @@ public class StoreHoursService {
                 .toList();
     }
 
-    private StoreHours findHours(UUID hoursId) {
-        return storeHoursRepository.findHours(hoursId)
+    private StoreHours findHours(UUID storeId, UUID hoursId) {
+        return storeHoursRepository.findHours(storeId, hoursId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_HOURS_NOT_FOUND));
     }
 
@@ -106,9 +106,9 @@ public class StoreHoursService {
         }
     }
 
-    // 영업일(isDayOff=false)인데 openTime이 없으면 유효하지 않은 입력
-    private void validateHoursEntry(boolean isDayOff, LocalTime openTime) {
-        if (!isDayOff && openTime == null) {
+    // 영업일(isDayOff=false)인데 openTime 또는 closeTime이 없으면 유효하지 않은 입력
+    private void validateHoursEntry(boolean isDayOff, LocalTime openTime, LocalTime closeTime) {
+        if (!isDayOff && (openTime == null || closeTime == null)) {
             throw new BaseException(StoreErrorCode.INVALID_STORE_HOURS);
         }
     }

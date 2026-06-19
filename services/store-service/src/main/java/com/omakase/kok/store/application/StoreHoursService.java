@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -106,7 +107,7 @@ public class StoreHoursService {
     }
 
     // 영업일(isDayOff=false)인데 openTime이 없으면 유효하지 않은 입력
-    private void validateHoursEntry(boolean isDayOff, java.time.LocalTime openTime) {
+    private void validateHoursEntry(boolean isDayOff, LocalTime openTime) {
         if (!isDayOff && openTime == null) {
             throw new BaseException(StoreErrorCode.INVALID_STORE_HOURS);
         }

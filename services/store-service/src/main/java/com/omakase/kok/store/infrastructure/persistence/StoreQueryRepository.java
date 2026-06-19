@@ -29,14 +29,18 @@ public class StoreQueryRepository {
         QStore store = QStore.store;
         QStoreAmenity amenity = QStoreAmenity.storeAmenity;
 
-        // WHERE 조건을 한 곳에서 관리 — content/count 쿼리 간 불일치 방지
+        boolean hasAmenityFilter = condition.getAmenities() != null && !condition.getAmenities().isEmpty();
+
+        // WHERE 조건을 한 곳에서 관리 - content/count 쿼리 간 불일치 방지
         BooleanExpression[] where = buildWhere(store, amenity, condition);
 
-        // 편의시설 필터 사용 시 중복 로우 방지를 위해 selectDistinct
-        List<Store> content = queryFactory
+        // 편의시설 필터 사용 시에만 JOIN - 중복 로우 방지를 위해 selectDistinct
+        JPAQuery<Store> contentQuery = queryFactory
                 .selectDistinct(store)
-                .from(store)
-                .leftJoin(store.amenities, amenity)
+                .from(store);
+        if (hasAmenityFilter) contentQuery.leftJoin(store.amenities, amenity);
+
+        List<Store> content = contentQuery
                 .where(where)
                 .orderBy(resolveSort(store, condition.getSort()))
                 .offset(pageable.getOffset())
@@ -46,9 +50,10 @@ public class StoreQueryRepository {
         // 마지막 페이지이거나 content 수가 pageSize 미만이면 count 쿼리 생략
         JPAQuery<Long> countQuery = queryFactory
                 .select(store.countDistinct())
-                .from(store)
-                .leftJoin(store.amenities, amenity)
-                .where(where);
+                .from(store);
+        if (hasAmenityFilter) countQuery.leftJoin(store.amenities, amenity);
+
+        countQuery.where(where);
 
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
@@ -94,8 +99,9 @@ public class StoreQueryRepository {
     }
 
     private BooleanExpression inAmenities(QStoreAmenity amenity, List<AmenityType> amenities) {
-        // 다중 편의시설 조건은 IN 절로 처리 - 하나라도 포함하면 노출
-        return (amenities != null && !amenities.isEmpty()) ? amenity.amenityType.in(amenities) : null;
+        // 다중 편의시설 조건은 IN 절로 처리 - 하나라도 포함하면 노출 (soft delete 제외)
+        if (amenities == null || amenities.isEmpty()) return null;
+        return amenity.amenityType.in(amenities).and(amenity.deletedAt.isNull());
     }
 
     private OrderSpecifier<?> resolveSort(QStore store, StoreSearchCondition.SortType sort) {

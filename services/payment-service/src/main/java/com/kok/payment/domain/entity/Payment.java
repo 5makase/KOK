@@ -56,6 +56,12 @@ public class Payment extends BaseEntity {
         if (this.status != PaymentStatus.PAID) {
             throw new IllegalStateException("PAID 상태에서만 환불 처리할 수 있습니다. 현재 상태: " + this.status);
         }
+        if (refundAmount == null || refundAmount <= 0) {
+            throw new IllegalArgumentException("환불 금액은 0보다 커야 합니다.");
+        }
+        if (refundAmount > this.amount) {
+            throw new IllegalArgumentException("환불 금액이 결제 금액을 초과할 수 없습니다.");
+        }
         this.refundAmount = refundAmount;
         this.status = refundAmount.equals(this.amount)
                 ? PaymentStatus.REFUNDED

@@ -43,19 +43,34 @@ public class WaitingSetting extends BaseEntity {
     @Column(name = "allow_user_cancel", nullable = false)
     private Boolean allowUserCancel;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private WaitingSetting(UUID storeId, Boolean waitingEnabled, Integer maxWaitingCount,
                            Integer callTimeoutMinutes, Boolean allowUserCancel) {
         this.storeId = storeId;
-        this.waitingEnabled = waitingEnabled != null ? waitingEnabled : true;
-        this.maxWaitingCount = maxWaitingCount != null ? maxWaitingCount : 100;
-        this.callTimeoutMinutes = callTimeoutMinutes != null ? callTimeoutMinutes : 10;
-        this.allowUserCancel = allowUserCancel != null ? allowUserCancel : true;
+        this.waitingEnabled = waitingEnabled;
+        this.maxWaitingCount = maxWaitingCount;
+        this.callTimeoutMinutes = callTimeoutMinutes;
+        this.allowUserCancel = allowUserCancel;
+    }
+
+    public static WaitingSetting create(UUID storeId, Boolean waitingEnabled, Integer maxWaitingCount,
+                                        Integer callTimeoutMinutes, Boolean allowUserCancel) {
+        Integer defaultedMaxWaitingCount = maxWaitingCount != null ? maxWaitingCount : 100;
+        Integer defaultedCallTimeoutMinutes = callTimeoutMinutes != null ? callTimeoutMinutes : 10;
+        validateValues(defaultedMaxWaitingCount, defaultedCallTimeoutMinutes);
+
+        return WaitingSetting.builder()
+                .storeId(storeId)
+                .waitingEnabled(waitingEnabled != null ? waitingEnabled : false)
+                .maxWaitingCount(defaultedMaxWaitingCount)
+                .callTimeoutMinutes(defaultedCallTimeoutMinutes)
+                .allowUserCancel(allowUserCancel != null ? allowUserCancel : true)
+                .build();
     }
 
     public void update(Boolean waitingEnabled, Integer maxWaitingCount, Integer callTimeoutMinutes,
                        Boolean allowUserCancel) {
-        validateUpdateValues(maxWaitingCount, callTimeoutMinutes);
+        validateValues(maxWaitingCount, callTimeoutMinutes);
         if (waitingEnabled != null) {
             this.waitingEnabled = waitingEnabled;
         }
@@ -70,7 +85,7 @@ public class WaitingSetting extends BaseEntity {
         }
     }
 
-    private void validateUpdateValues(Integer maxWaitingCount, Integer callTimeoutMinutes) {
+    private static void validateValues(Integer maxWaitingCount, Integer callTimeoutMinutes) {
         if ((maxWaitingCount != null && maxWaitingCount <= 0)
                 || (callTimeoutMinutes != null && callTimeoutMinutes <= 0)) {
             throw new WaitingException(WaitingErrorCode.WAITING_SETTING_INVALID);

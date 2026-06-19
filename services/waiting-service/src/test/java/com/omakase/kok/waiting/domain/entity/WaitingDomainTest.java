@@ -73,13 +73,7 @@ class WaitingDomainTest {
     @Test
     @DisplayName("웨이팅 설정 수정값은 null을 유지하고 숫자 값만 양수를 검증한다")
     void waitingSettingUpdateValidation() {
-        WaitingSetting setting = WaitingSetting.builder()
-                .storeId(UUID.randomUUID())
-                .waitingEnabled(true)
-                .maxWaitingCount(10)
-                .callTimeoutMinutes(5)
-                .allowUserCancel(true)
-                .build();
+        WaitingSetting setting = WaitingSetting.create(UUID.randomUUID(), true, 10, 5, true);
 
         assertThatThrownBy(() -> setting.update(true, 0, 5, true))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->

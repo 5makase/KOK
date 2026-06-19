@@ -49,6 +49,18 @@ public class WaitingSummary extends BaseEntity {
         this.lastWaitingNumber = lastWaitingNumber != null ? lastWaitingNumber : 0L;
     }
 
+    public static WaitingSummary initialize(UUID storeId, Integer averageWaitingMinutes) {
+        Integer defaultedAverageWaitingMinutes = averageWaitingMinutes != null ? averageWaitingMinutes : 10;
+        validateAverageWaitingMinutes(defaultedAverageWaitingMinutes);
+
+        return WaitingSummary.builder()
+                .storeId(storeId)
+                .currentWaitingCount(0)
+                .averageWaitingMinutes(defaultedAverageWaitingMinutes)
+                .lastWaitingNumber(0L)
+                .build();
+    }
+
     public Long registerWaiting() {
         this.lastWaitingNumber += 1;
         this.currentWaitingCount += 1;
@@ -62,9 +74,13 @@ public class WaitingSummary extends BaseEntity {
     }
 
     public void updateAverageWaitingMinutes(Integer averageWaitingMinutes) {
+        validateAverageWaitingMinutes(averageWaitingMinutes);
+        this.averageWaitingMinutes = averageWaitingMinutes;
+    }
+
+    private static void validateAverageWaitingMinutes(Integer averageWaitingMinutes) {
         if (averageWaitingMinutes == null || averageWaitingMinutes < 0) {
             throw new WaitingException(WaitingErrorCode.WAITING_SUMMARY_INVALID);
         }
-        this.averageWaitingMinutes = averageWaitingMinutes;
     }
 }

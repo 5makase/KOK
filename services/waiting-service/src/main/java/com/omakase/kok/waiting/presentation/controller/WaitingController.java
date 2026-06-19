@@ -1,5 +1,7 @@
 package com.omakase.kok.waiting.presentation.controller;
 
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.waiting.application.service.WaitingService;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
@@ -20,16 +22,22 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/waitings")
 public class WaitingController {
-    private static final String USER_ID_HEADER = "X-User-Id";
-
     private final WaitingService waitingService;
 
     // 웨이팅 등록
     @PostMapping
     public ResponseEntity<ApiResponse<WaitingResponse>> createWaiting(
-            @RequestHeader(USER_ID_HEADER) UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
             @Valid @RequestBody WaitingCreateRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(
+                role,
+                AuthConstants.MASTER,
+                AuthConstants.OWNER,
+                AuthConstants.USER
+        );
+
         WaitingResponse response = waitingService.createWaiting(userId, request);
 
         return ResponseEntity

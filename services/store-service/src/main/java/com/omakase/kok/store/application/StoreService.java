@@ -58,12 +58,7 @@ public class StoreService {
                 category,
                 command.getName(),
                 command.getPhone(),
-                command.getAddressSido(),
-                command.getAddressSigungu(),
-                command.getAddressDong(),
-                command.getAddressDetail(),
-                command.getLatitude(),
-                command.getLongitude(),
+                command.getAddress(),
                 command.getDescription(),
                 command.getMaxCapacity()
         );
@@ -86,10 +81,7 @@ public class StoreService {
         store.update(
                 command.getName(),
                 command.getPhone(),
-                command.getAddressSido(),
-                command.getAddressSigungu(),
-                command.getAddressDong(),
-                command.getAddressDetail(),
+                command.getAddress(),
                 command.getDescription(),
                 command.getMaxCapacity(),
                 category

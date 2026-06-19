@@ -4,7 +4,6 @@ import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreImageService;
 import com.omakase.kok.store.application.command.AddStoreImageCommand;
 import com.omakase.kok.store.application.command.UpdateStoreImageCommand;
-import com.omakase.kok.store.application.result.StoreImageResult;
 import com.omakase.kok.store.presentation.dto.request.AddStoreImageRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreImageRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreImageResponse;
@@ -38,9 +37,18 @@ public class StoreImageController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody AddStoreImageRequest request
     ) {
-        List<StoreImageResult> results = storeImageService.addImages(
-                AddStoreImageCommand.of(storeId, userId, request));
-        List<StoreImageResponse> response = results.stream().map(StoreImageResponse::from).toList();
+        AddStoreImageCommand command = AddStoreImageCommand.builder()
+                .storeId(storeId)
+                .requesterId(userId)
+                .images(request.getImages().stream()
+                        .map(e -> AddStoreImageCommand.ImageEntry.builder()
+                                .imageUrl(e.getImageUrl())
+                                .displayOrder(e.getDisplayOrder())
+                                .build())
+                        .toList())
+                .build();
+        List<StoreImageResponse> response = storeImageService.addImages(command).stream()
+                .map(StoreImageResponse::from).toList();
         return ResponseEntity.status(201).body(ApiResponse.created(response));
     }
 
@@ -52,9 +60,14 @@ public class StoreImageController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody UpdateStoreImageRequest request
     ) {
-        StoreImageResult result = storeImageService.updateImage(
-                UpdateStoreImageCommand.of(storeId, imageId, userId, request));
-        return ResponseEntity.ok(ApiResponse.success(StoreImageResponse.from(result)));
+        UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
+                .storeId(storeId)
+                .imageId(imageId)
+                .requesterId(userId)
+                .imageUrl(request.getImageUrl())
+                .displayOrder(request.getDisplayOrder())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(StoreImageResponse.from(storeImageService.updateImage(command))));
     }
 
     // 이미지 삭제 (Soft Delete)

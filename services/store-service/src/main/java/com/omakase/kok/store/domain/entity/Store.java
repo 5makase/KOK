@@ -2,8 +2,10 @@ package com.omakase.kok.store.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
 import com.omakase.kok.store.domain.enums.StoreStatus;
+import com.omakase.kok.store.domain.vo.Address;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -49,23 +51,8 @@ public class Store extends BaseEntity {
     @Column(name = "phone", length = 20)
     private String phone;
 
-    @Column(name = "address_sido", nullable = false, length = 20)
-    private String addressSido;
-
-    @Column(name = "address_sigungu", nullable = false, length = 30)
-    private String addressSigungu;
-
-    @Column(name = "address_dong", length = 30)
-    private String addressDong;
-
-    @Column(name = "address_detail", length = 100)
-    private String addressDetail;
-
-    @Column(name = "latitude", precision = 10, scale = 7)
-    private BigDecimal latitude;
-
-    @Column(name = "longitude", precision = 10, scale = 7)
-    private BigDecimal longitude;
+    @Embedded
+    private Address address;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
@@ -100,20 +87,13 @@ public class Store extends BaseEntity {
 
     // 가게 최초 등록 (상태 PREPARING, 평점 0으로 초기화)
     public static Store create(UUID ownerId, StoreCategory category, String name, String phone,
-                               String addressSido, String addressSigungu, String addressDong,
-                               String addressDetail, BigDecimal latitude, BigDecimal longitude,
-                               String description, Integer maxCapacity) {
+                               Address address, String description, Integer maxCapacity) {
         Store store = new Store();
         store.ownerId = ownerId;
         store.category = category;
         store.name = name;
         store.phone = phone;
-        store.addressSido = addressSido;
-        store.addressSigungu = addressSigungu;
-        store.addressDong = addressDong;
-        store.addressDetail = addressDetail;
-        store.latitude = latitude;
-        store.longitude = longitude;
+        store.address = address;
         store.description = description;
         store.maxCapacity = maxCapacity;
         store.status = StoreStatus.PREPARING;
@@ -123,15 +103,11 @@ public class Store extends BaseEntity {
     }
 
     // 가게 기본 정보 수정
-    public void update(String name, String phone, String addressSido, String addressSigungu,
-                       String addressDong, String addressDetail, String description,
-                       Integer maxCapacity, StoreCategory category) {
+    public void update(String name, String phone, Address address,
+                       String description, Integer maxCapacity, StoreCategory category) {
         this.name = name;
         this.phone = phone;
-        this.addressSido = addressSido;
-        this.addressSigungu = addressSigungu;
-        this.addressDong = addressDong;
-        this.addressDetail = addressDetail;
+        this.address = address;
         this.description = description;
         this.maxCapacity = maxCapacity;
         this.category = category;

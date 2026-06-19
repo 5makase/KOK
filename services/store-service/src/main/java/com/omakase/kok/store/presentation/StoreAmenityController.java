@@ -3,7 +3,6 @@ package com.omakase.kok.store.presentation;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreAmenityService;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
-import com.omakase.kok.store.application.result.StoreAmenityResult;
 import com.omakase.kok.store.presentation.dto.request.AddStoreAmenityRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreAmenityResponse;
 import jakarta.validation.Valid;
@@ -35,9 +34,12 @@ public class StoreAmenityController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody AddStoreAmenityRequest request
     ) {
-        StoreAmenityResult result = storeAmenityService.addAmenity(
-                AddStoreAmenityCommand.of(storeId, userId, request));
-        return ResponseEntity.status(201).body(ApiResponse.created(StoreAmenityResponse.from(result)));
+        AddStoreAmenityCommand command = AddStoreAmenityCommand.builder()
+                .storeId(storeId)
+                .requesterId(userId)
+                .amenityType(request.getAmenityType())
+                .build();
+        return ResponseEntity.status(201).body(ApiResponse.created(StoreAmenityResponse.from(storeAmenityService.addAmenity(command))));
     }
 
     // 편의시설 삭제 (Soft Delete)

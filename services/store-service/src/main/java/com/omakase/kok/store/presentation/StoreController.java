@@ -10,6 +10,7 @@ import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.domain.enums.AmenityType;
 import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
+import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.presentation.dto.request.ChangeStoreStatusRequest;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreRequest;
@@ -46,8 +47,21 @@ public class StoreController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody CreateStoreRequest request
     ) {
-        StoreResult result = storeService.createStore(CreateStoreCommand.of(userId, request));
-        return ResponseEntity.status(201).body(ApiResponse.created(StoreResponse.from(result)));
+        Address address = new Address(
+                request.getAddressSido(), request.getAddressSigungu(),
+                request.getAddressDong(), request.getAddressDetail(),
+                request.getLatitude(), request.getLongitude()
+        );
+        CreateStoreCommand command = CreateStoreCommand.builder()
+                .ownerId(userId)
+                .categoryId(request.getCategoryId())
+                .name(request.getName())
+                .phone(request.getPhone())
+                .address(address)
+                .description(request.getDescription())
+                .maxCapacity(request.getMaxCapacity())
+                .build();
+        return ResponseEntity.status(201).body(ApiResponse.created(StoreResponse.from(storeService.createStore(command))));
     }
 
     // 매장 기본정보 수정
@@ -57,8 +71,22 @@ public class StoreController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody UpdateStoreRequest request
     ) {
-        StoreResult result = storeService.updateStore(UpdateStoreCommand.of(storeId, userId, request));
-        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(result)));
+        Address address = new Address(
+                request.getAddressSido(), request.getAddressSigungu(),
+                request.getAddressDong(), request.getAddressDetail(),
+                request.getLatitude(), request.getLongitude()
+        );
+        UpdateStoreCommand command = UpdateStoreCommand.builder()
+                .storeId(storeId)
+                .requesterId(userId)
+                .categoryId(request.getCategoryId())
+                .name(request.getName())
+                .phone(request.getPhone())
+                .address(address)
+                .description(request.getDescription())
+                .maxCapacity(request.getMaxCapacity())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.updateStore(command))));
     }
 
     // 매장 상태 변경
@@ -68,8 +96,12 @@ public class StoreController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody ChangeStoreStatusRequest request
     ) {
-        StoreResult result = storeService.changeStatus(ChangeStoreStatusCommand.of(storeId, userId, request));
-        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(result)));
+        ChangeStoreStatusCommand command = ChangeStoreStatusCommand.builder()
+                .storeId(storeId)
+                .requesterId(userId)
+                .status(request.getStatus())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.changeStatus(command))));
     }
 
     // 매장 상세 조회 - MASTER는 soft delete된 매장도 조회 가능

@@ -4,7 +4,6 @@ import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreHoursService;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
 import com.omakase.kok.store.application.command.UpdateStoreHoursCommand;
-import com.omakase.kok.store.application.result.StoreHoursResult;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreHoursBulkRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreHoursRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreHoursResponse;
@@ -38,9 +37,22 @@ public class StoreHoursController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody CreateStoreHoursBulkRequest request
     ) {
-        List<StoreHoursResult> results = storeHoursService.createBulkHours(
-                CreateStoreHoursBulkCommand.of(storeId, userId, request));
-        List<StoreHoursResponse> response = results.stream().map(StoreHoursResponse::from).toList();
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId)
+                .requesterId(userId)
+                .hours(request.getHours().stream()
+                        .map(h -> CreateStoreHoursBulkCommand.HoursEntry.builder()
+                                .dayOfWeek(h.getDayOfWeek())
+                                .openTime(h.getOpenTime())
+                                .closeTime(h.getCloseTime())
+                                .breakStartTime(h.getBreakStartTime())
+                                .breakEndTime(h.getBreakEndTime())
+                                .isDayOff(h.getIsDayOff())
+                                .build())
+                        .toList())
+                .build();
+        List<StoreHoursResponse> response = storeHoursService.createBulkHours(command).stream()
+                .map(StoreHoursResponse::from).toList();
         return ResponseEntity.status(201).body(ApiResponse.created(response));
     }
 
@@ -52,9 +64,17 @@ public class StoreHoursController {
             @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody UpdateStoreHoursRequest request
     ) {
-        StoreHoursResult result = storeHoursService.updateHours(
-                UpdateStoreHoursCommand.of(storeId, hoursId, userId, request));
-        return ResponseEntity.ok(ApiResponse.success(StoreHoursResponse.from(result)));
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId)
+                .hoursId(hoursId)
+                .requesterId(userId)
+                .openTime(request.getOpenTime())
+                .closeTime(request.getCloseTime())
+                .breakStartTime(request.getBreakStartTime())
+                .breakEndTime(request.getBreakEndTime())
+                .isDayOff(request.getIsDayOff())
+                .build();
+        return ResponseEntity.ok(ApiResponse.success(StoreHoursResponse.from(storeHoursService.updateHours(command))));
     }
 
     // 영업시간 삭제 (OPEN 매장 불가 - isDayOff 변경 유도)

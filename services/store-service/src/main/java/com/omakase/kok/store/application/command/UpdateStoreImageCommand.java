@@ -10,13 +10,15 @@ import java.util.UUID;
 @Builder
 public class UpdateStoreImageCommand {
 
+    private UUID storeId;
     private UUID imageId;
     private UUID requesterId;
     private String imageUrl;
-    private int displayOrder;
+    private Integer displayOrder;
 
-    public static UpdateStoreImageCommand of(UUID imageId, UUID requesterId, UpdateStoreImageRequest request) {
+    public static UpdateStoreImageCommand of(UUID storeId, UUID imageId, UUID requesterId, UpdateStoreImageRequest request) {
         return UpdateStoreImageCommand.builder()
+                .storeId(storeId)
                 .imageId(imageId)
                 .requesterId(requesterId)
                 .imageUrl(request.getImageUrl())

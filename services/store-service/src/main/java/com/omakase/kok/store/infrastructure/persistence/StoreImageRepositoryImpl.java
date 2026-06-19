@@ -22,14 +22,17 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
     }
 
     @Override
-    public Optional<StoreImage> findImage(UUID imageId) {
-        // 활성 이미지 단건 조회 (deletedAt IS NULL)
-        return storeImageJpaRepository.findByImageIdAndDeletedAtIsNull(imageId);
+    public Optional<StoreImage> findImage(UUID storeId, UUID imageId) {
+        return storeImageJpaRepository.findByStoreStoreIdAndImageIdAndDeletedAtIsNull(storeId, imageId);
+    }
+
+    @Override
+    public Optional<StoreImage> findImageByDisplayOrder(Store store, int displayOrder) {
+        return storeImageJpaRepository.findByStoreAndDisplayOrder(store, displayOrder);
     }
 
     @Override
     public List<StoreImage> findAllImages(Store store) {
-        // 해당 매장의 활성 이미지 목록 조회 — displayOrder 오름차순 정렬
         return storeImageJpaRepository.findAllByStoreAndDeletedAtIsNullOrderByDisplayOrderAsc(store);
     }
 }

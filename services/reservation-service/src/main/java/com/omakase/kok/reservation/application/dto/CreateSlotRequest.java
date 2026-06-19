@@ -1,5 +1,6 @@
 package com.omakase.kok.reservation.application.dto;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -28,4 +29,12 @@ public class CreateSlotRequest {
     private boolean depositRequired;
 
     private Long depositAmount;
+
+    @AssertTrue(message = "예약금이 필요한 슬롯은 depositAmount가 0보다 커야 합니다.")
+    public boolean isDepositAmountValid() {
+        if (!depositRequired) {
+            return true;
+        }
+        return depositAmount != null && depositAmount > 0;
+    }
 }

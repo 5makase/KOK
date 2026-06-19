@@ -142,7 +142,7 @@ public class Store extends BaseEntity {
      * PERMANENTLY_CLOSED 전이 시 soft delete 동시 처리
      * findActiveStore(deletedAt IS NULL) 조건에서 폐업 매장이 자동으로 제외되도록 보장
      */
-    public void changeStatus(StoreStatus next, String userId) {
+    public void changeStatus(StoreStatus next, UUID userId) {
         this.status.validateTransitionTo(next);
         this.status = next;
         if (next == StoreStatus.PERMANENTLY_CLOSED) {

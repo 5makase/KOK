@@ -115,7 +115,13 @@ public class WaitingService {
     }
 
     // 매장별 웨이팅 목록 조회
-    public PageResponse<StoreWaitingResponse> getStoreWaitings(UUID storeId, WaitingStatus status, Pageable pageable) {
+    public PageResponse<StoreWaitingResponse> getStoreWaitings(
+            UUID userId,
+            UUID storeId,
+            WaitingStatus status,
+            Pageable pageable
+    ) {
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 storeId의 소유자인지 검증 추가
         Page<Waiting> waitings = status == null
                 ? waitingRepository.findByStoreId(storeId, pageable)
                 : waitingRepository.findByStoreIdAndStatus(storeId, status, pageable);

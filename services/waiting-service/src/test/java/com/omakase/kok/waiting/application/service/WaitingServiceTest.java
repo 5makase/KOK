@@ -186,7 +186,8 @@ class WaitingServiceTest {
                 .willReturn(new PageImpl<>(List.of(waiting), pageable, 1));
         given(waitingQueueRedisStore.getRank(storeId, waiting.getId())).willReturn(1L);
 
-        PageResponse<StoreWaitingResponse> response = waitingService.getStoreWaitings(storeId, WaitingStatus.CALLED, pageable);
+        PageResponse<StoreWaitingResponse> response =
+                waitingService.getStoreWaitings(UUID.randomUUID(), storeId, WaitingStatus.CALLED, pageable);
 
         assertThat(response.content()).hasSize(1);
         StoreWaitingResponse content = response.content().get(0);

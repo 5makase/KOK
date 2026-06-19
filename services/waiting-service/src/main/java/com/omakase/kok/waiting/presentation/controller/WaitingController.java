@@ -91,6 +91,7 @@ public class WaitingController {
     // 매장별 웨이팅 현황 조회
     @GetMapping("/stores/{storeId}")
     public ResponseEntity<ApiResponse<PageResponse<StoreWaitingResponse>>> getStoreWaitings(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
             @PathVariable UUID storeId,
             @RequestParam(required = false) WaitingStatus status,
@@ -101,7 +102,7 @@ public class WaitingController {
                 AuthConstants.MASTER,
                 AuthConstants.OWNER
         );
-        PageResponse<StoreWaitingResponse> response = waitingService.getStoreWaitings(storeId, status, pageable);
+        PageResponse<StoreWaitingResponse> response = waitingService.getStoreWaitings(userId, storeId, status, pageable);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

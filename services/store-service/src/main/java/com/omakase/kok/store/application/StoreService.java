@@ -13,6 +13,7 @@ import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
+import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -30,6 +31,7 @@ public class StoreService {
     private final StoreRepository storeRepository;
     private final StoreCategoryRepository storeCategoryRepository;
     private final StoreHoursRepository storeHoursRepository;
+    private final StoreFinder storeFinder;
 
     @Transactional
     public StoreResult createStore(CreateStoreCommand command) {
@@ -61,7 +63,7 @@ public class StoreService {
 
     @Transactional
     public StoreResult updateStore(UpdateStoreCommand command) {
-        Store store = findActiveStore(command.getStoreId());
+        Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         validateOwner(store, command.getRequesterId());
 
         StoreCategory category = storeCategoryRepository.findCategory(command.getCategoryId())
@@ -88,7 +90,7 @@ public class StoreService {
 
     @Transactional
     public void deleteStore(UUID storeId, UUID requesterId) {
-        Store store = findActiveStore(storeId);
+        Store store = storeFinder.findActiveOrThrow(storeId);
         // TODO: MASTER 역할이면 소유자 검증 스킵 - Gateway 인가 처리 방식 협의 후 반영
         validateOwner(store, requesterId);
         store.delete(requesterId);
@@ -96,7 +98,7 @@ public class StoreService {
 
     @Transactional
     public StoreResult changeStatus(ChangeStoreStatusCommand command) {
-        Store store = findActiveStore(command.getStoreId());
+        Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         // TODO: MASTER 역할이면 소유자 검증 스킵 - Gateway 인가 처리 방식 협의 후 반영
         validateOwner(store, command.getRequesterId());
 
@@ -111,7 +113,7 @@ public class StoreService {
     }
 
     public StoreResult getStore(UUID storeId) {
-        return StoreResult.from(findActiveStore(storeId));
+        return StoreResult.from(storeFinder.findActiveOrThrow(storeId));
     }
 
     public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID userId, String role, Pageable pageable) {
@@ -136,14 +138,9 @@ public class StoreService {
                 .build();
     }
 
-    // 내부 API — 웨이팅 서비스에서 매장 기본 정보 조회 시 사용
+    // 내부 API - 웨이팅 서비스에서 매장 기본 정보 조회 시 사용
     public StoreSummaryResult getStoreSummary(UUID storeId) {
-        return StoreSummaryResult.from(findActiveStore(storeId));
-    }
-
-    private Store findActiveStore(UUID storeId) {
-        return storeRepository.findStore(storeId)
-                .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_NOT_FOUND));
+        return StoreSummaryResult.from(storeFinder.findActiveOrThrow(storeId));
     }
 
     private void validateOwner(Store store, UUID requesterId) {

@@ -33,7 +33,6 @@ public class AdminStoreCategoryController {
     // 카테고리 등록
     @PostMapping
     public ResponseEntity<ApiResponse<StoreCategoryResponse>> createCategory(
-            @RequestHeader("X-User-Id") UUID userId,
             @Valid @RequestBody CreateStoreCategoryRequest request
     ) {
         StoreCategoryResult result = storeCategoryService.createCategory(

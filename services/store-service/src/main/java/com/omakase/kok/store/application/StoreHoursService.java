@@ -7,7 +7,7 @@ import com.omakase.kok.store.application.result.StoreHoursResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
-import com.omakase.kok.store.domain.repository.StoreRepository;
+import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,12 +22,12 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class StoreHoursService {
 
-    private final StoreRepository storeRepository;
     private final StoreHoursRepository storeHoursRepository;
+    private final StoreFinder storeFinder;
 
     @Transactional
     public List<StoreHoursResult> createBulkHours(CreateStoreHoursBulkCommand command) {
-        Store store = findActiveStore(command.getStoreId());
+        Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         validateOwner(store, command.getRequesterId());
 
         List<StoreHours> saved = command.getHours().stream()
@@ -88,7 +88,7 @@ public class StoreHoursService {
     }
 
     public List<StoreHoursResult> getStoreHours(UUID storeId) {
-        Store store = findActiveStore(storeId);
+        Store store = storeFinder.findActiveOrThrow(storeId);
         return storeHoursRepository.findAllHours(store).stream()
                 .map(StoreHoursResult::from)
                 .toList();
@@ -97,11 +97,6 @@ public class StoreHoursService {
     private StoreHours findHours(UUID hoursId) {
         return storeHoursRepository.findHours(hoursId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_HOURS_NOT_FOUND));
-    }
-
-    private Store findActiveStore(UUID storeId) {
-        return storeRepository.findStore(storeId)
-                .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_NOT_FOUND));
     }
 
     private void validateOwner(Store store, UUID requesterId) {

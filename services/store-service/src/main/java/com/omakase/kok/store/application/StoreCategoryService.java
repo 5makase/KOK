@@ -72,7 +72,7 @@ public class StoreCategoryService {
 
     public List<StoreCategoryResult> getAllCategories() {
         return storeCategoryRepository.findAllCategories().stream()
-                .map(StoreCategoryResult::from)
+                .map(StoreCategoryResult::withChildren)
                 .toList();
     }
 

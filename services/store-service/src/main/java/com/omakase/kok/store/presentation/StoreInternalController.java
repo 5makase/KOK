@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-// 서비스 간 내부 호출 전용 - todo Gateway 인증 필터 스킵 필요
+// 서비스 간 내부 호출 전용
 @RestController
 @RequestMapping("/api/v1/internal/stores")
 @RequiredArgsConstructor

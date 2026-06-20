@@ -35,11 +35,6 @@ spring:
               predicates:
                 - Path=/api/v1/categories/**
 
-            - id: store-service-internal
-              uri: lb://store-service
-              predicates:
-                - Path=/api/v1/internal/stores/**
-
             - id: reservation-service
               uri: lb://reservation-service
               predicates:

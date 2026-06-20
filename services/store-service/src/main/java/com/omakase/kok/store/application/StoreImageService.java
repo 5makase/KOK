@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -53,7 +54,7 @@ public class StoreImageService {
         validateOwner(image.getStore(), command.getRequesterId());
 
         // displayOrder 변경 시 목표 슬롯에 활성 이미지가 있으면 soft delete (슬롯 교체)
-        if (command.getDisplayOrder() != image.getDisplayOrder()) {
+        if (!Objects.equals(command.getDisplayOrder(), image.getDisplayOrder())) {
             storeImageRepository.findImageByDisplayOrder(command.getStoreId(), command.getDisplayOrder())
                     .filter(existing -> !existing.getImageId().equals(image.getImageId()))
                     .filter(existing -> !existing.isDeleted())

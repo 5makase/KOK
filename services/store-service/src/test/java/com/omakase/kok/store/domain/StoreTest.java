@@ -1,0 +1,98 @@
+package com.omakase.kok.store.domain;
+
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.domain.entity.Store;
+import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.enums.StoreStatus;
+import com.omakase.kok.store.domain.vo.Address;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class StoreTest {
+
+    private StoreCategory category;
+    private UUID ownerId;
+
+    @BeforeEach
+    void setUp() {
+        category = StoreCategory.create("한식", 1, null);
+        ownerId = UUID.randomUUID();
+    }
+
+    @Test
+    @DisplayName("매장 생성 시 상태는 PREPARING, 평점은 0")
+    void create_initial_state() {
+        Store store = Store.create(ownerId, category, "테스트 매장", "02-0000-0000",
+                address(), "설명", 50);
+
+        assertThat(store.getStatus()).isEqualTo(StoreStatus.PREPARING);
+        assertThat(store.getAverageRating()).isEqualByComparingTo("0");
+        assertThat(store.getReviewCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("update() null 필드는 기존 값 유지")
+    void update_null_preserves_existing() {
+        Store store = Store.create(ownerId, category, "원래 이름", null, address(), null, 30);
+
+        store.update(null, null, null, null, null, null);
+
+        assertThat(store.getName()).isEqualTo("원래 이름");
+        assertThat(store.getMaxCapacity()).isEqualTo(30);
+        assertThat(store.getCategory()).isSameAs(category);
+    }
+
+    @Test
+    @DisplayName("update() category null이면 기존 카테고리 유지")
+    void update_category_null_keeps_original() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        StoreCategory newCategory = StoreCategory.create("중식", 2, null);
+
+        store.update(null, null, null, null, null, null);
+        assertThat(store.getCategory()).isSameAs(category);
+
+        store.update(null, null, null, null, null, newCategory);
+        assertThat(store.getCategory()).isSameAs(newCategory);
+    }
+
+    @Test
+    @DisplayName("changeStatus(PERMANENTLY_CLOSED) 시 soft delete 동시 처리")
+    void change_status_permanently_closed_deletes() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        store.changeStatus(StoreStatus.OPEN, ownerId); // PREPARING → OPEN
+
+        store.changeStatus(StoreStatus.PERMANENTLY_CLOSED, ownerId);
+
+        assertThat(store.getStatus()).isEqualTo(StoreStatus.PERMANENTLY_CLOSED);
+        assertThat(store.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("허용되지 않는 상태 전이는 예외")
+    void change_status_invalid_transition_throws() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        // PREPARING 상태에서 CLOSED 전이 불가
+        assertThatThrownBy(() -> store.changeStatus(StoreStatus.CLOSED, ownerId))
+                .isInstanceOf(BaseException.class);
+    }
+
+    @Test
+    @DisplayName("isOwnedBy() — 본인이면 true, 타인이면 false")
+    void is_owned_by() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        UUID other = UUID.randomUUID();
+
+        assertThat(store.isOwnedBy(ownerId)).isTrue();
+        assertThat(store.isOwnedBy(other)).isFalse();
+    }
+
+    private Address address() {
+        return new Address("서울특별시", "강남구", "테헤란로 123", null, null, null);
+    }
+}

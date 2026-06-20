@@ -22,14 +22,23 @@ public class MenuRepositoryImpl implements MenuRepository {
     }
 
     @Override
-    public Optional<Menu> findMenu(UUID menuId) {
-        // 활성 메뉴 단건 조회 (deletedAt IS NULL)
-        return menuJpaRepository.findByMenuIdAndDeletedAtIsNull(menuId);
+    public Optional<Menu> findMenu(UUID menuId, Store store) {
+        return menuJpaRepository.findByMenuIdAndStoreAndDeletedAtIsNull(menuId, store);
     }
 
     @Override
     public List<Menu> findAllMenus(Store store) {
-        // 해당 매장의 활성 메뉴 목록 조회 — displayOrder 오름차순 정렬
+        // 해당 매장의 활성 메뉴 목록 조회 - displayOrder 오름차순 정렬
         return menuJpaRepository.findAllByStoreAndDeletedAtIsNullOrderByDisplayOrderAsc(store);
+    }
+
+    @Override
+    public boolean isDuplicateDisplayOrder(Store store, int displayOrder) {
+        return menuJpaRepository.existsByStoreAndDisplayOrderAndDeletedAtIsNull(store, displayOrder);
+    }
+
+    @Override
+    public boolean isDuplicateDisplayOrderExcluding(Store store, int displayOrder, UUID menuId) {
+        return menuJpaRepository.existsByStoreAndDisplayOrderAndMenuIdNotAndDeletedAtIsNull(store, displayOrder, menuId);
     }
 }

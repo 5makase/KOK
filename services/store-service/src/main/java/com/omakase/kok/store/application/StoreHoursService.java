@@ -33,30 +33,31 @@ public class StoreHoursService {
 
         List<StoreHours> saved = command.getHours().stream()
                 .map(entry -> {
-                    // restore/신규 경로 무관하게 선검증
+                    // 영업일(isDayOff=false)인데 openTime/closeTime 없으면 유효하지 않은 입력
                     validateHoursEntry(entry.isDayOff(), entry.getOpenTime(), entry.getCloseTime());
 
                     Optional<StoreHours> existing =
                             storeHoursRepository.findHoursByDay(store, entry.getDayOfWeek());
 
                     if (existing.isPresent()) {
-                        // UniqueConstraint 충돌 방지 — soft delete된 로우 재활성화 후 업데이트
+                        // UniqueConstraint 충돌 방지 - soft delete된 로우 재활성화 후 업데이트
                         StoreHours hours = existing.get();
                         hours.restore();
-                        hours.update(entry.getOpenTime(), entry.getCloseTime(),
-                                entry.getBreakStartTime(), entry.getBreakEndTime(), entry.isDayOff());
+                        if (entry.isDayOff()) {
+                            hours.updateToDayOff();
+                        } else {
+                            hours.updateToOperating(entry.getOpenTime(), entry.getCloseTime(),
+                                    entry.getBreakStartTime(), entry.getBreakEndTime());
+                        }
                         return storeHoursRepository.save(hours);
                     }
 
-                    return storeHoursRepository.save(StoreHours.create(
-                            store,
-                            entry.getDayOfWeek(),
-                            entry.getOpenTime(),
-                            entry.getCloseTime(),
-                            entry.getBreakStartTime(),
-                            entry.getBreakEndTime(),
-                            entry.isDayOff()
-                    ));
+                    StoreHours newHours = entry.isDayOff()
+                            ? StoreHours.createDayOff(store, entry.getDayOfWeek())
+                            : StoreHours.createOperating(store, entry.getDayOfWeek(),
+                                    entry.getOpenTime(), entry.getCloseTime(),
+                                    entry.getBreakStartTime(), entry.getBreakEndTime());
+                    return storeHoursRepository.save(newHours);
                 })
                 .toList();
 
@@ -69,8 +70,12 @@ public class StoreHoursService {
         validateOwner(hours.getStore(), command.getRequesterId());
         validateHoursEntry(command.isDayOff(), command.getOpenTime(), command.getCloseTime());
 
-        hours.update(command.getOpenTime(), command.getCloseTime(),
-                command.getBreakStartTime(), command.getBreakEndTime(), command.isDayOff());
+        if (command.isDayOff()) {
+            hours.updateToDayOff();
+        } else {
+            hours.updateToOperating(command.getOpenTime(), command.getCloseTime(),
+                    command.getBreakStartTime(), command.getBreakEndTime());
+        }
 
         return StoreHoursResult.from(hours);
     }

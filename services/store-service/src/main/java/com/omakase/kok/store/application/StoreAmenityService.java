@@ -36,6 +36,7 @@ public class StoreAmenityService {
         Set<AmenityType> requested = Set.copyOf(command.getAmenityTypes());
 
         // 1회 쿼리로 전체 편의시설 조회 (soft delete 포함) → 타입 기준 Map
+        // (store_id, amenity_type) UniqueConstraint + restore() 패턴으로 타입당 DB 행이 항상 1개 → 중복 키 없음
         Map<AmenityType, StoreAmenity> existingByType = storeAmenityRepository
                 .findAllAmenitiesIncludingDeleted(store).stream()
                 .collect(Collectors.toMap(StoreAmenity::getAmenityType, a -> a));

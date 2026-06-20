@@ -56,36 +56,47 @@ public class StoreHours extends BaseEntity {
     @Column(name = "is_day_off", nullable = false)
     private boolean isDayOff;
 
-    // 영업시간 등록
-    public static StoreHours create(Store store, DayOfWeek dayOfWeek, LocalTime openTime,
-                                    LocalTime closeTime, LocalTime breakStartTime,
-                                    LocalTime breakEndTime, boolean isDayOff) {
+    // 휴무일 등록
+    public static StoreHours createDayOff(Store store, DayOfWeek dayOfWeek) {
         StoreHours hours = new StoreHours();
         hours.store = store;
         hours.dayOfWeek = dayOfWeek;
+        hours.isDayOff = true;
+        return hours;
+    }
+
+    // 영업일 등록 - openTime/closeTime 필수
+    public static StoreHours createOperating(Store store, DayOfWeek dayOfWeek,
+                                             LocalTime openTime, LocalTime closeTime,
+                                             LocalTime breakStartTime, LocalTime breakEndTime) {
+        StoreHours hours = new StoreHours();
+        hours.store = store;
+        hours.dayOfWeek = dayOfWeek;
+        hours.isDayOff = false;
         hours.openTime = openTime;
         hours.closeTime = closeTime;
         hours.breakStartTime = breakStartTime;
         hours.breakEndTime = breakEndTime;
-        hours.isDayOff = isDayOff;
         return hours;
     }
 
-    // 영업시간 수정 - isDayOff=true이면 시간 필드 null 강제 (휴무일에 영업시간 없음)
-    public void update(LocalTime openTime, LocalTime closeTime,
-                       LocalTime breakStartTime, LocalTime breakEndTime, boolean isDayOff) {
-        this.isDayOff = isDayOff;
-        if (isDayOff) {
-            this.openTime = null;
-            this.closeTime = null;
-            this.breakStartTime = null;
-            this.breakEndTime = null;
-        } else {
-            this.openTime = openTime;
-            this.closeTime = closeTime;
-            this.breakStartTime = breakStartTime;
-            this.breakEndTime = breakEndTime;
-        }
+    // 휴무일로 변경
+    public void updateToDayOff() {
+        this.isDayOff = true;
+        this.openTime = null;
+        this.closeTime = null;
+        this.breakStartTime = null;
+        this.breakEndTime = null;
+    }
+
+    // 영업일로 변경 - openTime/closeTime 필수
+    public void updateToOperating(LocalTime openTime, LocalTime closeTime,
+                                  LocalTime breakStartTime, LocalTime breakEndTime) {
+        this.isDayOff = false;
+        this.openTime = openTime;
+        this.closeTime = closeTime;
+        this.breakStartTime = breakStartTime;
+        this.breakEndTime = breakEndTime;
     }
 
     // soft delete된 영업시간 재활성화 (UniqueConstraint 충돌 방지)

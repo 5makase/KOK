@@ -12,21 +12,35 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/reservations")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('USER')")
 public class ReservationController {
 
     private final ReservationService reservationService;
 
     @PostMapping
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<ReservationResponse>> createReservation(
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestBody @Valid CreateReservationRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(reservationService.createReservation(request, userId)));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<List<ReservationResponse>>> getMyReservations(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.getMyReservations(userId)));
+    }
+
+    @GetMapping("/me/{reservationId}")
+    public ResponseEntity<ApiResponse<ReservationResponse>> getMyReservation(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @PathVariable UUID reservationId) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.getMyReservation(reservationId, userId)));
     }
 }

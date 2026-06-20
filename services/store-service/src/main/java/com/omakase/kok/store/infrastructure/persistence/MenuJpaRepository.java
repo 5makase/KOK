@@ -14,4 +14,10 @@ public interface MenuJpaRepository extends JpaRepository<Menu, UUID> {
     Optional<Menu> findByMenuIdAndStoreAndDeletedAtIsNull(UUID menuId, Store store);
 
     List<Menu> findAllByStoreAndDeletedAtIsNullOrderByDisplayOrderAsc(Store store);
+
+    // 등록 시 displayOrder 중복 체크
+    boolean existsByStoreAndDisplayOrderAndDeletedAtIsNull(Store store, int displayOrder);
+
+    // 수정 시 displayOrder 중복 체크 - 자기 자신 제외
+    boolean existsByStoreAndDisplayOrderAndMenuIdNotAndDeletedAtIsNull(Store store, int displayOrder, UUID menuId);
 }

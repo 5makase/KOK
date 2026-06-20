@@ -16,4 +16,10 @@ public interface MenuRepository {
 
     // 매장의 활성 메뉴 목록 조회 (정렬순서 오름차순)
     List<Menu> findAllMenus(Store store);
+
+    // 등록 시 displayOrder 중복 체크
+    boolean isDuplicateDisplayOrder(Store store, int displayOrder);
+
+    // 수정 시 displayOrder 중복 체크 - 자기 자신 제외
+    boolean isDuplicateDisplayOrderExcluding(Store store, int displayOrder, UUID menuId);
 }

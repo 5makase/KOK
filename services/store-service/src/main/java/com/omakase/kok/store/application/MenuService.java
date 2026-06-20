@@ -32,6 +32,7 @@ public class MenuService {
         if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             validateOwner(store, command.getRequesterId());
         }
+        validateDisplayOrder(store, command.getDisplayOrder());
         Menu menu = Menu.create(store, command.getName(), command.getPrice(),
                 command.getDescription(), command.getThumbnailUrl(), command.getDisplayOrder());
         return MenuResult.from(menuRepository.save(menu));
@@ -44,6 +45,10 @@ public class MenuService {
             validateOwner(store, command.getRequesterId());
         }
         Menu menu = findActiveMenuOrThrow(command.getMenuId(), store);
+        // PATCH 부분 수정 - displayOrder가 전송된 경우에만 중복 체크
+        if (command.getDisplayOrder() != null) {
+            validateDisplayOrderForUpdate(store, command.getDisplayOrder(), menu.getMenuId());
+        }
         menu.update(command.getName(), command.getPrice(), command.getDescription(),
                 command.getThumbnailUrl(), command.getDisplayOrder());
         return MenuResult.from(menuRepository.save(menu));
@@ -92,6 +97,19 @@ public class MenuService {
     private void validateOwner(Store store, UUID requesterId) {
         if (!store.isOwnedBy(requesterId)) {
             throw new BaseException(StoreErrorCode.MENU_ACCESS_DENIED);
+        }
+    }
+
+    private void validateDisplayOrder(Store store, int displayOrder) {
+        if (menuRepository.isDuplicateDisplayOrder(store, displayOrder)) {
+            throw new BaseException(StoreErrorCode.MENU_DUPLICATE_DISPLAY_ORDER);
+        }
+    }
+
+    private void validateDisplayOrderForUpdate(Store store, int displayOrder, UUID menuId) {
+        // 다른 필드만 수정할 때 기존 displayOrder를 그대로 보내도 중복으로 처리되지 않도록 자기 자신은 제외
+        if (menuRepository.isDuplicateDisplayOrderExcluding(store, displayOrder, menuId)) {
+            throw new BaseException(StoreErrorCode.MENU_DUPLICATE_DISPLAY_ORDER);
         }
     }
 }

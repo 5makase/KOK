@@ -116,7 +116,9 @@ class StoreAmenityServiceTest {
 
         StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
 
-        assertThat(result.getAmenities()).hasSize(2);
+        assertThat(result.getAmenities())
+                .extracting(StoreAmenityResult::getAmenityType)
+                .containsExactlyInAnyOrder(AmenityType.WIFI, AmenityType.PARKING);
     }
 
     @Test

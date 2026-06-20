@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.user.global.exception.UserErrorCode;
 
 @Service
 @RequiredArgsConstructor
@@ -25,10 +27,10 @@ public class UserService {
     @Transactional
     public SignupResponse signupUser(SignupRequest request) {
         if (request.role() == Role.MASTER) {
-            throw new IllegalArgumentException("MASTER 권한은 회원가입을 통해 생성할 수 없습니다.");
+            throw new BaseException(UserErrorCode.SIGNUP_ROLE_NOT_ALLOWED);
         }
         if (request.role() != Role.USER) {
-            throw new IllegalArgumentException("USER 회원가입 경로에서는 USER 권한만 가입할 수 있습니다.");
+            throw new BaseException(UserErrorCode.SIGNUP_ROLE_NOT_ALLOWED);
         }
 
         validateDuplicateUsername(request.username());
@@ -43,10 +45,10 @@ public class UserService {
     @Transactional
     public SignupResponse signupOwner(SignupRequest request) {
         if (request.role() == Role.MASTER) {
-            throw new IllegalArgumentException("MASTER 권한은 회원가입을 통해 생성할 수 없습니다.");
+            throw new BaseException(UserErrorCode.SIGNUP_ROLE_NOT_ALLOWED);
         }
         if (request.role() != Role.OWNER) {
-            throw new IllegalArgumentException("OWNER 회원가입 경로에서는 OWNER 권한만 가입할 수 있습니다.");
+            throw new BaseException(UserErrorCode.SIGNUP_ROLE_NOT_ALLOWED);
         }
 
         validateDuplicateUsername(request.username());
@@ -79,13 +81,13 @@ public class UserService {
 
     private void validateDuplicateUsername(String username) {
         if (userRepository.existsByUsername(username)) {
-            throw new IllegalArgumentException("이미 사용 중인 아이디입니다.");
+            throw new BaseException(UserErrorCode.DUPLICATE_EMAIL);
         }
     }
 
     private void validateDuplicateEmail(String email) {
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
+            throw new BaseException(UserErrorCode.DUPLICATE_EMAIL);
         }
     }
 }

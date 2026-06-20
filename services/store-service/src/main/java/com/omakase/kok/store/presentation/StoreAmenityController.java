@@ -48,9 +48,10 @@ public class StoreAmenityController {
     public ResponseEntity<ApiResponse<Void>> deleteAmenity(
             @PathVariable UUID storeId,
             @PathVariable UUID amenityId,
-            @RequestHeader(AuthConstants.USER_ID) UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role
     ) {
-        storeAmenityService.deleteAmenity(storeId, amenityId, userId);
+        storeAmenityService.deleteAmenity(storeId, amenityId, userId, role);
         return ResponseEntity.ok(ApiResponse.deleted());
     }
 

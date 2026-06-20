@@ -1,5 +1,6 @@
 package com.kok.payment.infrastructure.security;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,8 +15,8 @@ import java.util.List;
 
 public class HeaderAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String HEADER_USER_ID = "X-User-Id";
-    private static final String HEADER_ROLE = "X-Role";
+    private static final String HEADER_USER_ID = AuthConstants.USER_ID;
+    private static final String HEADER_ROLE = AuthConstants.ROLE;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,

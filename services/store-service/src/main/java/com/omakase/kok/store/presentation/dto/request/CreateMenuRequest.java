@@ -19,6 +19,7 @@ public class CreateMenuRequest {
 
     private String description;
 
+    @Size(max = 500)
     private String thumbnailUrl;
 
     @NotNull

@@ -5,6 +5,7 @@ import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.vo.Address;
+import com.omakase.kok.store.global.exception.StoreErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -79,7 +80,9 @@ class StoreTest {
         Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
         // PREPARING 상태에서 CLOSED 전이 불가
         assertThatThrownBy(() -> store.changeStatus(StoreStatus.CLOSED, ownerId))
-                .isInstanceOf(BaseException.class);
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.INVALID_STORE_STATUS_TRANSITION);
     }
 
     @Test

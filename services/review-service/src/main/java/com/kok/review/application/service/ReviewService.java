@@ -24,6 +24,31 @@ public class ReviewService {
     private final ReviewImageRepository reviewImageRepository;
 
     /**
+     * 리뷰 삭제
+     * @param reviewId
+     * @param userId
+     */
+    @Transactional
+    public void deleteReview(UUID  reviewId, UUID  userId) {
+        //리뷰 조회
+        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("존재하지 않은 리뷰"));
+
+        //작성자 본인 확인
+        if(!review.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("본인 아님");
+        }
+
+        //연관 이미지 같이 soft delete
+        List<ReviewImage> images = reviewImageRepository.findByReviewReviewId(reviewId);
+        images.forEach(image -> image.delete(userId));
+
+        //리뷰 soft dlete
+        review.delete(userId);
+
+        // 평점 재집계 로직 구성 예정
+    }
+
+    /**
      * 리뷰 생성
      *
      * @param dto

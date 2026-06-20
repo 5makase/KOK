@@ -22,6 +22,7 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ReviewEligibilityRepository reviewEligibilityRepository;
     private final ReviewImageRepository reviewImageRepository;
+    private final ReviewRatingService reviewRatingService;
 
     /**
      * 리뷰 삭제
@@ -45,7 +46,8 @@ public class ReviewService {
         //리뷰 soft dlete
         review.delete(userId);
 
-        // 평점 재집계 로직 구성 예정
+        // 평점에서 제외
+        reviewRatingService.subtractRating(review.getStoreId(), review.getRating());
     }
 
     /**
@@ -95,6 +97,9 @@ public class ReviewService {
         }
         //중복처리
         reviewEligibility.markAsUsed();
+
+        //평점 반영
+        reviewRatingService.addRating(review.getStoreId(), review.getRating());
 
         //반환객체로 변환
         return ReviewResponseDto.form(review);

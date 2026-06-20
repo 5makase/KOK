@@ -20,6 +20,21 @@ spring:
               predicates:
                 - Path=/api/v1/stores/**
 
+            - id: store-service-admin-stores
+              uri: lb://store-service
+              predicates:
+                - Path=/api/v1/admin/stores/**
+
+            - id: store-service-admin-categories
+              uri: lb://store-service
+              predicates:
+                - Path=/api/v1/admin/categories/**
+
+            - id: store-service-categories
+              uri: lb://store-service
+              predicates:
+                - Path=/api/v1/categories/**
+
             - id: reservation-service
               uri: lb://reservation-service
               predicates:

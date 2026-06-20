@@ -1,5 +1,6 @@
 package com.omakase.kok.store.presentation;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
 import com.omakase.kok.store.application.StoreService;
@@ -44,7 +45,7 @@ public class StoreController {
     // 매장 등록
     @PostMapping
     public ResponseEntity<ApiResponse<StoreResponse>> createStore(
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody CreateStoreRequest request
     ) {
         Address address = new Address(
@@ -68,7 +69,7 @@ public class StoreController {
     @PatchMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StoreResponse>> updateStore(
             @PathVariable UUID storeId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody UpdateStoreRequest request
     ) {
         // addressSido가 없으면 주소 변경 없음 - null 전달 시 Store.update()에서 기존 값 유지
@@ -94,13 +95,15 @@ public class StoreController {
     @PatchMapping("/{storeId}/status")
     public ResponseEntity<ApiResponse<StoreResponse>> changeStatus(
             @PathVariable UUID storeId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
             @Valid @RequestBody ChangeStoreStatusRequest request
     ) {
         ChangeStoreStatusCommand command = ChangeStoreStatusCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)
                 .status(request.getStatus())
+                .role(role)
                 .build();
         return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.changeStatus(command))));
     }
@@ -109,7 +112,7 @@ public class StoreController {
     @GetMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StoreResponse>> getStore(
             @PathVariable UUID storeId,
-            @RequestHeader(value = "X-User-Role", required = false) String role
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role
     ) {
         return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.getStore(storeId, role))));
     }
@@ -118,8 +121,8 @@ public class StoreController {
     // USER: status=OPEN 강제 / OWNER: 본인 매장 전체 상태 자동 적용 / MASTER: 모든 조건 자유
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<StoreResponse>>> searchStores(
-            @RequestHeader(value = "X-User-Id", required = false) UUID userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = AuthConstants.USER_ID, required = false) UUID userId,
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) String sido,
             @RequestParam(required = false) String sigungu,

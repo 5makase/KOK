@@ -21,11 +21,8 @@ public class StoreCategoryController {
     private final StoreCategoryService storeCategoryService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<StoreCategoryResponse>>> getAllCategories(
-            // TODO: 인가 처리 - MASTER 여부 확인용
-            @RequestHeader(value = "X-User-Role", required = false) String role
-    ) {
-        List<StoreCategoryResponse> response = storeCategoryService.getAllCategories(role).stream()
+    public ResponseEntity<ApiResponse<List<StoreCategoryResponse>>> getAllCategories() {
+        List<StoreCategoryResponse> response = storeCategoryService.getAllCategories().stream()
                 .map(StoreCategoryResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(response));

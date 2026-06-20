@@ -1,5 +1,6 @@
 package com.omakase.kok.store.presentation;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreHoursService;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
@@ -34,7 +35,7 @@ public class StoreHoursController {
     @PostMapping
     public ResponseEntity<ApiResponse<List<StoreHoursResponse>>> createBulkHours(
             @PathVariable UUID storeId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody CreateStoreHoursBulkRequest request
     ) {
         CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
@@ -61,7 +62,7 @@ public class StoreHoursController {
     public ResponseEntity<ApiResponse<StoreHoursResponse>> updateHours(
             @PathVariable UUID storeId,
             @PathVariable UUID hoursId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody UpdateStoreHoursRequest request
     ) {
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
@@ -82,7 +83,7 @@ public class StoreHoursController {
     public ResponseEntity<ApiResponse<Void>> deleteHours(
             @PathVariable UUID storeId,
             @PathVariable UUID hoursId,
-            @RequestHeader("X-User-Id") UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId
     ) {
         storeHoursService.deleteHours(storeId, hoursId, userId);
         return ResponseEntity.ok(ApiResponse.deleted());

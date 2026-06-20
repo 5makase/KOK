@@ -1,5 +1,6 @@
 package com.omakase.kok.store.presentation;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreAmenityService;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
@@ -31,7 +32,7 @@ public class StoreAmenityController {
     @PutMapping
     public ResponseEntity<ApiResponse<StoreAmenityResponse.Bulk>> syncAmenities(
             @PathVariable UUID storeId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody AddStoreAmenityRequest request
     ) {
         AddStoreAmenityCommand command = AddStoreAmenityCommand.builder()
@@ -47,7 +48,7 @@ public class StoreAmenityController {
     public ResponseEntity<ApiResponse<Void>> deleteAmenity(
             @PathVariable UUID storeId,
             @PathVariable UUID amenityId,
-            @RequestHeader("X-User-Id") UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId
     ) {
         storeAmenityService.deleteAmenity(storeId, amenityId, userId);
         return ResponseEntity.ok(ApiResponse.deleted());

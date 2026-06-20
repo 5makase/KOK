@@ -63,14 +63,14 @@ public class Menu extends BaseEntity {
         return menu;
     }
 
-    // 메뉴 정보 수정
-    public void update(String name, int price, String description,
-                       String thumbnailUrl, int displayOrder) {
-        this.name = name;
-        this.price = price;
-        this.description = description;
-        this.thumbnailUrl = thumbnailUrl;
-        this.displayOrder = displayOrder;
+    // 메뉴 정보 수정 - null이면 기존 값 유지
+    public void update(String name, Integer price, String description,
+                       String thumbnailUrl, Integer displayOrder) {
+        if (name != null) this.name = name;
+        if (price != null) this.price = price;
+        if (description != null) this.description = description;
+        if (thumbnailUrl != null) this.thumbnailUrl = thumbnailUrl;
+        if (displayOrder != null) this.displayOrder = displayOrder;
     }
 
     // 품절 처리

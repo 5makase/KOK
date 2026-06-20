@@ -3,6 +3,9 @@ package com.omakase.kok.store.application;
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
+import com.omakase.kok.store.application.command.CreateStoreCommand;
+import com.omakase.kok.store.application.command.UpdateStoreCommand;
+import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.enums.StoreStatus;
@@ -27,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -140,5 +144,85 @@ class StoreServiceTest {
         assertThatCode(() -> storeService.changeStatus(command))
                 .doesNotThrowAnyException();
         assertThat(masterStore.getStatus()).isEqualTo(StoreStatus.OPEN);
+    }
+
+    // createStore
+
+    @Test
+    @DisplayName("소분류 카테고리로 매장 등록 성공")
+    void createStore_with_sub_category_success() {
+        UUID categoryId = UUID.randomUUID();
+        StoreCategory root = StoreCategory.create("한식", 1, null);
+        StoreCategory sub = StoreCategory.create("국밥", 1, root);
+
+        when(storeCategoryRepository.findCategory(categoryId)).thenReturn(java.util.Optional.of(sub));
+        when(storeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateStoreCommand command = CreateStoreCommand.builder()
+                .ownerId(ownerId).categoryId(categoryId)
+                .name("테스트 매장").phone(null)
+                .address(new Address("서울", "강남", null, null, null, null))
+                .description(null).maxCapacity(null)
+                .build();
+
+        StoreResult result = storeService.createStore(command);
+
+        assertThat(result.getName()).isEqualTo("테스트 매장");
+        assertThat(result.getStatus()).isEqualTo(StoreStatus.PREPARING);
+    }
+
+    @Test
+    @DisplayName("대분류 카테고리로 매장 등록 시 400")
+    void createStore_with_root_category_throws() {
+        UUID categoryId = UUID.randomUUID();
+        StoreCategory root = StoreCategory.create("한식", 1, null); // 대분류
+
+        when(storeCategoryRepository.findCategory(categoryId)).thenReturn(java.util.Optional.of(root));
+
+        CreateStoreCommand command = CreateStoreCommand.builder()
+                .ownerId(ownerId).categoryId(categoryId)
+                .name("테스트 매장").phone(null)
+                .address(new Address("서울", "강남", null, null, null, null))
+                .description(null).maxCapacity(null)
+                .build();
+
+        assertThatThrownBy(() -> storeService.createStore(command))
+                .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
+                .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.INVALID_CATEGORY);
+    }
+
+    // updateStore
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 수정 시 403")
+    void updateStore_owner_cannot_update_others() {
+        UUID otherId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        UpdateStoreCommand command = UpdateStoreCommand.builder()
+                .storeId(storeId).requesterId(otherId)
+                .name("변경").build();
+
+        assertThatThrownBy(() -> storeService.updateStore(command))
+                .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
+                .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("updateStore - categoryId null이면 기존 카테고리 유지")
+    void updateStore_null_category_keeps_existing() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        UpdateStoreCommand command = UpdateStoreCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .name("변경된 이름").categoryId(null)
+                .build();
+
+        StoreResult result = storeService.updateStore(command);
+
+        assertThat(result.getName()).isEqualTo("변경된 이름");
+        assertThat(store.getCategory().getName()).isEqualTo("한식"); // 카테고리 유지
     }
 }

@@ -4,6 +4,7 @@ import com.omakase.kok.store.domain.entity.Menu;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
@@ -17,6 +18,8 @@ public class MenuResult {
     private boolean isSoldOut;
     private String thumbnailUrl;
     private int displayOrder;
+    private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
 
     public static MenuResult from(Menu menu) {
         return MenuResult.builder()
@@ -27,6 +30,8 @@ public class MenuResult {
                 .isSoldOut(menu.isSoldOut())
                 .thumbnailUrl(menu.getThumbnailUrl())
                 .displayOrder(menu.getDisplayOrder())
+                .updatedAt(menu.getUpdatedAt())
+                .deletedAt(menu.getDeletedAt())
                 .build();
     }
 }

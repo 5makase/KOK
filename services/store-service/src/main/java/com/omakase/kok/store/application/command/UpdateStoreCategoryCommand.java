@@ -11,5 +11,5 @@ public class UpdateStoreCategoryCommand {
 
     private UUID categoryId;
     private String name;
-    private int sortOrder;
+    private Integer sortOrder;
 }

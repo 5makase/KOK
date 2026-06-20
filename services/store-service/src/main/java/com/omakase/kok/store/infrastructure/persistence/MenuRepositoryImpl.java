@@ -22,9 +22,8 @@ public class MenuRepositoryImpl implements MenuRepository {
     }
 
     @Override
-    public Optional<Menu> findMenu(UUID menuId) {
-        // 활성 메뉴 단건 조회 (deletedAt IS NULL)
-        return menuJpaRepository.findByMenuIdAndDeletedAtIsNull(menuId);
+    public Optional<Menu> findMenu(UUID menuId, Store store) {
+        return menuJpaRepository.findByMenuIdAndStoreAndDeletedAtIsNull(menuId, store);
     }
 
     @Override

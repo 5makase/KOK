@@ -10,7 +10,8 @@ import java.util.UUID;
 
 public interface MenuJpaRepository extends JpaRepository<Menu, UUID> {
 
-    Optional<Menu> findByMenuIdAndDeletedAtIsNull(UUID menuId);
+    // menuId + store 조합으로 조회 - 타 매장 메뉴 접근 차단
+    Optional<Menu> findByMenuIdAndStoreAndDeletedAtIsNull(UUID menuId, Store store);
 
     List<Menu> findAllByStoreAndDeletedAtIsNullOrderByDisplayOrderAsc(Store store);
 }

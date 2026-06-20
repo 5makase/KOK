@@ -27,9 +27,9 @@ public class MenuService {
     private final StoreFinder storeFinder;
 
     @Transactional
-    public MenuResult createMenu(CreateMenuCommand command) {
+    public MenuResult createMenu(CreateMenuCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        if (!RoleAuthorizationUtils.hasAnyRole(command.getRole(), AuthConstants.MASTER)) {
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             validateOwner(store, command.getRequesterId());
         }
         Menu menu = Menu.create(store, command.getName(), command.getPrice(),
@@ -38,12 +38,12 @@ public class MenuService {
     }
 
     @Transactional
-    public MenuResult updateMenu(UpdateMenuCommand command) {
+    public MenuResult updateMenu(UpdateMenuCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        if (!RoleAuthorizationUtils.hasAnyRole(command.getRole(), AuthConstants.MASTER)) {
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             validateOwner(store, command.getRequesterId());
         }
-        Menu menu = findActiveMenuOrThrow(command.getMenuId());
+        Menu menu = findActiveMenuOrThrow(command.getMenuId(), store);
         menu.update(command.getName(), command.getPrice(), command.getDescription(),
                 command.getThumbnailUrl(), command.getDisplayOrder());
         return MenuResult.from(menuRepository.save(menu));
@@ -55,8 +55,8 @@ public class MenuService {
         if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             validateOwner(store, requesterId);
         }
-        // deletedAt IS NULL 조회 -> 이미 삭제된 메뉴는 예외처리
-        Menu menu = findActiveMenuOrThrow(menuId);
+        // deletedAt IS NULL 조회 -> 이미 삭제된 메뉴는 MENU_NOT_FOUND(404)로 처리
+        Menu menu = findActiveMenuOrThrow(menuId, store);
         menu.delete(requesterId);
         return MenuResult.from(menuRepository.save(menu));
     }
@@ -74,7 +74,7 @@ public class MenuService {
         if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             validateOwner(store, requesterId);
         }
-        Menu menu = findActiveMenuOrThrow(menuId);
+        Menu menu = findActiveMenuOrThrow(menuId, store);
         // 현재 상태 판단
         if (menu.isSoldOut()) {
             menu.onSale();
@@ -84,8 +84,8 @@ public class MenuService {
         return MenuResult.from(menuRepository.save(menu));
     }
 
-    private Menu findActiveMenuOrThrow(UUID menuId) {
-        return menuRepository.findMenu(menuId)
+    private Menu findActiveMenuOrThrow(UUID menuId, Store store) {
+        return menuRepository.findMenu(menuId, store)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.MENU_NOT_FOUND));
     }
 

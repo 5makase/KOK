@@ -44,9 +44,9 @@ public class MenuController {
             @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody CreateMenuRequest request
     ) {
-        CreateMenuCommand command = CreateMenuCommand.of(storeId, userId, role, request);
+        CreateMenuCommand command = CreateMenuCommand.of(storeId, userId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created(MenuCreateResponse.from(menuService.createMenu(command))));
+                .body(ApiResponse.created(MenuCreateResponse.from(menuService.createMenu(command, role))));
     }
 
     // 메뉴 수정 (OWNER/MASTER)
@@ -58,8 +58,8 @@ public class MenuController {
             @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody UpdateMenuRequest request
     ) {
-        UpdateMenuCommand command = UpdateMenuCommand.of(storeId, menuId, userId, role, request);
-        return ResponseEntity.ok(ApiResponse.success(MenuUpdateResponse.from(menuService.updateMenu(command))));
+        UpdateMenuCommand command = UpdateMenuCommand.of(storeId, menuId, userId, request);
+        return ResponseEntity.ok(ApiResponse.success(MenuUpdateResponse.from(menuService.updateMenu(command, role))));
     }
 
     // 메뉴 삭제 (OWNER/MASTER)

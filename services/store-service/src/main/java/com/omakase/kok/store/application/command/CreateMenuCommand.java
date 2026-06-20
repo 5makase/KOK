@@ -12,18 +12,16 @@ public class CreateMenuCommand {
 
     private UUID storeId;
     private UUID requesterId;
-    private String role;
     private String name;
     private int price;
     private String description;
     private String thumbnailUrl;
     private int displayOrder;
 
-    public static CreateMenuCommand of(UUID storeId, UUID requesterId, String role, CreateMenuRequest request) {
+    public static CreateMenuCommand of(UUID storeId, UUID requesterId, CreateMenuRequest request) {
         return CreateMenuCommand.builder()
                 .storeId(storeId)
                 .requesterId(requesterId)
-                .role(role)
                 .name(request.getName())
                 .price(request.getPrice())
                 .description(request.getDescription())

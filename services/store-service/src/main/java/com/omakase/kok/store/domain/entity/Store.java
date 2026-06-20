@@ -110,7 +110,7 @@ public class Store extends BaseEntity {
         if (address != null) this.address = address;
         if (description != null) this.description = description;
         if (maxCapacity != null) this.maxCapacity = maxCapacity;
-        this.category = category;
+        if (category != null) this.category = category;
     }
 
     /**

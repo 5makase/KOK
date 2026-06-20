@@ -1,5 +1,6 @@
 package com.omakase.kok.reservation.presentation.controller;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
@@ -23,7 +24,7 @@ public class ReservationController {
     @PostMapping
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<ReservationResponse>> createReservation(
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestBody @Valid CreateReservationRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(reservationService.createReservation(request, userId)));

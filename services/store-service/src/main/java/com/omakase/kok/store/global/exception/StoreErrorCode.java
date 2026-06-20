@@ -24,6 +24,7 @@ public enum StoreErrorCode implements ErrorCode {
     // 메뉴
     MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-101", "메뉴를 찾을 수 없습니다."),
     MENU_ACCESS_DENIED(HttpStatus.FORBIDDEN, "STORE-102", "본인 매장의 메뉴만 수정할 수 있습니다."),
+    MENU_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "STORE-103", "이미 삭제된 메뉴입니다."),
 
     // 영업시간
     STORE_HOURS_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-201", "영업시간을 찾을 수 없습니다."),

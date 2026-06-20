@@ -13,7 +13,7 @@ public class AddStoreImageRequest {
 
     @NotEmpty
     @Valid
-    private List<ImageEntry> images;
+    private List<@NotNull ImageEntry> images;
 
     @Getter
     public static class ImageEntry {

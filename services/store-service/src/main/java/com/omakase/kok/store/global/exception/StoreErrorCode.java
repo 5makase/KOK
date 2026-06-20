@@ -18,6 +18,8 @@ public enum StoreErrorCode implements ErrorCode {
     INVALID_CATEGORY(HttpStatus.BAD_REQUEST, "STORE-006", "소분류 카테고리만 선택할 수 있습니다."),
     CATEGORY_HAS_CHILDREN(HttpStatus.CONFLICT, "STORE-007", "하위 카테고리가 존재하여 삭제할 수 없습니다."),
     CATEGORY_HAS_STORES(HttpStatus.CONFLICT, "STORE-008", "해당 카테고리를 사용 중인 매장이 존재하여 삭제할 수 없습니다."),
+    CATEGORY_DUPLICATE_NAME(HttpStatus.CONFLICT, "STORE-009", "같은 위치에 동일한 이름의 카테고리가 이미 존재합니다."),
+    CATEGORY_DUPLICATE_SORT_ORDER(HttpStatus.CONFLICT, "STORE-010", "같은 위치에 동일한 정렬 순서의 카테고리가 이미 존재합니다."),
 
     // 메뉴
     MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "STORE-101", "메뉴를 찾을 수 없습니다."),

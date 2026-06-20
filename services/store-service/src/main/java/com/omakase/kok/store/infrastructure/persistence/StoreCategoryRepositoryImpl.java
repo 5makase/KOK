@@ -39,12 +39,17 @@ public class StoreCategoryRepositoryImpl implements StoreCategoryRepository {
     }
 
     @Override
-    public List<StoreCategory> findAllCategoriesIncludingDeleted() {
-        return storeCategoryJpaRepository.findAllRootCategoriesWithChildrenIncludingDeleted();
+    public boolean existsActiveChildren(StoreCategory parent) {
+        return storeCategoryJpaRepository.existsByParentAndDeletedAtIsNull(parent);
     }
 
     @Override
-    public boolean existsActiveChildren(StoreCategory parent) {
-        return storeCategoryJpaRepository.existsByParentAndDeletedAtIsNull(parent);
+    public boolean existsActiveSiblingByName(String name, StoreCategory parent, UUID excludeId) {
+        return storeCategoryJpaRepository.existsActiveSiblingByName(name, parent, excludeId);
+    }
+
+    @Override
+    public boolean existsActiveSiblingBySortOrder(int sortOrder, StoreCategory parent, UUID excludeId) {
+        return storeCategoryJpaRepository.existsActiveSiblingBySortOrder(sortOrder, parent, excludeId);
     }
 }

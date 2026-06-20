@@ -37,6 +37,8 @@ public class StoreCategoryService {
             }
         }
 
+        validateNoDuplicate(command.getName(), command.getSortOrder(), parent, null);
+
         StoreCategory category = StoreCategory.create(command.getName(), command.getSortOrder(), parent);
         return StoreCategoryResult.from(storeCategoryRepository.save(category));
     }
@@ -45,6 +47,10 @@ public class StoreCategoryService {
     public StoreCategoryResult updateCategory(UpdateStoreCategoryCommand command) {
         StoreCategory category = storeCategoryRepository.findCategory(command.getCategoryId())
                 .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
+
+        String newName = command.getName() != null ? command.getName() : category.getName();
+        Integer newSortOrder = command.getSortOrder() != null ? command.getSortOrder() : category.getSortOrder();
+        validateNoDuplicate(newName, newSortOrder, category.getParent(), category.getCategoryId());
 
         category.update(command.getName(), command.getSortOrder());
         return StoreCategoryResult.from(category);
@@ -70,14 +76,17 @@ public class StoreCategoryService {
         category.delete(deletedBy);
     }
 
-    public List<StoreCategoryResult> getAllCategories(String role) {
-        // TODO: 인가 처리 - MASTER 여부 확인
-        boolean isMaster = "MASTER".equals(role);
-        List<StoreCategory> categories = isMaster
-                ? storeCategoryRepository.findAllCategoriesIncludingDeleted()
-                : storeCategoryRepository.findAllCategories();
+    private void validateNoDuplicate(String name, Integer sortOrder, StoreCategory parent, UUID excludeId) {
+        if (storeCategoryRepository.existsActiveSiblingByName(name, parent, excludeId)) {
+            throw new BaseException(StoreErrorCode.CATEGORY_DUPLICATE_NAME);
+        }
+        if (sortOrder != null && storeCategoryRepository.existsActiveSiblingBySortOrder(sortOrder, parent, excludeId)) {
+            throw new BaseException(StoreErrorCode.CATEGORY_DUPLICATE_SORT_ORDER);
+        }
+    }
 
-        return categories.stream()
+    public List<StoreCategoryResult> getAllCategories() {
+        return storeCategoryRepository.findAllCategories().stream()
                 .map(StoreCategoryResult::withChildren)
                 .toList();
     }

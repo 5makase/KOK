@@ -19,9 +19,10 @@ public interface StoreCategoryRepository {
     // 활성 카테고리 전체 목록 (1뎁스 기준 트리 구조)
     List<StoreCategory> findAllCategories();
 
-    // soft delete 포함 전체 목록 - MASTER 전용
-    List<StoreCategory> findAllCategoriesIncludingDeleted();
-
     // 활성 자식 카테고리 존재 여부 (대분류 삭제 전 체크)
     boolean existsActiveChildren(StoreCategory parent);
+
+    // 같은 부모 아래 이름/sortOrder 중복 여부 (create: excludeId=null, update: excludeId=자신)
+    boolean existsActiveSiblingByName(String name, StoreCategory parent, UUID excludeId);
+    boolean existsActiveSiblingBySortOrder(int sortOrder, StoreCategory parent, UUID excludeId);
 }

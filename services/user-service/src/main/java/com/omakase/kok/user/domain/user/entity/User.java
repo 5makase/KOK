@@ -1,5 +1,6 @@
 package com.omakase.kok.user.domain.user.entity;
 
+import com.omakase.kok.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,7 +19,7 @@ import com.omakase.kok.user.domain.user.enums.Role;
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class User {
+public class User extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "user_id", nullable = false, updatable = false)
@@ -46,24 +47,8 @@ public class User {
     @Column(name = "role", nullable = false, length = 20)
     private Role role;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "created_by")
-    private UUID createdBy;
-
-    @Column(name = "updated_by")
-    private UUID updatedBy;
-
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
-    @Column(name = "deleted_by")
-    private UUID deletedBy;
-
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
 
         if (this.role == null) {
             this.role = Role.USER;

@@ -20,5 +20,6 @@ public class UpdateMenuRequest {
     private String thumbnailUrl;
 
     @NotNull
+    @Min(0)
     private Integer displayOrder;
 }

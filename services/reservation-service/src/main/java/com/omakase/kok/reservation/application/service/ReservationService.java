@@ -45,10 +45,10 @@ public class ReservationService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ReservationResponse createReservation(CreateReservationRequest request, UUID userId) {
-        var slot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
+        // 락 획득 전 빠른 사전 검사 (최적화용)
+        var preCheckSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
                 .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
-
-        if (slot.getStatus() != SlotStatus.OPEN) {
+        if (preCheckSlot.getStatus() != SlotStatus.OPEN) {
             throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
         }
 
@@ -56,6 +56,19 @@ public class ReservationService {
         try {
             if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+
+            // 락 획득 후 슬롯 상태 재검증 (레이스 컨디션 방지)
+            var slot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
+                    .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+            if (slot.getStatus() != SlotStatus.OPEN) {
+                throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+            }
+
+            // 예약금 필요 슬롯은 결제 수단 필수
+            if (slot.isDepositRequired() &&
+                    (request.getPaymentMethod() == null || request.getPaymentMethod().isBlank())) {
+                throw new BaseException(ReservationErrorCode.PAYMENT_METHOD_REQUIRED);
             }
 
             RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + request.getSlotId());
@@ -67,20 +80,31 @@ public class ReservationService {
             }
 
             if (!slot.isDepositRequired()) {
-                return new TransactionTemplate(transactionManager).execute(status -> {
-                    Reservation reservation = buildReservation(request, userId, slot.getStoreId());
-                    reservation.confirm();
-                    reservationRepository.save(reservation);
-                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
-                    return ReservationResponse.from(reservation);
-                });
+                try {
+                    return new TransactionTemplate(transactionManager).execute(status -> {
+                        Reservation reservation = buildReservation(request, userId, slot.getStoreId());
+                        reservation.confirm();
+                        reservationRepository.save(reservation);
+                        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
+                        return ReservationResponse.from(reservation);
+                    });
+                } catch (Exception e) {
+                    capacityKey.addAndGet(request.getReservationSize());
+                    throw e;
+                }
             }
 
-            UUID reservationId = new TransactionTemplate(transactionManager).execute(status -> {
-                Reservation reservation = buildReservation(request, userId, slot.getStoreId());
-                reservationRepository.save(reservation);
-                return reservation.getReservationId();
-            });
+            UUID reservationId;
+            try {
+                reservationId = new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = buildReservation(request, userId, slot.getStoreId());
+                    reservationRepository.save(reservation);
+                    return reservation.getReservationId();
+                });
+            } catch (Exception e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                throw e;
+            }
 
             try {
                 paymentFeignClient.createPayment(new CreatePaymentRequest(
@@ -88,14 +112,6 @@ public class ReservationService {
                         slot.getDepositAmount(),
                         request.getPaymentMethod()
                 ));
-
-                return new TransactionTemplate(transactionManager).execute(status -> {
-                    Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
-                    reservation.confirm();
-                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
-                    return ReservationResponse.from(reservation);
-                });
-
             } catch (Exception e) {
                 capacityKey.addAndGet(request.getReservationSize());
                 new TransactionTemplate(transactionManager).execute(status -> {
@@ -106,6 +122,13 @@ public class ReservationService {
                 });
                 throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             }
+
+            return new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                reservation.confirm();
+                outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
+                return ReservationResponse.from(reservation);
+            });
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

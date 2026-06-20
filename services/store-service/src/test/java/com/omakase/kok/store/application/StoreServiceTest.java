@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
@@ -65,6 +66,7 @@ class StoreServiceTest {
         // masterId가 ownerId와 다르지만 MASTER 권한이므로 삭제 가능
         assertThatCode(() -> storeService.deleteStore(storeId, masterId, AuthConstants.MASTER))
                 .doesNotThrowAnyException();
+        assertThat(store.isDeleted()).isTrue();
     }
 
     @Test
@@ -74,6 +76,7 @@ class StoreServiceTest {
 
         assertThatCode(() -> storeService.deleteStore(storeId, ownerId, "OWNER"))
                 .doesNotThrowAnyException();
+        assertThat(store.isDeleted()).isTrue();
     }
 
     @Test
@@ -93,8 +96,6 @@ class StoreServiceTest {
     @Test
     @DisplayName("OPEN 전환 시 영업시간 7일치 미등록이면 예외")
     void changeStatus_open_requires_hours() {
-        store.changeStatus(StoreStatus.OPEN, ownerId); // PREPARING → OPEN (직접 변경은 도메인 메서드 사용 X)
-        // PREPARING 상태 유지, 영업시간 부족 시뮬레이션
         Store preparingStore = Store.create(ownerId,
                 StoreCategory.create("한식", 1, null), "이름", null,
                 new Address("서울", "강남", null, null, null, null), null, null);
@@ -138,5 +139,6 @@ class StoreServiceTest {
         // MASTER라서 validateOwner 스킵 → 정상 처리
         assertThatCode(() -> storeService.changeStatus(command))
                 .doesNotThrowAnyException();
+        assertThat(masterStore.getStatus()).isEqualTo(StoreStatus.OPEN);
     }
 }

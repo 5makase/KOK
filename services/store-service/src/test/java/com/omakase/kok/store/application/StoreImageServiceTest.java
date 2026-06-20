@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -80,6 +81,7 @@ class StoreImageServiceTest {
         setImageId(target, imageId);
         setImageId(alreadyDeleted, UUID.randomUUID());
         alreadyDeleted.delete(ownerId); // 이미 삭제된 상태
+        LocalDateTime deletedAtBefore = alreadyDeleted.getDeletedAt(); // delete() 재호출 여부 검증용
 
         when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(target));
         when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(alreadyDeleted));
@@ -94,9 +96,9 @@ class StoreImageServiceTest {
 
         storeImageService.updateImage(command);
 
-        // deletedAt이 최초 delete() 시각 그대로 - 재호출되지 않음을 간접 확인
         assertThat(alreadyDeleted.isDeleted()).isTrue();
         assertThat(alreadyDeleted.getDeletedBy()).isEqualTo(ownerId);
+        assertThat(alreadyDeleted.getDeletedAt()).isEqualTo(deletedAtBefore); // deletedAt 불변 = delete() 재호출 없음
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.omakase.kok.store.application;
 
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
@@ -95,19 +97,20 @@ public class StoreService {
     }
 
     @Transactional
-    public void deleteStore(UUID storeId, UUID requesterId) {
+    public void deleteStore(UUID storeId, UUID requesterId, String role) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        // TODO: 인가 구현 시 role 파라미터 추가 후 MASTER면 validateOwner 스킵
-        //       현재 AdminStoreController(MASTER 전용)에서 호출 시 소유자 검증에 막혀 403 반환됨
-        validateOwner(store, requesterId);
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
+            validateOwner(store, requesterId);
+        }
         store.delete(requesterId);
     }
 
     @Transactional
     public StoreResult changeStatus(ChangeStoreStatusCommand command) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        // TODO: 인가 구현 시 role 파라미터 추가 후 MASTER면 validateOwner 스킵
-        validateOwner(store, command.getRequesterId());
+        if (!RoleAuthorizationUtils.hasAnyRole(command.getRole(), AuthConstants.MASTER)) {
+            validateOwner(store, command.getRequesterId());
+        }
 
         // OPEN 전환 시 영업시간 7일치 등록 여부 확인
         if (command.getStatus() == StoreStatus.OPEN

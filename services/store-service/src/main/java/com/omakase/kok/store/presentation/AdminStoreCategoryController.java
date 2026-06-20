@@ -1,5 +1,7 @@
 package com.omakase.kok.store.presentation;
 
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreCategoryService;
 import com.omakase.kok.store.application.command.CreateStoreCategoryCommand;
@@ -31,37 +33,43 @@ public class AdminStoreCategoryController {
 
     // 카테고리 등록
     @PostMapping
-    public ResponseEntity<ApiResponse<StoreCategoryResponse>> createCategory(
+    public ResponseEntity<ApiResponse<StoreCategoryResponse.Single>> createCategory(
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody CreateStoreCategoryRequest request
     ) {
+        RoleAuthorizationUtils.requireRole(role, AuthConstants.MASTER);
         CreateStoreCategoryCommand command = CreateStoreCategoryCommand.builder()
                 .name(request.getName())
                 .sortOrder(request.getSortOrder())
                 .parentId(request.getParentId())
                 .build();
-        return ResponseEntity.status(201).body(ApiResponse.created(StoreCategoryResponse.from(storeCategoryService.createCategory(command))));
+        return ResponseEntity.status(201).body(ApiResponse.created(StoreCategoryResponse.Single.from(storeCategoryService.createCategory(command))));
     }
 
     // 카테고리 수정
     @PatchMapping("/{categoryId}")
-    public ResponseEntity<ApiResponse<StoreCategoryResponse>> updateCategory(
+    public ResponseEntity<ApiResponse<StoreCategoryResponse.Single>> updateCategory(
             @PathVariable UUID categoryId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody UpdateStoreCategoryRequest request
     ) {
+        RoleAuthorizationUtils.requireRole(role, AuthConstants.MASTER);
         UpdateStoreCategoryCommand command = UpdateStoreCategoryCommand.builder()
                 .categoryId(categoryId)
                 .name(request.getName())
                 .sortOrder(request.getSortOrder())
                 .build();
-        return ResponseEntity.ok(ApiResponse.success(StoreCategoryResponse.from(storeCategoryService.updateCategory(command))));
+        return ResponseEntity.ok(ApiResponse.success(StoreCategoryResponse.Single.from(storeCategoryService.updateCategory(command))));
     }
 
     // 카테고리 삭제
     @DeleteMapping("/{categoryId}")
     public ResponseEntity<ApiResponse<Void>> deleteCategory(
             @PathVariable UUID categoryId,
-            @RequestHeader("X-User-Id") UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role
     ) {
+        RoleAuthorizationUtils.requireRole(role, AuthConstants.MASTER);
         storeCategoryService.deleteCategory(categoryId, userId);
         return ResponseEntity.ok(ApiResponse.deleted());
     }

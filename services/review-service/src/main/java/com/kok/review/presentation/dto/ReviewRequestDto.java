@@ -29,5 +29,5 @@ public class ReviewRequestDto {
     @NotBlank(message = "리뷰를 작성하시오.")
     private String content;
 
-    private List<UUID> imagesIds;
+    private List<String> imageUrls;
 }

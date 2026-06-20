@@ -123,12 +123,22 @@ public class ReservationService {
                 throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             }
 
-            return new TransactionTemplate(transactionManager).execute(status -> {
-                Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
-                reservation.confirm();
-                outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
-                return ReservationResponse.from(reservation);
-            });
+            // 결제 성공 후 확정 TX 실패 시 재시도 (일시적 DB 장애 대응)
+            // 재시도 모두 실패 시 PAYMENT_PENDING 유지 → 스케줄러가 5분 내 expire + CANCELLED 처리
+            RuntimeException lastException = null;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                try {
+                    return new TransactionTemplate(transactionManager).execute(status -> {
+                        Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                        reservation.confirm();
+                        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
+                        return ReservationResponse.from(reservation);
+                    });
+                } catch (RuntimeException e) {
+                    lastException = e;
+                }
+            }
+            throw lastException;
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

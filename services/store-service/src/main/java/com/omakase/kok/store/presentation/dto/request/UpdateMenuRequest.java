@@ -8,6 +8,7 @@ import lombok.Getter;
 @Getter
 public class UpdateMenuRequest {
 
+    @Size(max = 100)
     private String name;
 
     @Min(0)

@@ -2,6 +2,7 @@ package com.omakase.kok.store.presentation.dto.request;
 
 import com.omakase.kok.store.domain.enums.AmenityType;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 
 import java.util.List;
@@ -11,5 +12,5 @@ import java.util.List;
 public class AddStoreAmenityRequest {
 
     @NotEmpty
-    private List<AmenityType> amenityTypes;
+    private List<@NotNull AmenityType> amenityTypes;
 }

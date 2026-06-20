@@ -14,7 +14,10 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "p_reviews")
+@Table(name = "p_reviews",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_reviews_reservation_id",
+                columnNames = "reservation_id"))   // 한 예약당 리뷰 1개 → 중복 리뷰 차단
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @SQLRestriction("deleted_at IS NULL")  // 조회 시 soft delete 자동 필터링
 public class Review extends BaseEntity {

@@ -21,6 +21,9 @@ public class PaymentService {
 
     @Transactional
     public PaymentResponse createPayment(CreatePaymentRequest request) {
+        paymentRepository.findByReservationIdAndDeletedAtIsNull(request.getReservationId())
+                .ifPresent(p -> { throw new BaseException(PaymentErrorCode.PAYMENT_ALREADY_EXISTS); });
+
         Payment payment = Payment.builder()
                 .reservationId(request.getReservationId())
                 .amount(request.getAmount())

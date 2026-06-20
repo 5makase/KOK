@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -148,6 +149,40 @@ public class ReservationService {
                 lock.unlock();
             }
         }
+    }
+
+    public List<ReservationResponse> getMyReservations(UUID userId) {
+        return reservationRepository.findByUserIdAndDeletedAtIsNull(userId).stream()
+                .map(ReservationResponse::from)
+                .toList();
+    }
+
+    public ReservationResponse getMyReservation(UUID reservationId, UUID userId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        return ReservationResponse.from(reservation);
+    }
+
+    public List<ReservationResponse> getStoreReservations(UUID storeId) {
+        return reservationRepository.findByStoreIdAndDeletedAtIsNull(storeId).stream()
+                .map(ReservationResponse::from)
+                .toList();
+    }
+
+    public ReservationResponse getStoreReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        return ReservationResponse.from(reservation);
     }
 
     private Reservation buildReservation(CreateReservationRequest request, UUID userId, UUID storeId) {

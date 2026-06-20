@@ -27,7 +27,11 @@ public class PaymentService {
                 .paymentMethod(request.getPaymentMethod())
                 .build();
 
-        payment.pay();
+        try {
+            payment.pay();
+        } catch (IllegalStateException e) {
+            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
+        }
         paymentRepository.save(payment);
 
         return PaymentResponse.from(payment);

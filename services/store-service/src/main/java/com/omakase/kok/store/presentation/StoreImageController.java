@@ -1,5 +1,6 @@
 package com.omakase.kok.store.presentation;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreImageService;
 import com.omakase.kok.store.application.command.AddStoreImageCommand;
@@ -34,7 +35,7 @@ public class StoreImageController {
     @PostMapping
     public ResponseEntity<ApiResponse<List<StoreImageResponse>>> addImages(
             @PathVariable UUID storeId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody AddStoreImageRequest request
     ) {
         AddStoreImageCommand command = AddStoreImageCommand.builder()
@@ -57,7 +58,7 @@ public class StoreImageController {
     public ResponseEntity<ApiResponse<StoreImageResponse>> updateImage(
             @PathVariable UUID storeId,
             @PathVariable UUID imageId,
-            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @Valid @RequestBody UpdateStoreImageRequest request
     ) {
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
@@ -75,7 +76,7 @@ public class StoreImageController {
     public ResponseEntity<ApiResponse<Void>> deleteImage(
             @PathVariable UUID storeId,
             @PathVariable UUID imageId,
-            @RequestHeader("X-User-Id") UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId
     ) {
         storeImageService.deleteImage(storeId, imageId, userId);
         return ResponseEntity.ok(ApiResponse.deleted());

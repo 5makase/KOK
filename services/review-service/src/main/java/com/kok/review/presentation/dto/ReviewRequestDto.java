@@ -1,9 +1,6 @@
 package com.kok.review.presentation.dto;
 
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.*;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -15,6 +12,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReviewRequestDto {
+
     @NotNull(message = "매장을 지정하시오.")
     private UUID storeId;
 
@@ -27,7 +25,12 @@ public class ReviewRequestDto {
     private BigDecimal rating;
 
     @NotBlank(message = "리뷰를 작성하시오.")
+    @Size(min = 10, max = 1000, message = "리뷰는 10자 이상 1000자 이하로 작성하시오.")
     private String content;
 
-    private List<String> imageUrls;
+    @Size(max = 5, message = "이미지는 최대 5장까지 첨부할 수 있습니다.")
+    private List<
+                    @NotBlank(message = "이미지 URL은 비어 있을 수 없습니다.")
+                    @Size(max = 500, message = "이미지 URL은 500자를 초과할 수 없습니다.")
+                    String> imageUrls;
 }

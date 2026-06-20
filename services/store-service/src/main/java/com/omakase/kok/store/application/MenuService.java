@@ -45,6 +45,10 @@ public class MenuService {
             validateOwner(store, command.getRequesterId());
         }
         Menu menu = findActiveMenuOrThrow(command.getMenuId(), store);
+        // PATCH 부분 수정 - 빈 문자열로 이름 덮어쓰기 방지
+        if (command.getName() != null && command.getName().isBlank()) {
+            throw new BaseException(StoreErrorCode.MENU_INVALID_NAME);
+        }
         // PATCH 부분 수정 - displayOrder가 전송된 경우에만 중복 체크
         if (command.getDisplayOrder() != null) {
             validateDisplayOrderForUpdate(store, command.getDisplayOrder(), menu.getMenuId());

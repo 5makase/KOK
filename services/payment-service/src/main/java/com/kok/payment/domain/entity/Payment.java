@@ -39,6 +39,15 @@ public class Payment extends BaseEntity {
 
     @Builder
     public Payment(UUID reservationId, Long amount, String paymentMethod) {
+        if (reservationId == null) {
+            throw new IllegalArgumentException("reservationId는 필수입니다.");
+        }
+        if (amount == null || amount <= 0) {
+            throw new IllegalArgumentException("결제 금액은 0보다 커야 합니다.");
+        }
+        if (paymentMethod == null || paymentMethod.isBlank()) {
+            throw new IllegalArgumentException("결제 수단은 필수입니다.");
+        }
         this.reservationId = reservationId;
         this.amount = amount;
         this.paymentMethod = paymentMethod;

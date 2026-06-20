@@ -1,7 +1,6 @@
 package com.omakase.kok.user.presentation.user.controller;
 
 import com.omakase.kok.user.application.user.service.UserService;
-import com.omakase.kok.user.global.dto.ApiResponse;
 import com.omakase.kok.user.presentation.user.dto.request.SignupRequest;
 import com.omakase.kok.user.presentation.user.dto.response.SignupResponse;
 import jakarta.validation.Valid;
@@ -9,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.omakase.kok.common.response.ApiResponse;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -25,7 +25,7 @@ public class UserController {
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.created("USER 회원가입이 완료되었습니다.", response));
+                .body(ApiResponse.created(response));
     }
 
     @PostMapping("/owners/signup")
@@ -36,6 +36,6 @@ public class UserController {
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(ApiResponse.created("OWNER 회원가입 요청이 완료되었습니다.", response));
+                .body(ApiResponse.created(response));
     }
 }

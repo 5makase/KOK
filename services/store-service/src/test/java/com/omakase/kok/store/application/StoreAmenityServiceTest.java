@@ -1,5 +1,7 @@
 package com.omakase.kok.store.application;
 
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
 import com.omakase.kok.store.domain.entity.Store;
@@ -9,6 +11,7 @@ import com.omakase.kok.store.domain.enums.AmenityType;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.domain.vo.Address;
+import com.omakase.kok.store.global.exception.StoreErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,9 +21,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -136,5 +141,67 @@ class StoreAmenityServiceTest {
         assertThat(wifi.isDeleted()).isTrue();
         assertThat(parking.isDeleted()).isTrue();
         assertThat(result.getAmenities()).isEmpty();
+    }
+
+    // deleteAmenity
+
+    @Test
+    @DisplayName("OWNER 본인은 편의시설 삭제 가능")
+    void deleteAmenity_owner_can_delete() {
+        UUID amenityId = UUID.randomUUID();
+        StoreAmenity amenity = StoreAmenity.create(store, AmenityType.PARKING);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeAmenityRepository.findAmenity(storeId, amenityId)).thenReturn(Optional.of(amenity));
+
+        storeAmenityService.deleteAmenity(storeId, amenityId, ownerId, "OWNER");
+
+        assertThat(amenity.isDeleted()).isTrue();
+        assertThat(amenity.getDeletedBy()).isEqualTo(ownerId);
+    }
+
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 편의시설 삭제 가능")
+    void deleteAmenity_master_skips_owner_check() {
+        UUID amenityId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        StoreAmenity amenity = StoreAmenity.create(store, AmenityType.PARKING);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeAmenityRepository.findAmenity(storeId, amenityId)).thenReturn(Optional.of(amenity));
+
+        storeAmenityService.deleteAmenity(storeId, amenityId, masterId, AuthConstants.MASTER);
+
+        assertThat(amenity.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 편의시설 삭제 시 403")
+    void deleteAmenity_owner_cannot_delete_others() {
+        UUID amenityId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        assertThatThrownBy(() -> storeAmenityService.deleteAmenity(storeId, amenityId, otherId, "OWNER"))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.AMENITY_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("이미 삭제된 편의시설 삭제 시 400")
+    void deleteAmenity_already_deleted_throws() {
+        UUID amenityId = UUID.randomUUID();
+        StoreAmenity amenity = StoreAmenity.create(store, AmenityType.PARKING);
+        amenity.delete(ownerId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeAmenityRepository.findAmenity(storeId, amenityId)).thenReturn(Optional.of(amenity));
+
+        assertThatThrownBy(() -> storeAmenityService.deleteAmenity(storeId, amenityId, ownerId, "OWNER"))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.AMENITY_ALREADY_DELETED);
     }
 }

@@ -1,5 +1,7 @@
 package com.omakase.kok.store.application;
 
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
@@ -78,13 +80,16 @@ public class StoreAmenityService {
     }
 
     @Transactional
-    public void deleteAmenity(UUID storeId, UUID amenityId, UUID requesterId) {
+    public void deleteAmenity(UUID storeId, UUID amenityId, UUID requesterId, String role) {
+        Store store = storeFinder.findActiveOrThrow(storeId);
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
+            validateOwner(store, requesterId);
+        }
         StoreAmenity amenity = findAmenity(storeId, amenityId);
         // soft delete 포함 조회 후 명시적 체크 - 이미 삭제된 경우
         if (amenity.isDeleted()) {
             throw new BaseException(StoreErrorCode.AMENITY_ALREADY_DELETED);
         }
-        validateOwner(amenity.getStore(), requesterId);
         amenity.delete(requesterId);
     }
 

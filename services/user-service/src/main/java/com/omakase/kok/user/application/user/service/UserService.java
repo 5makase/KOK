@@ -24,6 +24,9 @@ public class UserService {
 
     @Transactional
     public SignupResponse signupUser(SignupRequest request) {
+        if (request.role() == Role.MASTER) {
+            throw new IllegalArgumentException("MASTER 권한은 회원가입을 통해 생성할 수 없습니다.");
+        }
         if (request.role() != Role.USER) {
             throw new IllegalArgumentException("USER 회원가입 경로에서는 USER 권한만 가입할 수 있습니다.");
         }
@@ -39,6 +42,9 @@ public class UserService {
 
     @Transactional
     public SignupResponse signupOwner(SignupRequest request) {
+        if (request.role() == Role.MASTER) {
+            throw new IllegalArgumentException("MASTER 권한은 회원가입을 통해 생성할 수 없습니다.");
+        }
         if (request.role() != Role.OWNER) {
             throw new IllegalArgumentException("OWNER 회원가입 경로에서는 OWNER 권한만 가입할 수 있습니다.");
         }

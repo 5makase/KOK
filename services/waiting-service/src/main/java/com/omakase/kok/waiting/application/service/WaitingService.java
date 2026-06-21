@@ -130,8 +130,19 @@ public class WaitingService {
 
     // 웨이팅 취소
     @Transactional
-    public WaitingCancelResponse cancelWaiting(UUID userId, UUID waitingId, WaitingCancelRequest request) {
-        throw new UnsupportedOperationException("웨이팅 취소 로직 구현 예정입니다.");
+    public WaitingCancelResponse cancelWaiting(UUID userId, String role, UUID waitingId, WaitingCancelRequest request) {
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+        validateUserCancelable(waiting);
+        validateWaitingAccess(userId, role, waiting);
+
+        waiting.cancel(request.getCancelReason());
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        waitingQueueRedisStore.remove(savedWaiting.getStoreId(), savedWaiting.getUserId(), savedWaiting.getId());
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_CANCELLED 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CANCELLED);
+
+        return WaitingCancelResponse.from(savedWaiting);
     }
 
     // 다음 순번 웨이팅 호출
@@ -223,13 +234,21 @@ public class WaitingService {
         }
     }
 
-    // 웨이팅 조회 권한 확인 - 본인 or 마스터
+    // 권한 확인 - 본인 or 마스터
     private void validateWaitingAccess(UUID userId, String role, Waiting waiting) {
         if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             return;
         }
         if (!waiting.getUserId().equals(userId)) {
             throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    // 사용자 취소 가능 여부 확인
+    private void validateUserCancelable(Waiting waiting) {
+        StoreWaitingValues storeWaitingValues = waitingSettingService.getStoreWaitingValues(waiting.getStoreId());
+        if (!Boolean.TRUE.equals(storeWaitingValues.allowUserCancel())) {
+            throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_DISABLED);
         }
     }
 

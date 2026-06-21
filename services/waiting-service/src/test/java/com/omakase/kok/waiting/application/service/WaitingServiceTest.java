@@ -8,10 +8,14 @@ import com.omakase.kok.waiting.domain.entity.Waiting;
 import com.omakase.kok.waiting.domain.enums.WaitingStatus;
 import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.WaitingRegistration;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class WaitingServiceTest {
@@ -198,6 +203,103 @@ class WaitingServiceTest {
     }
 
     @Test
+    @DisplayName("웨이팅 취소는 본인 웨이팅을 취소하고 Redis 대기열에서 제거한다")
+    void cancelWaiting_success() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 4L, WaitingStatus.WAITING, "조용한 자리");
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("개인 사정");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCancelResponse response = waitingService.cancelWaiting(userId, "USER", waitingId, request);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getWaitingNumber()).isEqualTo(4L);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+        assertThat(response.getCancelReason()).isEqualTo("개인 사정");
+        assertThat(response.getCancelledAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+    }
+
+    @Test
+    @DisplayName("마스터는 본인 웨이팅이 아니어도 취소할 수 있다")
+    void cancelWaiting_masterCanAccess() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, ownerId, 9L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+        WaitingCancelRequest request = waitingCancelRequest("관리자 취소");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCancelResponse response = waitingService.cancelWaiting(masterId, "MASTER", waitingId, request);
+
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+        assertThat(response.getCancelReason()).isEqualTo("관리자 취소");
+        then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
+    }
+
+    @Test
+    @DisplayName("웨이팅 취소는 본인 웨이팅만 허용한다")
+    void cancelWaiting_forbiddenWhenNotOwner() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, ownerId, 2L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("취소 요청");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+
+        assertThatThrownBy(() -> waitingService.cancelWaiting(requesterId, "USER", waitingId, request))
+                .isInstanceOf(BaseException.class)
+                .satisfies(exception -> assertThat(((BaseException) exception).getErrorCode())
+                        .isEqualTo(CommonErrorCode.ACCESS_DENIED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("웨이팅 취소는 매장 설정에서 사용자 취소가 비활성화되면 실패한다")
+    void cancelWaiting_disabledWhenStoreDoesNotAllowUserCancel() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 6L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("취소 요청");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, false, 15));
+
+        assertThatThrownBy(() -> waitingService.cancelWaiting(userId, "USER", waitingId, request))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CANCEL_DISABLED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
     @DisplayName("순번 임박 알림 대상 조회는 Redis 순서를 유지해 현재 순번을 포함해 응답한다")
     void getNearTurnWaitings_success() {
         UUID storeId = UUID.randomUUID();
@@ -241,6 +343,12 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(request, "storeId", storeId);
         ReflectionTestUtils.setField(request, "peopleCount", peopleCount);
         ReflectionTestUtils.setField(request, "requestMessage", requestMessage);
+        return request;
+    }
+
+    private WaitingCancelRequest waitingCancelRequest(String cancelReason) {
+        WaitingCancelRequest request = newInstance(WaitingCancelRequest.class);
+        ReflectionTestUtils.setField(request, "cancelReason", cancelReason);
         return request;
     }
 

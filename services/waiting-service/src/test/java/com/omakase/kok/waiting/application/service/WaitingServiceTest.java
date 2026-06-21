@@ -8,10 +8,18 @@ import com.omakase.kok.waiting.domain.entity.Waiting;
 import com.omakase.kok.waiting.domain.enums.WaitingStatus;
 import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.WaitingRegistration;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingNoShowRequest;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +31,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
@@ -31,12 +41,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class WaitingServiceTest {
@@ -154,6 +166,34 @@ class WaitingServiceTest {
     }
 
     @Test
+    @DisplayName("웨이팅 상세 조회는 취소 사유와 노쇼 사유를 포함해 응답한다")
+    void getWaiting_includesCancelAndNoShowReason() {
+        UUID cancelledWaitingId = UUID.randomUUID();
+        UUID noShowWaitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+
+        Waiting cancelledWaiting = waiting(storeId, userId, 8L, WaitingStatus.CANCELLED, null);
+        ReflectionTestUtils.setField(cancelledWaiting, "id", cancelledWaitingId);
+        ReflectionTestUtils.setField(cancelledWaiting, "cancelReason", "개인 사정");
+
+        Waiting noShowWaiting = waiting(storeId, userId, 9L, WaitingStatus.NO_SHOW, null);
+        ReflectionTestUtils.setField(noShowWaiting, "id", noShowWaitingId);
+        ReflectionTestUtils.setField(noShowWaiting, "noShowReason", "호출 후 미방문");
+
+        given(waitingRepository.findById(cancelledWaitingId)).willReturn(Optional.of(cancelledWaiting));
+        given(waitingRepository.findById(noShowWaitingId)).willReturn(Optional.of(noShowWaiting));
+
+        var cancelledResponse = waitingService.getWaiting(userId, "USER", cancelledWaitingId);
+        var noShowResponse = waitingService.getWaiting(userId, "USER", noShowWaitingId);
+
+        assertThat(cancelledResponse.getCancelReason()).isEqualTo("개인 사정");
+        assertThat(cancelledResponse.getNoShowReason()).isNull();
+        assertThat(noShowResponse.getNoShowReason()).isEqualTo("호출 후 미방문");
+        assertThat(noShowResponse.getCancelReason()).isNull();
+    }
+
+    @Test
     @DisplayName("마스터는 본인 웨이팅이 아니어도 상세 조회할 수 있다")
     void getWaiting_masterCanAccess() {
         UUID waitingId = UUID.randomUUID();
@@ -184,7 +224,6 @@ class WaitingServiceTest {
 
         given(waitingRepository.findByStoreIdAndStatus(storeId, WaitingStatus.CALLED, pageable))
                 .willReturn(new PageImpl<>(List.of(waiting), pageable, 1));
-        given(waitingQueueRedisStore.getRank(storeId, waiting.getId())).willReturn(1L);
 
         PageResponse<StoreWaitingResponse> response =
                 waitingService.getStoreWaitings(UUID.randomUUID(), storeId, WaitingStatus.CALLED, pageable);
@@ -192,9 +231,302 @@ class WaitingServiceTest {
         assertThat(response.content()).hasSize(1);
         StoreWaitingResponse content = response.content().get(0);
         assertThat(content.getWaitingId()).isEqualTo(waiting.getId());
-        assertThat(content.getCurrentRank()).isEqualTo(1L);
-        assertThat(content.getTeamsAhead()).isEqualTo(0L);
+        assertThat(content.getCurrentRank()).isNull();
+        assertThat(content.getTeamsAhead()).isNull();
         assertThat(content.getStatus()).isEqualTo(WaitingStatus.CALLED);
+    }
+
+    @Test
+    @DisplayName("웨이팅 취소는 본인 웨이팅을 취소하고 Redis 대기열에서 제거한다")
+    void cancelWaiting_success() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 4L, WaitingStatus.WAITING, "조용한 자리");
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("개인 사정");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCancelResponse response = waitingService.cancelWaiting(userId, "USER", waitingId, request);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getWaitingNumber()).isEqualTo(4L);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+        assertThat(response.getCancelReason()).isEqualTo("개인 사정");
+        assertThat(response.getCancelledAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+    }
+
+    @Test
+    @DisplayName("마스터는 본인 웨이팅이 아니어도 취소할 수 있다")
+    void cancelWaiting_masterCanAccess() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, ownerId, 9L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+        WaitingCancelRequest request = waitingCancelRequest("관리자 취소");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCancelResponse response = waitingService.cancelWaiting(masterId, "MASTER", waitingId, request);
+
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+        assertThat(response.getCancelReason()).isEqualTo("관리자 취소");
+        then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
+        then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
+    }
+
+    @Test
+    @DisplayName("웨이팅 취소는 본인 웨이팅만 허용한다")
+    void cancelWaiting_forbiddenWhenNotOwner() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, ownerId, 2L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("취소 요청");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.cancelWaiting(requesterId, "USER", waitingId, request))
+                .isInstanceOf(BaseException.class)
+                .satisfies(exception -> assertThat(((BaseException) exception).getErrorCode())
+                        .isEqualTo(CommonErrorCode.ACCESS_DENIED));
+
+        then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("웨이팅 취소는 매장 설정에서 사용자 취소가 비활성화되면 실패한다")
+    void cancelWaiting_disabledWhenStoreDoesNotAllowUserCancel() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 6L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("취소 요청");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, false, 15));
+
+        assertThatThrownBy(() -> waitingService.cancelWaiting(userId, "USER", waitingId, request))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CANCEL_DISABLED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("마스터는 사용자 취소 비활성화 매장이어도 웨이팅을 취소할 수 있다")
+    void cancelWaiting_masterBypassesUserCancelPolicy() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, ownerId, 7L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("관리자 취소");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCancelResponse response = waitingService.cancelWaiting(masterId, "MASTER", waitingId, request);
+
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+        then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
+        then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 Redis 대기열의 첫 번째 웨이팅을 호출 처리한다")
+    void callNextWaiting_success() {
+        UUID storeId = UUID.randomUUID();
+        UUID waitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 10L, WaitingStatus.WAITING, "문 앞 자리");
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+
+        given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCallResponse response = waitingService.callNextWaiting(storeId);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getUserId()).isEqualTo(userId);
+        assertThat(response.getWaitingNumber()).isEqualTo(10L);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CALLED);
+        assertThat(response.getCalledAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 대기열이 비어 있으면 실패한다")
+    void callNextWaiting_notFoundWhenQueueEmpty() {
+        UUID storeId = UUID.randomUUID();
+
+        given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+
+        then(waitingRepository).should(never()).findById(any(UUID.class));
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 이미 호출된 웨이팅이면 실패한다")
+    void callNextWaiting_failWhenAlreadyCalled() {
+        UUID storeId = UUID.randomUUID();
+        UUID waitingId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 11L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+
+        given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+    }
+
+    @Test
+    @DisplayName("입장 완료 처리는 CALLED 상태 웨이팅을 ENTERED로 변경한다")
+    void enterWaiting_success() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 13L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingEnterResponse response = waitingService.enterWaiting(userId, waitingId);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.ENTERED);
+        assertThat(response.getEnteredAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, waiting.getUserId(), waitingId);
+    }
+
+    @Test
+    @DisplayName("입장 완료 처리는 CALLED 상태가 아니면 실패한다")
+    void enterWaiting_failWhenNotCalled() {
+        UUID waitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(UUID.randomUUID(), UUID.randomUUID(), 14L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.enterWaiting(userId, waitingId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_ENTER_NOT_ALLOWED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("미입장 처리는 CALLED 상태 웨이팅을 NO_SHOW로 변경한다")
+    void noShowWaiting_success() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 15L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+        WaitingNoShowRequest request = waitingNoShowRequest("호출 후 미방문");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingNoShowResponse response = waitingService.noShowWaiting(userId, waitingId, request);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.NO_SHOW);
+        assertThat(response.getReason()).isEqualTo("호출 후 미방문");
+        assertThat(response.getNoShowAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, waiting.getUserId(), waitingId);
+    }
+
+    @Test
+    @DisplayName("미입장 처리는 CALLED 상태가 아니면 실패한다")
+    void noShowWaiting_failWhenNotCalled() {
+        UUID waitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(UUID.randomUUID(), UUID.randomUUID(), 16L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingNoShowRequest request = waitingNoShowRequest("부재");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.noShowWaiting(userId, waitingId, request))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_NO_SHOW_NOT_ALLOWED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("커밋 후 Redis 정리에 실패해도 상태 변경 요청은 성공한다")
+    void cancelWaiting_succeedsEvenWhenQueueCleanupFailsAfterCommit() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 17L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("개인 사정");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
+                .when(waitingQueueRedisStore).remove(storeId, userId, waitingId);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            WaitingCancelResponse response = waitingService.cancelWaiting(userId, "USER", waitingId, request);
+
+            assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+            List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+
+            assertThatCode(() -> synchronizations.forEach(TransactionSynchronization::afterCommit))
+                    .doesNotThrowAnyException();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -241,6 +573,18 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(request, "storeId", storeId);
         ReflectionTestUtils.setField(request, "peopleCount", peopleCount);
         ReflectionTestUtils.setField(request, "requestMessage", requestMessage);
+        return request;
+    }
+
+    private WaitingCancelRequest waitingCancelRequest(String cancelReason) {
+        WaitingCancelRequest request = newInstance(WaitingCancelRequest.class);
+        ReflectionTestUtils.setField(request, "cancelReason", cancelReason);
+        return request;
+    }
+
+    private WaitingNoShowRequest waitingNoShowRequest(String reason) {
+        WaitingNoShowRequest request = newInstance(WaitingNoShowRequest.class);
+        ReflectionTestUtils.setField(request, "reason", reason);
         return request;
     }
 

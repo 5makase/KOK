@@ -89,7 +89,7 @@ public class WaitingService {
                 .peopleCount(request.getPeopleCount())
                 .requestMessage(request.getRequestMessage())
                 .build();
-        Waiting savedWaiting = saveWaitingOrRollbackQueue(storeId, waiting);
+        Waiting savedWaiting = saveWaitingWithQueueRollback(storeId, waiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_REGISTERED 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_REGISTERED);
 
@@ -130,26 +130,69 @@ public class WaitingService {
 
     // 웨이팅 취소
     @Transactional
-    public WaitingCancelResponse cancelWaiting(UUID userId, UUID waitingId, WaitingCancelRequest request) {
-        throw new UnsupportedOperationException("웨이팅 취소 로직 구현 예정입니다.");
+    public WaitingCancelResponse cancelWaiting(UUID userId, String role, UUID waitingId, WaitingCancelRequest request) {
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+        validateWaitingAccess(userId, role, waiting);
+        validateUserCancelable(role, waiting);
+
+        waiting.cancel(request.getCancelReason());
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_CANCELLED 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CANCELLED);
+
+        return WaitingCancelResponse.from(savedWaiting);
     }
 
     // 다음 순번 웨이팅 호출
     @Transactional
     public WaitingCallResponse callNextWaiting(UUID storeId) {
-        throw new UnsupportedOperationException("다음 순번 호출 로직 구현 예정입니다.");
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 storeId의 소유자인지 검증 추가
+        UUID waitingId = waitingQueueRedisStore.findFirst(storeId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+
+        waiting.call();
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_CALLED 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CALLED);
+
+        return WaitingCallResponse.from(savedWaiting);
     }
 
     // 웨이팅 입장 완료 처리
     @Transactional
-    public WaitingEnterResponse enterWaiting(UUID waitingId) {
-        throw new UnsupportedOperationException("입장 완료 처리 로직 구현 예정입니다.");
+    public WaitingEnterResponse enterWaiting(UUID userId, UUID waitingId) {
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+
+        waiting.enter();
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_ENTERED 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_ENTERED);
+
+        return WaitingEnterResponse.from(savedWaiting);
     }
 
     // 웨이팅 미입장 처리
     @Transactional
-    public WaitingNoShowResponse noShowWaiting(UUID waitingId, WaitingNoShowRequest request) {
-        throw new UnsupportedOperationException("미입장 처리 로직 구현 예정입니다.");
+    public WaitingNoShowResponse noShowWaiting(UUID userId, UUID waitingId, WaitingNoShowRequest request) {
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+
+        waiting.noShow(request.getReason());
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_NO_SHOW 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
+
+        return WaitingNoShowResponse.from(savedWaiting);
     }
 
     // 순번 임박 알림 대상 조회
@@ -182,21 +225,43 @@ public class WaitingService {
         }
     }
 
-    // 웨이팅 저장 실패 시 Redis 롤백
-    private Waiting saveWaitingOrRollbackQueue(UUID storeId, Waiting waiting) {
-        registerQueueRollbackCleanup(storeId, waiting);
+    // cancel/call/enter/no-show처럼 DB 상태를 먼저 바꾸는 흐름에서 사용
+    // 트랜잭션이 정상 커밋된 뒤에만 Redis 대기열을 제거
+    private void scheduleQueueRemovalAfterCommit(Waiting waiting) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+                } catch (RuntimeException e) {
+                    log.warn("Failed to cleanup waiting queue after commit. storeId={}, userId={}, waitingId={}",
+                            waiting.getStoreId(), waiting.getUserId(), waiting.getId(), e);
+                }
+            }
+        });
+    }
+
+    // 웨이팅 등록용
+    // DB 저장 실패 -> Redis 등록 롤백
+    private Waiting saveWaitingWithQueueRollback(UUID storeId, Waiting waiting) {
+        scheduleQueueRollbackOnTransactionFailure(storeId, waiting);
         try {
             return waitingRepository.saveAndFlush(waiting);
         } catch (RuntimeException e) {
             if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-                removeQueueAfterPersistenceFailure(storeId, waiting, e);
+                rollbackQueueRegistrationSafely(storeId, waiting, e);
             }
             throw e;
         }
     }
 
-    // 트랜잭션 롤백 시 Redis 대기열 정리를 예약
-    private void registerQueueRollbackCleanup(UUID storeId, Waiting waiting) {
+    // 웨이팅 등록용 롤백 훅 예약
+    // 트랜잭션 롤백 시 Redis 등록도 함께 롤백
+    private void scheduleQueueRollbackOnTransactionFailure(UUID storeId, Waiting waiting) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             return;
         }
@@ -204,14 +269,15 @@ public class WaitingService {
             @Override
             public void afterCompletion(int status) {
                 if (status == STATUS_ROLLED_BACK) {
-                    removeQueueAfterPersistenceFailure(storeId, waiting, null);
+                    rollbackQueueRegistrationSafely(storeId, waiting, null);
                 }
             }
         });
     }
 
-    // DB 저장 실패 또는 트랜잭션 롤백 후 Redis 대기열/중복 방지 키 제거
-    private void removeQueueAfterPersistenceFailure(UUID storeId, Waiting waiting, RuntimeException originalException) {
+    // 웨이팅 등록 롤백 즉시 실행
+    // 대기열과 active user 키를 함께 제거
+    private void rollbackQueueRegistrationSafely(UUID storeId, Waiting waiting, RuntimeException originalException) {
         try {
             waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
         } catch (RuntimeException rollbackException) {
@@ -223,13 +289,24 @@ public class WaitingService {
         }
     }
 
-    // 웨이팅 조회 권한 확인 - 본인 or 마스터
+    // 권한 확인 - 본인 or 마스터
     private void validateWaitingAccess(UUID userId, String role, Waiting waiting) {
         if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             return;
         }
         if (!waiting.getUserId().equals(userId)) {
             throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    // 사용자 취소 가능 여부 확인
+    private void validateUserCancelable(String role, Waiting waiting) {
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.USER)) {
+            return;
+        }
+        StoreWaitingValues storeWaitingValues = waitingSettingService.getStoreWaitingValues(waiting.getStoreId());
+        if (!Boolean.TRUE.equals(storeWaitingValues.allowUserCancel())) {
+            throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_DISABLED);
         }
     }
 
@@ -243,7 +320,7 @@ public class WaitingService {
 
     // 현재 순위를 조회할 수 있는 진행 중 상태인지 확인
     private boolean isQueueTrackedStatus(WaitingStatus status) {
-        return status == WaitingStatus.WAITING || status == WaitingStatus.CALLED;
+        return status == WaitingStatus.WAITING;
     }
 
     // 아웃박스 테이블 저장

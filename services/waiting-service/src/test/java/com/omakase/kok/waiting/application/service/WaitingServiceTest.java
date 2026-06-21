@@ -163,6 +163,34 @@ class WaitingServiceTest {
     }
 
     @Test
+    @DisplayName("웨이팅 상세 조회는 취소 사유와 노쇼 사유를 포함해 응답한다")
+    void getWaiting_includesCancelAndNoShowReason() {
+        UUID cancelledWaitingId = UUID.randomUUID();
+        UUID noShowWaitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+
+        Waiting cancelledWaiting = waiting(storeId, userId, 8L, WaitingStatus.CANCELLED, null);
+        ReflectionTestUtils.setField(cancelledWaiting, "id", cancelledWaitingId);
+        ReflectionTestUtils.setField(cancelledWaiting, "cancelReason", "개인 사정");
+
+        Waiting noShowWaiting = waiting(storeId, userId, 9L, WaitingStatus.NO_SHOW, null);
+        ReflectionTestUtils.setField(noShowWaiting, "id", noShowWaitingId);
+        ReflectionTestUtils.setField(noShowWaiting, "noShowReason", "호출 후 미방문");
+
+        given(waitingRepository.findById(cancelledWaitingId)).willReturn(Optional.of(cancelledWaiting));
+        given(waitingRepository.findById(noShowWaitingId)).willReturn(Optional.of(noShowWaiting));
+
+        var cancelledResponse = waitingService.getWaiting(userId, "USER", cancelledWaitingId);
+        var noShowResponse = waitingService.getWaiting(userId, "USER", noShowWaitingId);
+
+        assertThat(cancelledResponse.getCancelReason()).isEqualTo("개인 사정");
+        assertThat(cancelledResponse.getNoShowReason()).isNull();
+        assertThat(noShowResponse.getNoShowReason()).isEqualTo("호출 후 미방문");
+        assertThat(noShowResponse.getCancelReason()).isNull();
+    }
+
+    @Test
     @DisplayName("마스터는 본인 웨이팅이 아니어도 상세 조회할 수 있다")
     void getWaiting_masterCanAccess() {
         UUID waitingId = UUID.randomUUID();

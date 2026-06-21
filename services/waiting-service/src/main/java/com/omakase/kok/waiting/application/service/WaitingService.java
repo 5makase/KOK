@@ -138,7 +138,7 @@ public class WaitingService {
 
         waiting.cancel(request.getCancelReason());
         Waiting savedWaiting = waitingRepository.save(waiting);
-        waitingQueueRedisStore.remove(savedWaiting.getStoreId(), savedWaiting.getUserId(), savedWaiting.getId());
+        registerQueueRemovalAfterCommit(savedWaiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_CANCELLED 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CANCELLED);
 
@@ -148,18 +148,32 @@ public class WaitingService {
     // 다음 순번 웨이팅 호출
     @Transactional
     public WaitingCallResponse callNextWaiting(UUID storeId) {
-        throw new UnsupportedOperationException("다음 순번 호출 로직 구현 예정입니다.");
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 storeId의 소유자인지 검증 추가
+        UUID waitingId = waitingQueueRedisStore.findFirst(storeId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+
+        waiting.call();
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        registerQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_CALLED 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CALLED);
+
+        return WaitingCallResponse.from(savedWaiting);
     }
 
     // 웨이팅 입장 완료 처리
     @Transactional
     public WaitingEnterResponse enterWaiting(UUID waitingId) {
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
         throw new UnsupportedOperationException("입장 완료 처리 로직 구현 예정입니다.");
     }
 
     // 웨이팅 미입장 처리
     @Transactional
     public WaitingNoShowResponse noShowWaiting(UUID waitingId, WaitingNoShowRequest request) {
+        // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
         throw new UnsupportedOperationException("미입장 처리 로직 구현 예정입니다.");
     }
 
@@ -191,6 +205,20 @@ public class WaitingService {
         if (!Boolean.TRUE.equals(storeWaitingValues.waitingEnabled())) {
             throw new WaitingException(WaitingErrorCode.WAITING_DISABLED);
         }
+    }
+
+    // 상태 변경이 커밋된 뒤에만 Redis 대기열에서 제거한다
+    private void registerQueueRemovalAfterCommit(Waiting waiting) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+            }
+        });
     }
 
     // 웨이팅 저장 실패 시 Redis 롤백
@@ -262,7 +290,7 @@ public class WaitingService {
 
     // 현재 순위를 조회할 수 있는 진행 중 상태인지 확인
     private boolean isQueueTrackedStatus(WaitingStatus status) {
-        return status == WaitingStatus.WAITING || status == WaitingStatus.CALLED;
+        return status == WaitingStatus.WAITING;
     }
 
     // 아웃박스 테이블 저장

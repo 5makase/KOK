@@ -9,6 +9,7 @@ import com.omakase.kok.waiting.domain.enums.WaitingStatus;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingDetailResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
@@ -124,6 +125,22 @@ public class WaitingController {
                 AuthConstants.USER
         );
         WaitingCancelResponse response = waitingService.cancelWaiting(userId, role, waitingId, request);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // 다음 순번 웨이팅 호출
+    @PostMapping("/stores/{storeId}/call-next")
+    public ResponseEntity<ApiResponse<WaitingCallResponse>> callNextWaiting(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
+            @PathVariable UUID storeId
+    ) {
+        RoleAuthorizationUtils.requireAnyRole(
+                role,
+                AuthConstants.MASTER,
+                AuthConstants.OWNER
+        );
+        WaitingCallResponse response = waitingService.callNextWaiting(storeId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

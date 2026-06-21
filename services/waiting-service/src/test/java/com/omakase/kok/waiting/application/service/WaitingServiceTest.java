@@ -15,6 +15,7 @@ import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.Store
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.WaitingRegistration;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
@@ -189,7 +190,6 @@ class WaitingServiceTest {
 
         given(waitingRepository.findByStoreIdAndStatus(storeId, WaitingStatus.CALLED, pageable))
                 .willReturn(new PageImpl<>(List.of(waiting), pageable, 1));
-        given(waitingQueueRedisStore.getRank(storeId, waiting.getId())).willReturn(1L);
 
         PageResponse<StoreWaitingResponse> response =
                 waitingService.getStoreWaitings(UUID.randomUUID(), storeId, WaitingStatus.CALLED, pageable);
@@ -197,8 +197,8 @@ class WaitingServiceTest {
         assertThat(response.content()).hasSize(1);
         StoreWaitingResponse content = response.content().get(0);
         assertThat(content.getWaitingId()).isEqualTo(waiting.getId());
-        assertThat(content.getCurrentRank()).isEqualTo(1L);
-        assertThat(content.getTeamsAhead()).isEqualTo(0L);
+        assertThat(content.getCurrentRank()).isNull();
+        assertThat(content.getTeamsAhead()).isNull();
         assertThat(content.getStatus()).isEqualTo(WaitingStatus.CALLED);
     }
 
@@ -297,6 +297,66 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 Redis 대기열의 첫 번째 웨이팅을 호출 처리한다")
+    void callNextWaiting_success() {
+        UUID storeId = UUID.randomUUID();
+        UUID waitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 10L, WaitingStatus.WAITING, "문 앞 자리");
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+
+        given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCallResponse response = waitingService.callNextWaiting(storeId);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getUserId()).isEqualTo(userId);
+        assertThat(response.getWaitingNumber()).isEqualTo(10L);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CALLED);
+        assertThat(response.getCalledAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 대기열이 비어 있으면 실패한다")
+    void callNextWaiting_notFoundWhenQueueEmpty() {
+        UUID storeId = UUID.randomUUID();
+
+        given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+
+        then(waitingRepository).should(never()).findById(any(UUID.class));
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 이미 호출된 웨이팅이면 실패한다")
+    void callNextWaiting_failWhenAlreadyCalled() {
+        UUID storeId = UUID.randomUUID();
+        UUID waitingId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 11L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+
+        given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
     }
 
     @Test

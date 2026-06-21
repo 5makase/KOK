@@ -1,14 +1,12 @@
 package com.omakase.kok.waiting.application.service;
 
 import com.omakase.kok.waiting.domain.entity.WaitingSetting;
-import com.omakase.kok.waiting.domain.entity.WaitingSummary;
 import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
-import com.omakase.kok.waiting.domain.repository.WaitingSummaryRepository;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
-import com.omakase.kok.waiting.presentation.dto.response.WaitingSummaryResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,59 +27,52 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
-class StoreWaitingServiceTest {
+class WaitingSettingServiceTest {
     @Mock
     private WaitingSettingRepository waitingSettingRepository;
-
-    @Mock
-    private WaitingSummaryRepository waitingSummaryRepository;
 
     @Mock
     private WaitingQueueRedisStore waitingQueueRedisStore;
 
     @InjectMocks
-    private StoreWaitingService storeWaitingService;
+    private WaitingSettingService waitingSettingService;
 
     @Test
-    @DisplayName("매장 웨이팅 요약은 기준값과 Redis 현재 대기 팀 수로 응답한다")
-    void getWaitingSummary_success() {
+    @DisplayName("매장 웨이팅 설정 조회는 저장된 설정값을 응답한다")
+    void getWaitingSetting_success() {
         UUID storeId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 10, 5, true, 12);
 
-        given(waitingQueueRedisStore.getStoreValues(storeId))
-                .willReturn(Optional.of(new StoreWaitingValues(true, 10, 5, true, 12)));
-        given(waitingQueueRedisStore.count(storeId)).willReturn(3L);
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
 
-        WaitingSummaryResponse response = storeWaitingService.getWaitingSummary(storeId);
+        WaitingSettingResponse response = waitingSettingService.getWaitingSetting(storeId);
 
+        assertThat(response.getWaitingSettingId()).isEqualTo(setting.getId());
         assertThat(response.getStoreId()).isEqualTo(storeId);
-        assertThat(response.getWaitingAvailable()).isTrue();
-        assertThat(response.getCurrentWaitingCount()).isEqualTo(3);
+        assertThat(response.getWaitingEnabled()).isTrue();
+        assertThat(response.getMaxWaitingCount()).isEqualTo(10);
+        assertThat(response.getCallTimeoutMinutes()).isEqualTo(5);
+        assertThat(response.getAllowUserCancel()).isTrue();
         assertThat(response.getAverageWaitingMinutes()).isEqualTo(12);
     }
 
     @Test
     @DisplayName("웨이팅 설정 초기화 시 기존 설정이 없으면 요청값으로 생성하고 Redis에 캐싱한다")
-    void initializeWaitingSetting_createNewSettingAndSummary() {
+    void initializeWaitingSetting_createNewSetting() {
         UUID storeId = UUID.randomUUID();
         WaitingSettingInitializeRequest request = waitingSettingInitializeRequest(true, 30, 5, false, 12);
 
         given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
-        given(waitingSummaryRepository.findByStoreId(storeId)).willReturn(Optional.empty());
         given(waitingSettingRepository.save(any(WaitingSetting.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
-        given(waitingSummaryRepository.save(any(WaitingSummary.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
 
-        WaitingSettingInitializeResponse response = storeWaitingService.initializeWaitingSetting(storeId, request);
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeWaitingSetting(storeId, request);
 
         assertThat(response.getStoreId()).isEqualTo(storeId);
         assertThat(response.getSettingCreated()).isTrue();
-        assertThat(response.getSummaryCreated()).isTrue();
 
         ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
-        ArgumentCaptor<WaitingSummary> summaryCaptor = ArgumentCaptor.forClass(WaitingSummary.class);
         then(waitingSettingRepository).should().save(settingCaptor.capture());
-        then(waitingSummaryRepository).should().save(summaryCaptor.capture());
 
         WaitingSetting setting = settingCaptor.getValue();
         assertThat(setting.getStoreId()).isEqualTo(storeId);
@@ -89,12 +80,7 @@ class StoreWaitingServiceTest {
         assertThat(setting.getMaxWaitingCount()).isEqualTo(30);
         assertThat(setting.getCallTimeoutMinutes()).isEqualTo(5);
         assertThat(setting.getAllowUserCancel()).isFalse();
-
-        WaitingSummary summary = summaryCaptor.getValue();
-        assertThat(summary.getStoreId()).isEqualTo(storeId);
-        assertThat(summary.getCurrentWaitingCount()).isZero();
-        assertThat(summary.getAverageWaitingMinutes()).isEqualTo(12);
-        assertThat(summary.getLastWaitingNumber()).isZero();
+        assertThat(setting.getAverageWaitingMinutes()).isEqualTo(12);
 
         then(waitingQueueRedisStore).should()
                 .cacheStoreValues(storeId, true, 30, 5, false, 12);
@@ -102,30 +88,21 @@ class StoreWaitingServiceTest {
 
     @Test
     @DisplayName("웨이팅 설정 초기화 시 기존 설정이 있으면 새로 만들지 않고 기존값을 Redis에 캐싱한다")
-    void initializeWaitingSetting_useExistingSettingAndSummary() {
+    void initializeWaitingSetting_useExistingSetting() {
         UUID storeId = UUID.randomUUID();
-        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, true);
-        WaitingSummary existingSummary = WaitingSummary.builder()
-                .storeId(storeId)
-                .currentWaitingCount(4)
-                .averageWaitingMinutes(11)
-                .lastWaitingNumber(9L)
-                .build();
+        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
 
         given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSetting));
-        given(waitingSummaryRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSummary));
 
-        WaitingSettingInitializeResponse response = storeWaitingService.initializeWaitingSetting(
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeWaitingSetting(
                 storeId,
                 waitingSettingInitializeRequest(false, 100, 10, false, 30)
         );
 
         assertThat(response.getStoreId()).isEqualTo(storeId);
         assertThat(response.getSettingCreated()).isFalse();
-        assertThat(response.getSummaryCreated()).isFalse();
 
         then(waitingSettingRepository).should(never()).save(any());
-        then(waitingSummaryRepository).should(never()).save(any());
         then(waitingQueueRedisStore).should()
                 .cacheStoreValues(storeId, true, 20, 8, true, 11);
     }
@@ -134,19 +111,12 @@ class StoreWaitingServiceTest {
     @DisplayName("웨이팅 기준값 캐시가 없으면 DB에서 조회한 뒤 Redis에 캐싱한다")
     void getStoreWaitingValues_cacheMiss() {
         UUID storeId = UUID.randomUUID();
-        WaitingSetting setting = WaitingSetting.create(storeId, true, 40, 7, false);
-        WaitingSummary summary = WaitingSummary.builder()
-                .storeId(storeId)
-                .currentWaitingCount(0)
-                .averageWaitingMinutes(13)
-                .lastWaitingNumber(0L)
-                .build();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 40, 7, false, 13);
 
         given(waitingQueueRedisStore.getStoreValues(storeId)).willReturn(Optional.empty());
         given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
-        given(waitingSummaryRepository.findByStoreId(storeId)).willReturn(Optional.of(summary));
 
-        StoreWaitingValues values = storeWaitingService.getStoreWaitingValues(storeId);
+        StoreWaitingValues values = waitingSettingService.getStoreWaitingValues(storeId);
 
         assertThat(values.waitingEnabled()).isTrue();
         assertThat(values.maxWaitingCount()).isEqualTo(40);

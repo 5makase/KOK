@@ -22,7 +22,6 @@ public class WaitingDetailResponse {
     private WaitingStatus status;
     private Long currentRank;
     private Long teamsAhead;
-    private Integer expectedWaitingMinutes;
     private LocalDateTime calledAt;
     private LocalDateTime enteredAt;
     private LocalDateTime cancelledAt;
@@ -41,7 +40,6 @@ public class WaitingDetailResponse {
                 waiting.getStatus(),
                 currentRank,
                 calculateTeamsAhead(currentRank),
-                waiting.getExpectedWaitingMinutes(),
                 waiting.getCalledAt(),
                 waiting.getEnteredAt(),
                 waiting.getCancelledAt(),

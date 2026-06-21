@@ -16,6 +16,9 @@ public interface WaitingRepository extends JpaRepository<Waiting, UUID> {
     // 매장별 상태 페이지 조회
     Page<Waiting> findByStoreIdAndStatus(UUID storeId, WaitingStatus status, Pageable pageable);
 
+    // 매장별 전체 페이지 조회
+    Page<Waiting> findByStoreId(UUID storeId, Pageable pageable);
+
     // 사용자별 상태 페이지 조회
     Page<Waiting> findByUserIdAndStatus(UUID userId, WaitingStatus status, Pageable pageable);
 

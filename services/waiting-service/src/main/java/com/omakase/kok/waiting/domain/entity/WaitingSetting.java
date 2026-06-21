@@ -20,7 +20,7 @@ import java.util.UUID;
 @Getter
 @Entity
 @Table(name = "p_waiting_settings")
-@Check(constraints = "max_waiting_count > 0 and call_timeout_minutes > 0")
+@Check(constraints = "max_waiting_count > 0 and call_timeout_minutes > 0 and average_waiting_minutes >= 0")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class WaitingSetting extends BaseEntity {
     @Id
@@ -43,21 +43,26 @@ public class WaitingSetting extends BaseEntity {
     @Column(name = "allow_user_cancel", nullable = false)
     private Boolean allowUserCancel;
 
+    @Column(name = "average_waiting_minutes", nullable = false)
+    private Integer averageWaitingMinutes;
+
     @Builder(access = AccessLevel.PRIVATE)
     private WaitingSetting(UUID storeId, Boolean waitingEnabled, Integer maxWaitingCount,
-                           Integer callTimeoutMinutes, Boolean allowUserCancel) {
+                           Integer callTimeoutMinutes, Boolean allowUserCancel, Integer averageWaitingMinutes) {
         this.storeId = storeId;
         this.waitingEnabled = waitingEnabled;
         this.maxWaitingCount = maxWaitingCount;
         this.callTimeoutMinutes = callTimeoutMinutes;
         this.allowUserCancel = allowUserCancel;
+        this.averageWaitingMinutes = averageWaitingMinutes;
     }
 
     public static WaitingSetting create(UUID storeId, Boolean waitingEnabled, Integer maxWaitingCount,
-                                        Integer callTimeoutMinutes, Boolean allowUserCancel) {
+                                        Integer callTimeoutMinutes, Boolean allowUserCancel, Integer averageWaitingMinutes) {
         Integer defaultedMaxWaitingCount = maxWaitingCount != null ? maxWaitingCount : 100;
         Integer defaultedCallTimeoutMinutes = callTimeoutMinutes != null ? callTimeoutMinutes : 10;
-        validateValues(defaultedMaxWaitingCount, defaultedCallTimeoutMinutes);
+        Integer defaultedAverageWaitingMinutes = averageWaitingMinutes != null ? averageWaitingMinutes : 10;
+        validateValues(defaultedMaxWaitingCount, defaultedCallTimeoutMinutes, defaultedAverageWaitingMinutes);
 
         return WaitingSetting.builder()
                 .storeId(storeId)
@@ -65,12 +70,13 @@ public class WaitingSetting extends BaseEntity {
                 .maxWaitingCount(defaultedMaxWaitingCount)
                 .callTimeoutMinutes(defaultedCallTimeoutMinutes)
                 .allowUserCancel(allowUserCancel != null ? allowUserCancel : true)
+                .averageWaitingMinutes(defaultedAverageWaitingMinutes)
                 .build();
     }
 
     public void update(Boolean waitingEnabled, Integer maxWaitingCount, Integer callTimeoutMinutes,
-                       Boolean allowUserCancel) {
-        validateValues(maxWaitingCount, callTimeoutMinutes);
+                       Boolean allowUserCancel, Integer averageWaitingMinutes) {
+        validateValues(maxWaitingCount, callTimeoutMinutes, averageWaitingMinutes);
         if (waitingEnabled != null) {
             this.waitingEnabled = waitingEnabled;
         }
@@ -83,11 +89,15 @@ public class WaitingSetting extends BaseEntity {
         if (allowUserCancel != null) {
             this.allowUserCancel = allowUserCancel;
         }
+        if (averageWaitingMinutes != null) {
+            this.averageWaitingMinutes = averageWaitingMinutes;
+        }
     }
 
-    private static void validateValues(Integer maxWaitingCount, Integer callTimeoutMinutes) {
+    private static void validateValues(Integer maxWaitingCount, Integer callTimeoutMinutes, Integer averageWaitingMinutes) {
         if ((maxWaitingCount != null && maxWaitingCount <= 0)
-                || (callTimeoutMinutes != null && callTimeoutMinutes <= 0)) {
+                || (callTimeoutMinutes != null && callTimeoutMinutes <= 0)
+                || (averageWaitingMinutes != null && averageWaitingMinutes < 0)) {
             throw new WaitingException(WaitingErrorCode.WAITING_SETTING_INVALID);
         }
     }

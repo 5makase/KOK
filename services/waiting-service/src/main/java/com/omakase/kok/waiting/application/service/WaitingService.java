@@ -89,7 +89,7 @@ public class WaitingService {
                 .peopleCount(request.getPeopleCount())
                 .requestMessage(request.getRequestMessage())
                 .build();
-        Waiting savedWaiting = saveWaitingOrRollbackQueue(storeId, waiting);
+        Waiting savedWaiting = saveWaitingWithQueueRollback(storeId, waiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_REGISTERED 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_REGISTERED);
 
@@ -133,12 +133,12 @@ public class WaitingService {
     public WaitingCancelResponse cancelWaiting(UUID userId, String role, UUID waitingId, WaitingCancelRequest request) {
         Waiting waiting = waitingRepository.findById(waitingId)
                 .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
-        validateUserCancelable(waiting);
         validateWaitingAccess(userId, role, waiting);
+        validateUserCancelable(role, waiting);
 
         waiting.cancel(request.getCancelReason());
         Waiting savedWaiting = waitingRepository.save(waiting);
-        registerQueueRemovalAfterCommit(savedWaiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_CANCELLED 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CANCELLED);
 
@@ -156,7 +156,7 @@ public class WaitingService {
 
         waiting.call();
         Waiting savedWaiting = waitingRepository.save(waiting);
-        registerQueueRemovalAfterCommit(savedWaiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_CALLED 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CALLED);
 
@@ -172,7 +172,7 @@ public class WaitingService {
 
         waiting.enter();
         Waiting savedWaiting = waitingRepository.save(waiting);
-        registerQueueRemovalAfterCommit(savedWaiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_ENTERED 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_ENTERED);
 
@@ -188,7 +188,7 @@ public class WaitingService {
 
         waiting.noShow(request.getReason());
         Waiting savedWaiting = waitingRepository.save(waiting);
-        registerQueueRemovalAfterCommit(savedWaiting);
+        scheduleQueueRemovalAfterCommit(savedWaiting);
         // TODO: Kafka Outbox Publisher 도입 시 WAITING_NO_SHOW 이벤트 저장
         // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
 
@@ -225,8 +225,9 @@ public class WaitingService {
         }
     }
 
-    // 상태 변경이 커밋된 뒤에만 Redis 대기열에서 제거한다
-    private void registerQueueRemovalAfterCommit(Waiting waiting) {
+    // cancel/call/enter/no-show처럼 DB 상태를 먼저 바꾸는 흐름에서 사용
+    // 트랜잭션이 정상 커밋된 뒤에만 Redis 대기열을 제거
+    private void scheduleQueueRemovalAfterCommit(Waiting waiting) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
             return;
@@ -234,26 +235,33 @@ public class WaitingService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+                try {
+                    waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+                } catch (RuntimeException e) {
+                    log.warn("Failed to cleanup waiting queue after commit. storeId={}, userId={}, waitingId={}",
+                            waiting.getStoreId(), waiting.getUserId(), waiting.getId(), e);
+                }
             }
         });
     }
 
-    // 웨이팅 저장 실패 시 Redis 롤백
-    private Waiting saveWaitingOrRollbackQueue(UUID storeId, Waiting waiting) {
-        registerQueueRollbackCleanup(storeId, waiting);
+    // 웨이팅 등록용
+    // DB 저장 실패 -> Redis 등록 롤백
+    private Waiting saveWaitingWithQueueRollback(UUID storeId, Waiting waiting) {
+        scheduleQueueRollbackOnTransactionFailure(storeId, waiting);
         try {
             return waitingRepository.saveAndFlush(waiting);
         } catch (RuntimeException e) {
             if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-                removeQueueAfterPersistenceFailure(storeId, waiting, e);
+                rollbackQueueRegistrationSafely(storeId, waiting, e);
             }
             throw e;
         }
     }
 
-    // 트랜잭션 롤백 시 Redis 대기열 정리를 예약
-    private void registerQueueRollbackCleanup(UUID storeId, Waiting waiting) {
+    // 웨이팅 등록용 롤백 훅 예약
+    // 트랜잭션 롤백 시 Redis 등록도 함께 롤백
+    private void scheduleQueueRollbackOnTransactionFailure(UUID storeId, Waiting waiting) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             return;
         }
@@ -261,14 +269,15 @@ public class WaitingService {
             @Override
             public void afterCompletion(int status) {
                 if (status == STATUS_ROLLED_BACK) {
-                    removeQueueAfterPersistenceFailure(storeId, waiting, null);
+                    rollbackQueueRegistrationSafely(storeId, waiting, null);
                 }
             }
         });
     }
 
-    // DB 저장 실패 또는 트랜잭션 롤백 후 Redis 대기열/중복 방지 키 제거
-    private void removeQueueAfterPersistenceFailure(UUID storeId, Waiting waiting, RuntimeException originalException) {
+    // 웨이팅 등록 롤백 즉시 실행
+    // 대기열과 active user 키를 함께 제거
+    private void rollbackQueueRegistrationSafely(UUID storeId, Waiting waiting, RuntimeException originalException) {
         try {
             waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
         } catch (RuntimeException rollbackException) {
@@ -291,7 +300,10 @@ public class WaitingService {
     }
 
     // 사용자 취소 가능 여부 확인
-    private void validateUserCancelable(Waiting waiting) {
+    private void validateUserCancelable(String role, Waiting waiting) {
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.USER)) {
+            return;
+        }
         StoreWaitingValues storeWaitingValues = waitingSettingService.getStoreWaitingValues(waiting.getStoreId());
         if (!Boolean.TRUE.equals(storeWaitingValues.allowUserCancel())) {
             throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_DISABLED);

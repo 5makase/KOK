@@ -31,6 +31,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -273,14 +276,13 @@ class WaitingServiceTest {
         WaitingCancelRequest request = waitingCancelRequest("관리자 취소");
 
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
-        given(waitingSettingService.getStoreWaitingValues(storeId))
-                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
         given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         WaitingCancelResponse response = waitingService.cancelWaiting(masterId, "MASTER", waitingId, request);
 
         assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
         assertThat(response.getCancelReason()).isEqualTo("관리자 취소");
+        then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
         then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
     }
 
@@ -296,14 +298,13 @@ class WaitingServiceTest {
         WaitingCancelRequest request = waitingCancelRequest("취소 요청");
 
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
-        given(waitingSettingService.getStoreWaitingValues(storeId))
-                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
 
         assertThatThrownBy(() -> waitingService.cancelWaiting(requesterId, "USER", waitingId, request))
                 .isInstanceOf(BaseException.class)
                 .satisfies(exception -> assertThat(((BaseException) exception).getErrorCode())
                         .isEqualTo(CommonErrorCode.ACCESS_DENIED));
 
+        then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
     }
@@ -328,6 +329,27 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("마스터는 사용자 취소 비활성화 매장이어도 웨이팅을 취소할 수 있다")
+    void cancelWaiting_masterBypassesUserCancelPolicy() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, ownerId, 7L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("관리자 취소");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingCancelResponse response = waitingService.cancelWaiting(masterId, "MASTER", waitingId, request);
+
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+        then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
+        then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
     }
 
     @Test
@@ -473,6 +495,38 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    @DisplayName("커밋 후 Redis 정리에 실패해도 상태 변경 요청은 성공한다")
+    void cancelWaiting_succeedsEvenWhenQueueCleanupFailsAfterCommit() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, userId, 17L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingCancelRequest request = waitingCancelRequest("개인 사정");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
+                .when(waitingQueueRedisStore).remove(storeId, userId, waitingId);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            WaitingCancelResponse response = waitingService.cancelWaiting(userId, "USER", waitingId, request);
+
+            assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
+            List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+
+            assertThatCode(() -> synchronizations.forEach(TransactionSynchronization::afterCommit))
+                    .doesNotThrowAnyException();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

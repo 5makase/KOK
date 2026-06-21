@@ -12,6 +12,7 @@ import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingDetailResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -141,6 +142,22 @@ public class WaitingController {
                 AuthConstants.OWNER
         );
         WaitingCallResponse response = waitingService.callNextWaiting(storeId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // 웨이팅 입장 완료 처리
+    @PatchMapping("/{waitingId}/enter")
+    public ResponseEntity<ApiResponse<WaitingEnterResponse>> enterWaiting(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
+            @PathVariable UUID waitingId
+    ) {
+        RoleAuthorizationUtils.requireAnyRole(
+                role,
+                AuthConstants.MASTER,
+                AuthConstants.OWNER
+        );
+        WaitingEnterResponse response = waitingService.enterWaiting(userId, waitingId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

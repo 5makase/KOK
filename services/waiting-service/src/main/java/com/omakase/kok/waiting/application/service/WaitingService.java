@@ -165,9 +165,18 @@ public class WaitingService {
 
     // 웨이팅 입장 완료 처리
     @Transactional
-    public WaitingEnterResponse enterWaiting(UUID waitingId) {
+    public WaitingEnterResponse enterWaiting(UUID userId, UUID waitingId) {
         // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
-        throw new UnsupportedOperationException("입장 완료 처리 로직 구현 예정입니다.");
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+
+        waiting.enter();
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        registerQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_ENTERED 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_ENTERED);
+
+        return WaitingEnterResponse.from(savedWaiting);
     }
 
     // 웨이팅 미입장 처리

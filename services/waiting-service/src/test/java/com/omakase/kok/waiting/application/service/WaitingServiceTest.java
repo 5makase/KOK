@@ -17,6 +17,7 @@ import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -357,6 +358,47 @@ class WaitingServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED));
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
+    }
+
+    @Test
+    @DisplayName("입장 완료 처리는 CALLED 상태 웨이팅을 ENTERED로 변경한다")
+    void enterWaiting_success() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 13L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingEnterResponse response = waitingService.enterWaiting(userId, waitingId);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.ENTERED);
+        assertThat(response.getEnteredAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, waiting.getUserId(), waitingId);
+    }
+
+    @Test
+    @DisplayName("입장 완료 처리는 CALLED 상태가 아니면 실패한다")
+    void enterWaiting_failWhenNotCalled() {
+        UUID waitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(UUID.randomUUID(), UUID.randomUUID(), 14L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.enterWaiting(userId, waitingId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_ENTER_NOT_ALLOWED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
     }
 
     @Test

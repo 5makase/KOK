@@ -8,11 +8,13 @@ import com.omakase.kok.waiting.application.service.WaitingService;
 import com.omakase.kok.waiting.domain.enums.WaitingStatus;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingNoShowRequest;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingDetailResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -158,6 +160,23 @@ public class WaitingController {
                 AuthConstants.OWNER
         );
         WaitingEnterResponse response = waitingService.enterWaiting(userId, waitingId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // 웨이팅 미입장 처리
+    @PatchMapping("/{waitingId}/no-show")
+    public ResponseEntity<ApiResponse<WaitingNoShowResponse>> noShowWaiting(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
+            @PathVariable UUID waitingId,
+            @Valid @RequestBody WaitingNoShowRequest request
+    ) {
+        RoleAuthorizationUtils.requireAnyRole(
+                role,
+                AuthConstants.MASTER,
+                AuthConstants.OWNER
+        );
+        WaitingNoShowResponse response = waitingService.noShowWaiting(userId, waitingId, request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

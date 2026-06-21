@@ -15,9 +15,11 @@ import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.Store
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.WaitingRegistration;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCancelRequest;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingCreateRequest;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingNoShowRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCallResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
 import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -402,6 +404,50 @@ class WaitingServiceTest {
     }
 
     @Test
+    @DisplayName("미입장 처리는 CALLED 상태 웨이팅을 NO_SHOW로 변경한다")
+    void noShowWaiting_success() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 15L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+        WaitingNoShowRequest request = waitingNoShowRequest("호출 후 미방문");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingNoShowResponse response = waitingService.noShowWaiting(userId, waitingId, request);
+
+        assertThat(response.getWaitingId()).isEqualTo(waitingId);
+        assertThat(response.getStatus()).isEqualTo(WaitingStatus.NO_SHOW);
+        assertThat(response.getReason()).isEqualTo("호출 후 미방문");
+        assertThat(response.getNoShowAt()).isNotNull();
+
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(storeId, waiting.getUserId(), waitingId);
+    }
+
+    @Test
+    @DisplayName("미입장 처리는 CALLED 상태가 아니면 실패한다")
+    void noShowWaiting_failWhenNotCalled() {
+        UUID waitingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Waiting waiting = waiting(UUID.randomUUID(), UUID.randomUUID(), 16L, WaitingStatus.WAITING, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        WaitingNoShowRequest request = waitingNoShowRequest("부재");
+
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.noShowWaiting(userId, waitingId, request))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_NO_SHOW_NOT_ALLOWED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+    }
+
+    @Test
     @DisplayName("순번 임박 알림 대상 조회는 Redis 순서를 유지해 현재 순번을 포함해 응답한다")
     void getNearTurnWaitings_success() {
         UUID storeId = UUID.randomUUID();
@@ -451,6 +497,12 @@ class WaitingServiceTest {
     private WaitingCancelRequest waitingCancelRequest(String cancelReason) {
         WaitingCancelRequest request = newInstance(WaitingCancelRequest.class);
         ReflectionTestUtils.setField(request, "cancelReason", cancelReason);
+        return request;
+    }
+
+    private WaitingNoShowRequest waitingNoShowRequest(String reason) {
+        WaitingNoShowRequest request = newInstance(WaitingNoShowRequest.class);
+        ReflectionTestUtils.setField(request, "reason", reason);
         return request;
     }
 

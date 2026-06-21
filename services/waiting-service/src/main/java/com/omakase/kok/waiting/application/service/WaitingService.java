@@ -181,9 +181,18 @@ public class WaitingService {
 
     // 웨이팅 미입장 처리
     @Transactional
-    public WaitingNoShowResponse noShowWaiting(UUID waitingId, WaitingNoShowRequest request) {
+    public WaitingNoShowResponse noShowWaiting(UUID userId, UUID waitingId, WaitingNoShowRequest request) {
         // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
-        throw new UnsupportedOperationException("미입장 처리 로직 구현 예정입니다.");
+        Waiting waiting = waitingRepository.findById(waitingId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+
+        waiting.noShow(request.getReason());
+        Waiting savedWaiting = waitingRepository.save(waiting);
+        registerQueueRemovalAfterCommit(savedWaiting);
+        // TODO: Kafka Outbox Publisher 도입 시 WAITING_NO_SHOW 이벤트 저장
+        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
+
+        return WaitingNoShowResponse.from(savedWaiting);
     }
 
     // 순번 임박 알림 대상 조회

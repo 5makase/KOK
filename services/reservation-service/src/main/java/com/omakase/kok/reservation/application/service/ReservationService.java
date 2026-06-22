@@ -19,6 +19,7 @@ import com.omakase.kok.reservation.infrastructure.client.dto.CreatePaymentReques
 import com.omakase.kok.reservation.infrastructure.client.dto.PaymentResponse;
 import com.omakase.kok.reservation.infrastructure.client.dto.RefundRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -214,9 +216,13 @@ public class ReservationService {
         }
         final PaymentResponse finalPayment = payment;
 
+        // DB 커밋 전 재검증으로 동시 취소 요청 방어
         String cancelReason = request != null ? request.getCancelReason() : null;
         ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
             Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+            if (!r.isCancellable()) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+            }
             r.cancel("USER", cancelReason);
             outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
             return ReservationResponse.from(r);
@@ -226,12 +232,21 @@ public class ReservationService {
         if (slot.isDepositRequired() && finalPayment != null) {
             long refundAmount = calculateUserRefundAmount(slot.getSlotDate(), finalPayment.getAmount());
             if (refundAmount > 0) {
-                paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(refundAmount));
+                try {
+                    paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(refundAmount));
+                } catch (Exception e) {
+                    log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
+                }
             }
         }
 
-        redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
-                .addAndGet(reservation.getReservationSize());
+        // Redis 잔여 인원 복구 실패 시 로그 기록 (슬롯 용량 불일치 방지)
+        try {
+            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                    .addAndGet(reservation.getReservationSize());
+        } catch (Exception e) {
+            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+        }
 
         return response;
     }
@@ -259,9 +274,13 @@ public class ReservationService {
         }
         final PaymentResponse finalPayment = payment;
 
+        // DB 커밋 전 재검증으로 동시 취소 요청 방어
         String cancelReason = request != null ? request.getCancelReason() : null;
         ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
             Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+            if (!r.isCancellable()) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+            }
             r.cancel("OWNER", cancelReason);
             outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
             return ReservationResponse.from(r);
@@ -269,11 +288,20 @@ public class ReservationService {
 
         // DB 커밋 이후 전액 환불 처리
         if (slot.isDepositRequired() && finalPayment != null) {
-            paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(finalPayment.getAmount()));
+            try {
+                paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(finalPayment.getAmount()));
+            } catch (Exception e) {
+                log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
+            }
         }
 
-        redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
-                .addAndGet(reservation.getReservationSize());
+        // Redis 잔여 인원 복구 실패 시 로그 기록
+        try {
+            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                    .addAndGet(reservation.getReservationSize());
+        } catch (Exception e) {
+            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+        }
 
         return response;
     }

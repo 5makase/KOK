@@ -4,6 +4,7 @@ import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
 import com.omakase.kok.store.domain.enums.StoreStatus;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -14,6 +15,7 @@ import java.util.UUID;
 
 @Getter
 @Builder(toBuilder = true)
+@JsonDeserialize(builder = StoreResult.StoreResultBuilder.class)
 public class StoreResult {
 
     private UUID storeId;
@@ -35,7 +37,7 @@ public class StoreResult {
     private String thumbnailUrl;
     private LocalDateTime createdAt;
 
-    // 매장 상세 홈 탭 전용 — getStore() 호출 시에만 주입, 목록 조회 시 null
+    // 매장 상세 홈 탭 전용 - getStore() 호출 시에만 주입, 목록 조회 시 null
     private StoreHoursResult todayHours;
     private List<StoreAmenityResult> amenities;
     private List<StoreImageResult> imagePreview;
@@ -43,6 +45,7 @@ public class StoreResult {
 
     @Getter
     @Builder
+    @JsonDeserialize(builder = StoreResult.CategoryInfo.CategoryInfoBuilder.class)
     public static class CategoryInfo {
         private UUID categoryId;
         private String categoryName;
@@ -53,6 +56,7 @@ public class StoreResult {
     // TODO: Menu 도메인 구현 후 from(Menu) 팩토리 메서드 추가
     @Getter
     @Builder
+    @JsonDeserialize(builder = StoreResult.MenuPreviewResult.MenuPreviewResultBuilder.class)
     public static class MenuPreviewResult {
         private UUID menuId;
         private String name;

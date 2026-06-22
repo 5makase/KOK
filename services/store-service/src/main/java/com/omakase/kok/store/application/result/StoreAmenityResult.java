@@ -1,5 +1,6 @@
 package com.omakase.kok.store.application.result;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.omakase.kok.store.domain.entity.StoreAmenity;
 import com.omakase.kok.store.domain.enums.AmenityType;
 import lombok.Builder;
@@ -10,6 +11,7 @@ import java.util.UUID;
 
 @Getter
 @Builder
+@JsonDeserialize(builder = StoreAmenityResult.StoreAmenityResultBuilder.class)
 public class StoreAmenityResult {
 
     private UUID amenityId;

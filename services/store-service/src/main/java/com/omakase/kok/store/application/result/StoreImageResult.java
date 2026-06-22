@@ -1,5 +1,6 @@
 package com.omakase.kok.store.application.result;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.omakase.kok.store.domain.entity.StoreImage;
 import lombok.Builder;
 import lombok.Getter;
@@ -8,6 +9,7 @@ import java.util.UUID;
 
 @Getter
 @Builder
+@JsonDeserialize(builder = StoreImageResult.StoreImageResultBuilder.class)
 public class StoreImageResult {
 
     private UUID imageId;

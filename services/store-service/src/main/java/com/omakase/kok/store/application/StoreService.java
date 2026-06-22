@@ -18,6 +18,7 @@ import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
@@ -27,6 +28,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -44,6 +47,7 @@ public class StoreService {
     private final StoreAmenityRepository storeAmenityRepository;
     private final StoreImageRepository storeImageRepository;
     private final StoreFinder storeFinder;
+    private final StoreListCacheRepository storeListCacheRepository;
 
     @Transactional
     public StoreResult createStore(CreateStoreCommand command) {
@@ -65,7 +69,9 @@ public class StoreService {
                 command.getMaxCapacity()
         );
 
-        return StoreResult.from(storeRepository.save(store));
+        StoreResult result = StoreResult.from(storeRepository.save(store));
+        evictListCacheAfterCommit();
+        return result;
     }
 
     @Transactional
@@ -93,6 +99,7 @@ public class StoreService {
                 category
         );
 
+        evictListCacheAfterCommit();
         return StoreResult.from(store);
     }
 
@@ -103,6 +110,7 @@ public class StoreService {
             validateOwner(store, requesterId);
         }
         store.delete(requesterId);
+        evictListCacheAfterCommit();
     }
 
     @Transactional
@@ -119,6 +127,7 @@ public class StoreService {
         }
 
         store.changeStatus(command.getStatus(), command.getRequesterId());
+        evictListCacheAfterCommit();
         return StoreResult.from(store);
     }
 
@@ -143,7 +152,19 @@ public class StoreService {
     }
 
     public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID userId, String role, Pageable pageable) {
-        return storeRepository.search(resolveCondition(condition, userId, role), pageable).map(StoreResult::from);
+        StoreSearchCondition resolved = resolveCondition(condition, userId, role);
+
+        // OWNER는 본인 매장만 조회 - 캐시 효과 낮고 다른 OWNER 캐시와 격리 필요
+        if ("OWNER".equals(role)) {
+            return storeRepository.search(resolved, pageable).map(StoreResult::from);
+        }
+
+        String cacheKey = resolved.toCacheKey(pageable);
+        return storeListCacheRepository.get(cacheKey, pageable).orElseGet(() -> {
+            Page<StoreResult> result = storeRepository.search(resolved, pageable).map(StoreResult::from);
+            storeListCacheRepository.set(cacheKey, result);
+            return result;
+        });
     }
 
     // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로
@@ -165,6 +186,21 @@ public class StoreService {
     // 내부 API - 웨이팅 서비스에서 매장 기본 정보 조회 시 사용
     public StoreSummaryResult getStoreSummary(UUID storeId) {
         return StoreSummaryResult.from(storeFinder.findActiveOrThrow(storeId));
+    }
+
+    // DB 커밋 완료 후 목록 캐시 무효화 - 롤백 시 불필요한 eviction 방지
+    // 매장 데이터를 변경하는 @Transactional 메서드는 반드시 이 메서드를 호출해야 함
+    private void evictListCacheAfterCommit() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            storeListCacheRepository.evictAll();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                storeListCacheRepository.evictAll();
+            }
+        });
     }
 
     private void validateOwner(Store store, UUID requesterId) {

@@ -1,9 +1,10 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.store.domain.entity.Store;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
+import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.service.StoreFinder;
-import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class StoreRatingService {
     private final StoreFinder storeFinder;
     private final StoreRepository storeRepository;
     private final StoreRankingRepository storeRankingRepository;
+    private final StoreListCacheRepository storeListCacheRepository;
 
     @Transactional
     public void updateRating(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
@@ -51,6 +53,8 @@ public class StoreRatingService {
                     // TODO (고도화/도전기능) Spring Batch로 DB ↔ Redis 랭킹 주기적 재동기화 시 복구
                     log.warn("store:ranking 갱신 실패. storeId={}, averageRating={}", storeId, averageRating, e);
                 }
+                // 평점 변경 시 목록 캐시 무효화 - 랭킹과 동일하게 afterCommit() 기준으로 통일
+                storeListCacheRepository.evictAll();
             }
         });
     }

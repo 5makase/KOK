@@ -1,5 +1,6 @@
 package com.omakase.kok.store.application.result;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import lombok.Builder;
 import lombok.Getter;
@@ -10,6 +11,7 @@ import java.util.UUID;
 
 @Getter
 @Builder
+@JsonDeserialize(builder = StoreHoursResult.StoreHoursResultBuilder.class)
 public class StoreHoursResult {
 
     private UUID hoursId;

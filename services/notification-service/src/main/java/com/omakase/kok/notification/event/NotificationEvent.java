@@ -1,6 +1,6 @@
 package com.omakase.kok.notification.event;
 
-import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -9,30 +9,28 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Kafka 이벤트 공통 페이로드
+ * Kafka 이벤트 공통 Envelope.
  *
- * 발행 서비스는 아래 필드를 반드시 포함해야 한다.
- * - eventType    : NotificationType enum 값 (ex. WAITING_CALLED)
- * - userId       : 수신자 ID
- * - referenceId  : 원본 데이터 ID (waitingId / reservationId 등을 referenceId로 표준화)
- * - referenceType: 원본 타입 (WAITING / RESERVATION / PAYMENT / REVIEW / USER)
- *
- * 그 외 필드(storeName, waitingNumber 등)는 params 에 자동 수집되어
- * NotificationType.render() 에 전달된다.
+ * 팀 표준 구조:
+ * - eventId      : 이벤트 고유 ID
+ * - eventType    : NotificationType enum 값 (ex. WAITING_REGISTERED)
+ * - schemaVersion: 스키마 버전
+ * - occurredAt   : 이벤트 발생 일시 (ISO 8601)
+ * - producer     : 발행 서비스명 (ex. waiting-service) → ReferenceType 매핑에 사용
+ * - payload      : 도메인별 데이터 스냅샷
+ *                  → userId, 도메인 ID(waitingId 등) 포함 필수
+ *                  → NotificationType.render() 에 그대로 전달됨
  */
 @Getter
 @NoArgsConstructor
 public class NotificationEvent {
 
+    private UUID eventId;
     private String eventType;
-    private UUID userId;
-    private UUID referenceId;
-    private String referenceType;
+    private Integer schemaVersion;
+    private String occurredAt;
+    private String producer;
 
-    private final Map<String, Object> params = new HashMap<>();
-
-    @JsonAnySetter
-    public void addParam(String key, Object value) {
-        this.params.put(key, value);
-    }
+    @JsonProperty("payload")
+    private Map<String, Object> payload = new HashMap<>();
 }

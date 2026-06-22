@@ -4,12 +4,14 @@ import com.omakase.kok.notification.entity.Notification;
 import com.omakase.kok.notification.entity.SlackSendLog;
 import com.omakase.kok.notification.enums.NotificationType;
 import com.omakase.kok.notification.enums.ReferenceType;
-import com.omakase.kok.notification.event.NotificationEvent;
 import com.omakase.kok.notification.repository.NotificationRepository;
 import com.omakase.kok.notification.repository.SlackSendLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * 알림 저장 트랜잭션 담당.
@@ -28,18 +30,14 @@ public class NotificationSaveService {
 
     @Transactional
     public SaveResult save(
-            NotificationEvent event,
+            UUID userId,
+            UUID referenceId,
+            ReferenceType referenceType,
             NotificationType notificationType,
-            ReferenceType referenceType
+            Map<String, Object> params
     ) {
         Notification notification = notificationRepository.save(
-                Notification.create(
-                        event.getUserId(),
-                        event.getReferenceId(),
-                        referenceType,
-                        notificationType,
-                        event.getParams()
-                )
+                Notification.create(userId, referenceId, referenceType, notificationType, params)
         );
 
         SlackSendLog slackSendLog = slackSendLogRepository.save(

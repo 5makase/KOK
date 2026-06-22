@@ -8,8 +8,8 @@ public enum NotificationType {
     WAITING_REGISTERED {
         @Override
         public String render(Map<String, Object> params) {
-            return String.format("[%s] 현재 %s번째 대기 중입니다.",
-                    params.get("storeName"), params.get("waitingNumber"));
+            return String.format("[%s] 웨이팅이 등록되었습니다. 대기번호 %s번, %s명입니다.",
+                    params.get("storeName"), params.get("waitingNumber"), params.get("peopleCount"));
         }
     },
     WAITING_NEAR_TURN {
@@ -22,14 +22,28 @@ public enum NotificationType {
     WAITING_CALLED {
         @Override
         public String render(Map<String, Object> params) {
-            return String.format("⭐ [%s] 지금 입장해주세요! (대기번호 %s번)",
-                    params.get("storeName"), params.get("waitingNumber"));
+            return String.format("[%s] 입장 순서가 되었습니다. %s분 내로 입장해주세요.",
+                    params.get("storeName"), params.get("callTimeoutMinutes"));
+        }
+    },
+    WAITING_ENTERED {
+        @Override
+        public String render(Map<String, Object> params) {
+            return String.format("[%s] 입장이 완료되었습니다. 즐거운 시간 되세요!",
+                    params.get("storeName"));
         }
     },
     WAITING_CANCELLED {
         @Override
         public String render(Map<String, Object> params) {
-            return String.format("[%s] 웨이팅이 취소되었습니다.",
+            return String.format("[%s] 웨이팅이 취소되었습니다. 사유: %s",
+                    params.get("storeName"), params.get("cancelReason"));
+        }
+    },
+    WAITING_NO_SHOW {
+        @Override
+        public String render(Map<String, Object> params) {
+            return String.format("[%s] 호출 후 미입장으로 인해 웨이팅이 취소 처리되었습니다.",
                     params.get("storeName"));
         }
     },

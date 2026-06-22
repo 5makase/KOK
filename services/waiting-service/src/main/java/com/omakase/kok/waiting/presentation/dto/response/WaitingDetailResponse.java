@@ -22,11 +22,12 @@ public class WaitingDetailResponse {
     private WaitingStatus status;
     private Long currentRank;
     private Long teamsAhead;
-    private Integer expectedWaitingMinutes;
     private LocalDateTime calledAt;
     private LocalDateTime enteredAt;
     private LocalDateTime cancelledAt;
+    private String cancelReason;
     private LocalDateTime noShowAt;
+    private String noShowReason;
     private LocalDateTime createdAt;
 
     public static WaitingDetailResponse of(Waiting waiting, Long currentRank) {
@@ -41,11 +42,12 @@ public class WaitingDetailResponse {
                 waiting.getStatus(),
                 currentRank,
                 calculateTeamsAhead(currentRank),
-                waiting.getExpectedWaitingMinutes(),
                 waiting.getCalledAt(),
                 waiting.getEnteredAt(),
                 waiting.getCancelledAt(),
+                waiting.getCancelReason(),
                 waiting.getNoShowedAt(),
+                waiting.getNoShowReason(),
                 waiting.getCreatedAt()
         );
     }

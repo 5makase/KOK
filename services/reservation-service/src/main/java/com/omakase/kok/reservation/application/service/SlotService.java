@@ -81,7 +81,7 @@ public class SlotService {
             throw new BaseException(SlotErrorCode.SLOT_HAS_ACTIVE_RESERVATION);
         }
 
-        slot.delete(ownerId.toString());
+        slot.delete(ownerId);
 
         redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId).delete();
     }

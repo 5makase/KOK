@@ -2,6 +2,7 @@ package com.omakase.kok.reservation.presentation.controller;
 
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.application.service.ReservationService;
@@ -42,5 +43,13 @@ public class ReservationController {
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @PathVariable UUID reservationId) {
         return ResponseEntity.ok(ApiResponse.success(reservationService.getMyReservation(reservationId, userId)));
+    }
+
+    @PatchMapping("/{reservationId}/cancel")
+    public ResponseEntity<ApiResponse<ReservationResponse>> cancelReservation(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @PathVariable UUID reservationId,
+            @RequestBody(required = false) CancelReservationRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.cancelReservation(reservationId, userId, request)));
     }
 }

@@ -432,7 +432,7 @@ class WaitingServiceTest {
     void callNextWaiting_failWhenLockNotAcquired() throws InterruptedException {
         UUID storeId = UUID.randomUUID();
         given(redissonClient.getLock("waiting:store:" + storeId + ":call-next:lock")).willReturn(callNextLock);
-        given(callNextLock.tryLock(0L, 10L, TimeUnit.SECONDS)).willReturn(false);
+        given(callNextLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(false);
 
         assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->
@@ -638,7 +638,7 @@ class WaitingServiceTest {
 
     private void givenCallNextLockAcquired(UUID storeId) throws InterruptedException {
         given(redissonClient.getLock("waiting:store:" + storeId + ":call-next:lock")).willReturn(callNextLock);
-        given(callNextLock.tryLock(0L, 10L, TimeUnit.SECONDS)).willReturn(true);
+        given(callNextLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
         given(callNextLock.isHeldByCurrentThread()).willReturn(true);
     }
 

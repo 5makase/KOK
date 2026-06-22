@@ -58,7 +58,6 @@ public class WaitingService {
     private static final String WAITING_CALL_NEXT_LOCK_KEY_PREFIX = "waiting:store:";
     private static final String WAITING_CALL_NEXT_LOCK_KEY_SUFFIX = ":call-next:lock";
     private static final long WAITING_CALL_NEXT_LOCK_WAIT_SECONDS = 0L;
-    private static final long WAITING_CALL_NEXT_LOCK_LEASE_SECONDS = 10L;
 
     private final WaitingRepository waitingRepository;
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
@@ -165,7 +164,6 @@ public class WaitingService {
             // 이미 처리 중인 호출이 있으면 기다리지 않고 즉시 실패
             if (!lock.tryLock(
                     WAITING_CALL_NEXT_LOCK_WAIT_SECONDS,
-                    WAITING_CALL_NEXT_LOCK_LEASE_SECONDS,
                     TimeUnit.SECONDS
             )) {
                 throw new WaitingException(WaitingErrorCode.WAITING_CALL_LOCK_FAILED);

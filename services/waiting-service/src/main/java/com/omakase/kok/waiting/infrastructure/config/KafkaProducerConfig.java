@@ -13,7 +13,10 @@ import org.springframework.kafka.core.ProducerFactory;
 import java.util.Map;
 
 @Configuration
-@EnableConfigurationProperties(WaitingKafkaProperties.class)
+@EnableConfigurationProperties({
+        WaitingKafkaProperties.class,
+        WaitingKafkaPublisherProperties.class
+})
 public class KafkaProducerConfig {
     @Bean // Producer 인스턴스를 생성하는 팩토리 빈
     public ProducerFactory<String, String> waitingProducerFactory(KafkaProperties kafkaProperties) {

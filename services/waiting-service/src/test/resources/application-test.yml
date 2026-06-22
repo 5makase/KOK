@@ -28,6 +28,9 @@ waiting:
         name: waiting.events.v1
         partitions: 1
         replicas: 1
+    publisher:
+      fixed-delay-ms: 5000
+      batch-size: 100
 
 eureka:
   client:

@@ -31,6 +31,8 @@ import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -51,11 +54,17 @@ import java.util.stream.IntStream;
 @Slf4j
 @Transactional(readOnly = true)
 public class WaitingService {
+    // Lock
+    private static final String WAITING_CALL_NEXT_LOCK_KEY_PREFIX = "waiting:store:";
+    private static final String WAITING_CALL_NEXT_LOCK_KEY_SUFFIX = ":call-next:lock";
+    private static final long WAITING_CALL_NEXT_LOCK_WAIT_SECONDS = 0L;
+
     private final WaitingRepository waitingRepository;
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
     private final WaitingSettingService waitingSettingService;
     private final ObjectMapper objectMapper;
+    private final RedissonClient redissonClient;
 
     // 웨이팅 등록
     @Transactional
@@ -149,18 +158,40 @@ public class WaitingService {
     @Transactional
     public WaitingCallResponse callNextWaiting(UUID storeId) {
         // TODO: Store Service 내부 API 연동 후 요청 userId가 storeId의 소유자인지 검증 추가
-        UUID waitingId = waitingQueueRedisStore.findFirst(storeId)
-                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
-        Waiting waiting = waitingRepository.findById(waitingId)
-                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+        RLock lock = redissonClient.getLock(callNextLockKey(storeId));
+        boolean unlockInFinally = false;
+        try {
+            // 이미 처리 중인 호출이 있으면 기다리지 않고 즉시 실패
+            if (!lock.tryLock(
+                    WAITING_CALL_NEXT_LOCK_WAIT_SECONDS,
+                    TimeUnit.SECONDS
+            )) {
+                throw new WaitingException(WaitingErrorCode.WAITING_CALL_LOCK_FAILED);
+            }
+            // 트랜잭션 커밋/롤백이 끝난 뒤 락을 해제해 커밋 전 중복 진입을 방지
+            unlockInFinally = registerLockReleaseAfterTransaction(lock);
 
-        waiting.call();
-        Waiting savedWaiting = waitingRepository.save(waiting);
-        scheduleQueueRemovalAfterCommit(savedWaiting);
-        // TODO: Kafka Outbox Publisher 도입 시 WAITING_CALLED 이벤트 저장
-        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CALLED);
+            // 락 획득 후 최신 Redis 대기열 기준으로 호출 대상을 다시 조회
+            UUID waitingId = waitingQueueRedisStore.findFirst(storeId)
+                    .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
+            Waiting waiting = waitingRepository.findById(waitingId)
+                    .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
 
-        return WaitingCallResponse.from(savedWaiting);
+            waiting.call();
+            Waiting savedWaiting = waitingRepository.save(waiting);
+            scheduleQueueRemovalAfterCommit(savedWaiting);
+            // TODO: Kafka Outbox Publisher 도입 시 WAITING_CALLED 이벤트 저장
+            // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CALLED);
+
+            return WaitingCallResponse.from(savedWaiting);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new WaitingException(WaitingErrorCode.WAITING_CALL_LOCK_FAILED);
+        } finally {
+            if (unlockInFinally) {
+                unlockSafely(lock);
+            }
+        }
     }
 
     // 웨이팅 입장 완료 처리
@@ -218,6 +249,10 @@ public class WaitingService {
                 .toList();
     }
 
+    /**
+     * Validation
+     */
+
     // 웨이팅 가능 여부 판단 - 가게 웨이팅 활성화 여부
     private void validateWaitingEnabled(StoreWaitingValues storeWaitingValues) {
         if (!Boolean.TRUE.equals(storeWaitingValues.waitingEnabled())) {
@@ -225,7 +260,62 @@ public class WaitingService {
         }
     }
 
-    // cancel/call/enter/no-show처럼 DB 상태를 먼저 바꾸는 흐름에서 사용
+    // 권한 확인 - 본인 or 마스터
+    private void validateWaitingAccess(UUID userId, String role, Waiting waiting) {
+        if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
+            return;
+        }
+        if (!waiting.getUserId().equals(userId)) {
+            throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    // 사용자 취소 가능 여부 확인
+    private void validateUserCancelable(String role, Waiting waiting) {
+        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.USER)) {
+            return;
+        }
+        StoreWaitingValues storeWaitingValues = waitingSettingService.getStoreWaitingValues(waiting.getStoreId());
+        if (!Boolean.TRUE.equals(storeWaitingValues.allowUserCancel())) {
+            throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_DISABLED);
+        }
+    }
+
+    /**
+     * Lock
+     */
+
+    // Redis 락 키
+    private String callNextLockKey(UUID storeId) {
+        return WAITING_CALL_NEXT_LOCK_KEY_PREFIX + storeId + WAITING_CALL_NEXT_LOCK_KEY_SUFFIX;
+    }
+
+    // 트랜잭션이 있으면 커밋/롤백 완료 후 락을 해제하고, 없으면 호출자가 finally에서 해제
+    private boolean registerLockReleaseAfterTransaction(RLock lock) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return true;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                unlockSafely(lock);
+            }
+        });
+        return false;
+    }
+
+    // Lock 해제
+    private void unlockSafely(RLock lock) {
+        if (lock.isHeldByCurrentThread()) {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Queue Sync
+     */
+
+    // DB 상태를 먼저 바꾸는 흐름에서 사용(cancel/call/enter/no-show)
     // 트랜잭션이 정상 커밋된 뒤에만 Redis 대기열을 제거
     private void scheduleQueueRemovalAfterCommit(Waiting waiting) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -289,26 +379,9 @@ public class WaitingService {
         }
     }
 
-    // 권한 확인 - 본인 or 마스터
-    private void validateWaitingAccess(UUID userId, String role, Waiting waiting) {
-        if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            return;
-        }
-        if (!waiting.getUserId().equals(userId)) {
-            throw new BaseException(CommonErrorCode.ACCESS_DENIED);
-        }
-    }
-
-    // 사용자 취소 가능 여부 확인
-    private void validateUserCancelable(String role, Waiting waiting) {
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.USER)) {
-            return;
-        }
-        StoreWaitingValues storeWaitingValues = waitingSettingService.getStoreWaitingValues(waiting.getStoreId());
-        if (!Boolean.TRUE.equals(storeWaitingValues.allowUserCancel())) {
-            throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_DISABLED);
-        }
-    }
+    /**
+     * Rank
+     */
 
     // 현재 순위
     private Long resolveCurrentRank(Waiting waiting) {
@@ -322,6 +395,10 @@ public class WaitingService {
     private boolean isQueueTrackedStatus(WaitingStatus status) {
         return status == WaitingStatus.WAITING;
     }
+
+    /**
+     * Outbox
+     */
 
     // 아웃박스 테이블 저장
     private void saveOutboxEvent(Waiting waiting, WaitingEventType eventType) {

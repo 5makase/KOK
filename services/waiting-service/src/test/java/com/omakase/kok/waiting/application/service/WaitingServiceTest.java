@@ -29,6 +29,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -40,6 +42,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,6 +69,12 @@ class WaitingServiceTest {
 
     @Mock
     private ObjectMapper objectMapper;
+
+    @Mock
+    private RedissonClient redissonClient;
+
+    @Mock
+    private RLock callNextLock;
 
     @InjectMocks
     private WaitingService waitingService;
@@ -354,13 +363,14 @@ class WaitingServiceTest {
 
     @Test
     @DisplayName("다음 순번 호출은 Redis 대기열의 첫 번째 웨이팅을 호출 처리한다")
-    void callNextWaiting_success() {
+    void callNextWaiting_success() throws InterruptedException {
         UUID storeId = UUID.randomUUID();
         UUID waitingId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         Waiting waiting = waiting(storeId, userId, 10L, WaitingStatus.WAITING, "문 앞 자리");
         ReflectionTestUtils.setField(waiting, "id", waitingId);
 
+        givenCallNextLockAcquired(storeId);
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
         given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
@@ -376,13 +386,15 @@ class WaitingServiceTest {
 
         then(waitingRepository).should().save(waiting);
         then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+        then(callNextLock).should().unlock();
     }
 
     @Test
     @DisplayName("다음 순번 호출은 대기열이 비어 있으면 실패한다")
-    void callNextWaiting_notFoundWhenQueueEmpty() {
+    void callNextWaiting_notFoundWhenQueueEmpty() throws InterruptedException {
         UUID storeId = UUID.randomUUID();
 
+        givenCallNextLockAcquired(storeId);
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
@@ -391,17 +403,19 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).findById(any(UUID.class));
         then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(callNextLock).should().unlock();
     }
 
     @Test
     @DisplayName("다음 순번 호출은 이미 호출된 웨이팅이면 실패한다")
-    void callNextWaiting_failWhenAlreadyCalled() {
+    void callNextWaiting_failWhenAlreadyCalled() throws InterruptedException {
         UUID storeId = UUID.randomUUID();
         UUID waitingId = UUID.randomUUID();
         Waiting waiting = waiting(storeId, UUID.randomUUID(), 11L, WaitingStatus.CALLED, null);
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
 
+        givenCallNextLockAcquired(storeId);
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
 
@@ -410,6 +424,24 @@ class WaitingServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED));
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(callNextLock).should().unlock();
+    }
+
+    @Test
+    @DisplayName("다음 순번 호출은 락 획득에 실패하면 대기열을 조회하지 않고 실패한다")
+    void callNextWaiting_failWhenLockNotAcquired() throws InterruptedException {
+        UUID storeId = UUID.randomUUID();
+        given(redissonClient.getLock("waiting:store:" + storeId + ":call-next:lock")).willReturn(callNextLock);
+        given(callNextLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(false);
+
+        assertThatThrownBy(() -> waitingService.callNextWaiting(storeId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_LOCK_FAILED));
+
+        then(waitingQueueRedisStore).should(never()).findFirst(any(UUID.class));
+        then(waitingRepository).should(never()).findById(any(UUID.class));
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(callNextLock).should(never()).unlock();
     }
 
     @Test
@@ -602,6 +634,12 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "status", status);
         ReflectionTestUtils.setField(waiting, "createdAt", LocalDateTime.now());
         return waiting;
+    }
+
+    private void givenCallNextLockAcquired(UUID storeId) throws InterruptedException {
+        given(redissonClient.getLock("waiting:store:" + storeId + ":call-next:lock")).willReturn(callNextLock);
+        given(callNextLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+        given(callNextLock.isHeldByCurrentThread()).willReturn(true);
     }
 
     private <T> T newInstance(Class<T> type) {

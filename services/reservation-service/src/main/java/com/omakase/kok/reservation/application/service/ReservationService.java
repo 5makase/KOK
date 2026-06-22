@@ -7,6 +7,7 @@ import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.EventType;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
@@ -193,6 +194,44 @@ public class ReservationService {
         return ReservationResponse.from(reservation);
     }
 
+    @Transactional
+    public ReservationResponse visitReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.visit();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_VISITED));
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional
+    public ReservationResponse noShowReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.noShow();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_NO_SHOW));
+
+        return ReservationResponse.from(reservation);
+    }
+
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ReservationResponse cancelReservation(UUID reservationId, UUID userId, CancelReservationRequest request) {
         Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
@@ -329,12 +368,16 @@ public class ReservationService {
     }
 
     private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
+        UUID outboxEventId = UUID.randomUUID();
+        String visitedAt = reservation.getVisitedAt() != null ? reservation.getVisitedAt().toString() : null;
         String payload = String.format(
-                "{\"reservationId\":\"%s\",\"storeId\":\"%s\",\"userId\":\"%s\",\"status\":\"%s\",\"occurredAt\":\"%s\"}",
-                reservation.getReservationId(), reservation.getStoreId(),
-                reservation.getUserId(), reservation.getStatus(), LocalDateTime.now()
+                "{\"eventId\":\"%s\",\"eventType\":\"%s\",\"reservationId\":\"%s\",\"userId\":\"%s\",\"storeId\":\"%s\",\"visitedAt\":\"%s\"}",
+                outboxEventId, eventType.name(),
+                reservation.getReservationId(), reservation.getUserId(),
+                reservation.getStoreId(), visitedAt
         );
         return ReservationOutboxEvent.builder()
+                .outboxEventId(outboxEventId)
                 .reservationId(reservation.getReservationId())
                 .eventType(eventType)
                 .payload(payload)

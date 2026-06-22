@@ -20,6 +20,10 @@ public class ReviewEventConsumer {
 
     @KafkaListener(topics = "review.events.v1", groupId = "${spring.kafka.consumer.group-id}")
     public void consume(String message) {
+        if (message == null || message.isBlank()) {
+            log.warn("review.events.v1 null/blank 메시지 무시");
+            return;
+        }
         try {
             ReviewEvent event = objectMapper.readValue(message, ReviewEvent.class);
 

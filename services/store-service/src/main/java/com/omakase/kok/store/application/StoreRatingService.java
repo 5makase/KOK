@@ -30,7 +30,8 @@ public class StoreRatingService {
         storeRepository.save(store);
 
         // DB 커밋 후 Redis 갱신 - 커밋 실패 시 Redis 불일치 방지
-        scheduleRankingUpdateAfterCommit(storeId, averageRating, reviewCount);
+        // store.updateRating() 내부에서 반올림된 값을 Redis에도 동일하게 반영
+        scheduleRankingUpdateAfterCommit(storeId, store.getAverageRating(), store.getReviewCount());
     }
 
     // reviewCount == 0 이면 랭킹에서 제거, 그 외엔 점수 갱신

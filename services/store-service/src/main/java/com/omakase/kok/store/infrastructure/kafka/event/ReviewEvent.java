@@ -13,7 +13,7 @@ public class ReviewEvent {
 
     private UUID eventId;
     private String eventType;
-    private int schemaVersion;
+    private Integer schemaVersion;
     private LocalDateTime occurredAt;
     private String producer;
     private Payload payload;

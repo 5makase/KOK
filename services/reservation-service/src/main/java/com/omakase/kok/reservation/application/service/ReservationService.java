@@ -5,6 +5,7 @@ import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
+import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.EventType;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
@@ -13,7 +14,9 @@ import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepos
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.infrastructure.client.dto.CreatePaymentRequest;
+import com.omakase.kok.reservation.infrastructure.client.dto.RefundRequest;
 import lombok.RequiredArgsConstructor;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
@@ -24,7 +27,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -183,6 +188,89 @@ public class ReservationService {
         }
 
         return ReservationResponse.from(reservation);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse cancelReservation(UUID reservationId, UUID userId, CancelReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        if (!reservation.isCancellable()) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+        }
+
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        if (slot.isDepositRequired()) {
+            long refundAmount = calculateUserRefundAmount(slot.getSlotDate(), slot.getDepositAmount());
+            if (refundAmount > 0) {
+                var payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
+                paymentFeignClient.refund(payment.getPaymentId(), new RefundRequest(refundAmount));
+            }
+        }
+
+        String cancelReason = request != null ? request.getCancelReason() : null;
+        ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
+            Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+            r.cancel("USER", cancelReason);
+            outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+            return ReservationResponse.from(r);
+        });
+
+        redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                .addAndGet(reservation.getReservationSize());
+
+        return response;
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse cancelByStore(UUID storeId, UUID reservationId, CancelReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (!reservation.isCancellable()) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+        }
+
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        if (slot.isDepositRequired()) {
+            var payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
+            paymentFeignClient.refund(payment.getPaymentId(), new RefundRequest(slot.getDepositAmount()));
+        }
+
+        String cancelReason = request != null ? request.getCancelReason() : null;
+        ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
+            Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+            r.cancel("OWNER", cancelReason);
+            outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+            return ReservationResponse.from(r);
+        });
+
+        redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                .addAndGet(reservation.getReservationSize());
+
+        return response;
+    }
+
+    private long calculateUserRefundAmount(LocalDate slotDate, Long depositAmount) {
+        long daysUntilVisit = ChronoUnit.DAYS.between(LocalDate.now(), slotDate);
+        if (daysUntilVisit >= 3) {
+            return depositAmount;
+        } else if (daysUntilVisit >= 1) {
+            return depositAmount / 2;
+        }
+        return 0;
     }
 
     private Reservation buildReservation(CreateReservationRequest request, UUID userId, UUID storeId) {

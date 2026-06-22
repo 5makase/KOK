@@ -80,25 +80,27 @@ public class PendingExpirationScheduler {
             log.warn("Payment 만료 처리 실패 - reservationId: {}", reservation.getReservationId(), e);
         }
 
-        // 예약 취소 + Outbox 이벤트 저장
-        new TransactionTemplate(transactionManager).execute(status -> {
+        // 예약 취소 + Outbox 이벤트 저장 (실제 취소 여부를 반환)
+        Boolean cancelled = new TransactionTemplate(transactionManager).execute(status -> {
             Reservation r = reservationRepository
                     .findByReservationIdAndDeletedAtIsNull(reservation.getReservationId())
                     .orElseThrow();
             if (r.getStatus() != ReservationStatus.PAYMENT_PENDING) {
-                return null;
+                return false;
             }
             r.cancel("SYSTEM", "결제 시간 초과");
             outboxEventRepository.save(buildOutboxEvent(r));
-            return null;
+            return true;
         });
 
-        // Redis 잔여 인원 복구
-        try {
-            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
-                    .addAndGet(reservation.getReservationSize());
-        } catch (Exception e) {
-            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+        // 실제로 취소된 경우에만 Redis 잔여 인원 복구
+        if (Boolean.TRUE.equals(cancelled)) {
+            try {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                        .addAndGet(reservation.getReservationSize());
+            } catch (Exception e) {
+                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+            }
         }
     }
 

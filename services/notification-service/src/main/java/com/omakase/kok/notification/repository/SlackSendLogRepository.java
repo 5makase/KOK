@@ -1,7 +1,7 @@
 package com.omakase.kok.notification.repository;
 
 import com.omakase.kok.notification.entity.SlackSendLog;
-import com.omakase.kok.notification.entity.enums.NotificationSendStatus;
+import com.omakase.kok.notification.enums.NotificationSendStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

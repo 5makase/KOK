@@ -1,8 +1,8 @@
 package com.omakase.kok.notification.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
-import com.omakase.kok.notification.entity.enums.NotificationType;
-import com.omakase.kok.notification.entity.enums.ReferenceType;
+import com.omakase.kok.notification.enums.NotificationType;
+import com.omakase.kok.notification.enums.ReferenceType;
 import jakarta.persistence.*;
 import lombok.*;
 

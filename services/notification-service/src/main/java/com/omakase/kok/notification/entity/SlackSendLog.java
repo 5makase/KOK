@@ -1,6 +1,6 @@
 package com.omakase.kok.notification.entity;
 
-import com.omakase.kok.notification.entity.enums.NotificationSendStatus;
+import com.omakase.kok.notification.enums.NotificationSendStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;

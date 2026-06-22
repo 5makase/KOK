@@ -28,6 +28,16 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       enable-auto-commit: false
 
+slack:
+  bot-token: ${SLACK_BOT_TOKEN}
+
+feign:
+  client:
+    config:
+      user-service:
+        connectTimeout: 3000
+        readTimeout: 3000
+
 eureka:
   client:
     service-url:

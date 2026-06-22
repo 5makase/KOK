@@ -6,8 +6,8 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
-@EnableFeignClients
+@SpringBootApplication(scanBasePackages = "com.omakase.kok")
+@EnableFeignClients(basePackages = "com.omakase.kok")
 @EnableScheduling
 @EnableJpaAuditing
 public class NotificationServiceApplication {

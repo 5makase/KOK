@@ -13,7 +13,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RedisIdempotencyService {
 
-    private static final String KEY_PREFIX = "notification:idempotency:";
+    private static final String EVENT_KEY_PREFIX = "notification:idempotency:event:";
+    private static final String BUSINESS_KEY_PREFIX = "notification:idempotency:";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -21,19 +22,25 @@ public class RedisIdempotencyService {
     private long ttlDays;
 
     /**
-     * 처음 처리되는 이벤트면 Redis 키를 선점하고 true 반환.
-     * 이미 처리된 이벤트면 false 반환 (중복).
-     *
-     * setIfAbsent (SET NX) 로 원자적으로 체크와 선점을 동시에 수행한다.
+     * eventId 기반 중복 체크 (팀 표준 준수).
+     * 동일 Kafka 메시지 재전송 시 조기 탈출.
      */
-    public boolean tryAcquire(UUID referenceId, NotificationType notificationType, UUID userId) {
-        String key = buildKey(referenceId, notificationType, userId);
+    public boolean tryAcquireByEventId(UUID eventId) {
+        String key = EVENT_KEY_PREFIX + eventId;
         return Boolean.TRUE.equals(
                 redisTemplate.opsForValue().setIfAbsent(key, "1", Duration.ofDays(ttlDays))
         );
     }
 
-    private String buildKey(UUID referenceId, NotificationType notificationType, UUID userId) {
-        return KEY_PREFIX + referenceId + ":" + notificationType + ":" + userId;
+    /**
+     * 비즈니스 레벨 중복 체크.
+     * producer가 다른 eventId로 같은 이벤트를 중복 발행하는 경우까지 방어.
+     * setIfAbsent (SET NX) 로 원자적으로 체크와 선점을 동시에 수행한다.
+     */
+    public boolean tryAcquire(UUID referenceId, NotificationType notificationType, UUID userId) {
+        String key = BUSINESS_KEY_PREFIX + referenceId + ":" + notificationType + ":" + userId;
+        return Boolean.TRUE.equals(
+                redisTemplate.opsForValue().setIfAbsent(key, "1", Duration.ofDays(ttlDays))
+        );
     }
 }

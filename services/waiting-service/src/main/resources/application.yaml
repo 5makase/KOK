@@ -44,6 +44,7 @@ waiting:
         replicas: ${WAITING_EVENTS_TOPIC_REPLICAS:1}
     publisher:
       fixed-delay-ms: ${WAITING_EVENTS_PUBLISHER_FIXED_DELAY_MS:5000}
+      send-timeout-ms: ${WAITING_EVENTS_PUBLISHER_SEND_TIMEOUT_MS:3000}
       batch-size: ${WAITING_EVENTS_PUBLISHER_BATCH_SIZE:100}
 
 eureka:

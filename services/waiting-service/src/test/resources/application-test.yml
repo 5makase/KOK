@@ -30,6 +30,7 @@ waiting:
         replicas: 1
     publisher:
       fixed-delay-ms: 5000
+      send-timeout-ms: 3000
       batch-size: 100
 
 eureka:

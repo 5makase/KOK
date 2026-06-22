@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Component
@@ -45,12 +47,16 @@ public class WaitingOutboxPublisher {
         String key = outboxEvent.getWaiting().getId().toString();
 
         try {
-            waitingKafkaTemplate.send(topic, key, outboxEvent.getPayload()).get();
+            waitingKafkaTemplate.send(topic, key, outboxEvent.getPayload())
+                    .get(waitingKafkaPublisherProperties.sendTimeoutMs(), TimeUnit.MILLISECONDS);
             outboxEvent.publish();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             outboxEvent.fail("Kafka publish interrupted");
             log.warn("Interrupted while publishing waiting outbox event. outboxEventId={}", outboxEvent.getId(), e);
+        } catch (TimeoutException e) {
+            outboxEvent.fail("Kafka publish timed out");
+            log.warn("Timed out while publishing waiting outbox event. outboxEventId={}", outboxEvent.getId(), e);
         } catch (ExecutionException e) {
             outboxEvent.fail(resolveFailureReason(e));
             log.warn("Failed to publish waiting outbox event. outboxEventId={}", outboxEvent.getId(), e);

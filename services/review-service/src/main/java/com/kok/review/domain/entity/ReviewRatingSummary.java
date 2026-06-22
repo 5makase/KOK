@@ -55,6 +55,7 @@ public class ReviewRatingSummary {
 
     //매장별 집계 최초 생성 - 0.0으로 시작함.
     public static ReviewRatingSummary init(UUID storeId) {
+        //A 가게의 평점을 위의 초기값(0.0)으로 새롭게 만듦.
         return ReviewRatingSummary.builder()
                 .storeId(storeId)
                 .build();
@@ -62,17 +63,24 @@ public class ReviewRatingSummary {
 
     //리뷰 추가 시 집계 반영
     public void addRating(int scaledRating) {
+        // 정수로 바뀐 개별 평점을, 총 평점 합계에 더하기
         this.ratingSum += scaledRating;
+        // 리뷰 개수도 1 증가
         this.reviewCount += 1;
+        //별점 개수 추가.
         adjustBucket(scaledRating, 1);
     }
 
     //리뷰 삭제 시 집계에서 제외
     public void subtractRating(int scaledRating) {
+        //정수로 바뀐 개별 평점으 총 평점 합계에 빼기
         this.ratingSum -= scaledRating;
+        //리뷰도 1 감소
         this.reviewCount -= 1;
+        //별점 개수 빼기
         adjustBucket(scaledRating, -1);
-        // 방어: 음수 방지 (정합성 안전장치)
+
+        //리뷰 개수랑 평점이 음수가 된다면, 0으로 수렴.
         if (this.reviewCount < 0) this.reviewCount = 0;
         if (this.ratingSum < 0) this.ratingSum = 0;
     }
@@ -85,7 +93,7 @@ public class ReviewRatingSummary {
         return BigDecimal.valueOf(ratingSum)
                 .divide(BigDecimal.valueOf(10L * reviewCount), 2, RoundingMode.HALF_UP);
     }
-   //scaledRating(10~50)을 정수 버킷(1~5)에 매핑하여 delta(+1/-1)만큼 가감
+    // 개별 별점을 1~5점으로 반올림해서, 그 점수 개수를 1 올리거나(추가) 내림(삭제)
     private void adjustBucket(int scaledRating, int delta) {
         int bucket = Math.round(scaledRating / 10.0f);  // 45 → 4.5 → 5, 25 → 2.5 → 3
         switch (bucket) {

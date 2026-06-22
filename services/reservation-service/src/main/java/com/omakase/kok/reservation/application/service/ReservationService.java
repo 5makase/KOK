@@ -16,6 +16,7 @@ import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.infrastructure.client.dto.CreatePaymentRequest;
+import com.omakase.kok.reservation.infrastructure.client.dto.PaymentResponse;
 import com.omakase.kok.reservation.infrastructure.client.dto.RefundRequest;
 import lombok.RequiredArgsConstructor;
 import org.redisson.api.RAtomicLong;
@@ -206,13 +207,12 @@ public class ReservationService {
         ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
                 .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
 
+        // 실제 결제 금액 조회 (환불 기준은 슬롯 설정이 아닌 실제 결제 금액)
+        PaymentResponse payment = null;
         if (slot.isDepositRequired()) {
-            long refundAmount = calculateUserRefundAmount(slot.getSlotDate(), slot.getDepositAmount());
-            if (refundAmount > 0) {
-                var payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
-                paymentFeignClient.refund(payment.getPaymentId(), new RefundRequest(refundAmount));
-            }
+            payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
         }
+        final PaymentResponse finalPayment = payment;
 
         String cancelReason = request != null ? request.getCancelReason() : null;
         ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
@@ -221,6 +221,14 @@ public class ReservationService {
             outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
             return ReservationResponse.from(r);
         });
+
+        // DB 커밋 이후 환불 처리 (DB가 취소 상태의 원천)
+        if (slot.isDepositRequired() && finalPayment != null) {
+            long refundAmount = calculateUserRefundAmount(slot.getSlotDate(), finalPayment.getAmount());
+            if (refundAmount > 0) {
+                paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(refundAmount));
+            }
+        }
 
         redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
                 .addAndGet(reservation.getReservationSize());
@@ -244,10 +252,12 @@ public class ReservationService {
         ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
                 .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
 
+        // 실제 결제 금액 조회 (점주 취소 시 전액 환불 기준)
+        PaymentResponse payment = null;
         if (slot.isDepositRequired()) {
-            var payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
-            paymentFeignClient.refund(payment.getPaymentId(), new RefundRequest(slot.getDepositAmount()));
+            payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
         }
+        final PaymentResponse finalPayment = payment;
 
         String cancelReason = request != null ? request.getCancelReason() : null;
         ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
@@ -256,6 +266,11 @@ public class ReservationService {
             outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
             return ReservationResponse.from(r);
         });
+
+        // DB 커밋 이후 전액 환불 처리
+        if (slot.isDepositRequired() && finalPayment != null) {
+            paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(finalPayment.getAmount()));
+        }
 
         redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
                 .addAndGet(reservation.getReservationSize());

@@ -1,8 +1,8 @@
 package com.omakase.kok.notification.controller;
 
 import com.omakase.kok.common.dto.ApiResponse;
-import com.omakase.kok.notification.dto.response.NotificationResponse;
-import com.omakase.kok.notification.dto.response.UnreadCountResponse;
+import com.omakase.kok.notification.dto.NotificationResponse;
+import com.omakase.kok.notification.dto.UnreadCountResponse;
 import com.omakase.kok.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

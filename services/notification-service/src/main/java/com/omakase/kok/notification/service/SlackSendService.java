@@ -2,7 +2,7 @@ package com.omakase.kok.notification.service;
 
 import com.omakase.kok.notification.client.SlackClient;
 import com.omakase.kok.notification.client.UserServiceClient;
-import com.omakase.kok.notification.client.dto.UserResponse;
+import com.omakase.kok.notification.dto.UserResponse;
 import com.omakase.kok.notification.entity.SlackSendLog;
 import com.omakase.kok.notification.repository.SlackSendLogRepository;
 import feign.FeignException;

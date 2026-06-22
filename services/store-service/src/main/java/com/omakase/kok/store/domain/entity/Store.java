@@ -127,7 +127,7 @@ public class Store extends BaseEntity {
     }
 
     // 리뷰 서비스 이벤트 수신 시 평점 갱신
-    public void updateRating(BigDecimal newAverageRating, int newReviewCount) {
+    public void updateRating(BigDecimal newAverageRating, Integer newReviewCount) {
         this.averageRating = newAverageRating.setScale(2, RoundingMode.HALF_UP);
         this.reviewCount = newReviewCount;
     }

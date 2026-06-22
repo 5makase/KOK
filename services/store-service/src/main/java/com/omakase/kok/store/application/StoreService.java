@@ -11,9 +11,11 @@ import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.entity.Menu;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
 import com.omakase.kok.store.domain.enums.StoreStatus;
+import com.omakase.kok.store.domain.repository.MenuRepository;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
@@ -46,6 +48,7 @@ public class StoreService {
     private final StoreHoursRepository storeHoursRepository;
     private final StoreAmenityRepository storeAmenityRepository;
     private final StoreImageRepository storeImageRepository;
+    private final MenuRepository menuRepository;
     private final StoreFinder storeFinder;
     private final StoreListCacheRepository storeListCacheRepository;
 
@@ -146,9 +149,9 @@ public class StoreService {
                 .stream().map(StoreAmenityResult::from).toList();
 
         List<StoreImage> imagePreview = storeImageRepository.findImagePreview(storeId);
+        List<Menu> menuPreview = menuRepository.findAllMenus(store);
 
-        // TODO: Menu 도메인 구현 후 menuPreview 조회 연결
-        return StoreResult.of(store, todayHours, amenities, imagePreview, List.of());
+        return StoreResult.of(store, todayHours, amenities, imagePreview, menuPreview);
     }
 
     public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID userId, String role, Pageable pageable) {

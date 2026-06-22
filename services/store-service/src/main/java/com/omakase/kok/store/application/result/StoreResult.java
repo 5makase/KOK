@@ -1,5 +1,6 @@
 package com.omakase.kok.store.application.result;
 
+import com.omakase.kok.store.domain.entity.Menu;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
@@ -53,7 +54,6 @@ public class StoreResult {
         private String parentCategoryName;
     }
 
-    // TODO: Menu 도메인 구현 후 from(Menu) 팩토리 메서드 추가
     @Getter
     @Builder
     @JsonDeserialize(builder = StoreResult.MenuPreviewResult.MenuPreviewResultBuilder.class)
@@ -62,6 +62,15 @@ public class StoreResult {
         private String name;
         private int price;
         private String thumbnailUrl;
+
+        public static MenuPreviewResult from(Menu menu) {
+            return MenuPreviewResult.builder()
+                    .menuId(menu.getMenuId())
+                    .name(menu.getName())
+                    .price(menu.getPrice())
+                    .thumbnailUrl(menu.getThumbnailUrl())
+                    .build();
+        }
     }
 
     // 목록 조회용 - 서브 데이터(todayHours/amenities 등) 없이 기본 정보만 반환
@@ -95,16 +104,15 @@ public class StoreResult {
     }
 
     // 상세 조회용 - 매장 서브 데이터 포함
-    // TODO: menuPreview 파라미터는 Menu 도메인 구현 후 List<Menu>로 교체
     public static StoreResult of(Store store, StoreHours todayHours,
                                  List<StoreAmenityResult> amenities,
                                  List<StoreImage> imagePreview,
-                                 List<MenuPreviewResult> menuPreview) {
+                                 List<Menu> menuPreview) {
         return from(store).toBuilder()
                 .todayHours(todayHours != null ? StoreHoursResult.from(todayHours) : null)
                 .amenities(amenities)
                 .imagePreview(imagePreview.stream().map(StoreImageResult::from).toList())
-                .menuPreview(menuPreview)
+                .menuPreview(menuPreview.stream().map(MenuPreviewResult::from).toList())
                 .build();
     }
 }

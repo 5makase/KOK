@@ -1,7 +1,7 @@
 package com.omakase.kok.notification.service;
 
-import com.omakase.kok.notification.dto.response.NotificationResponse;
-import com.omakase.kok.notification.dto.response.UnreadCountResponse;
+import com.omakase.kok.notification.dto.NotificationResponse;
+import com.omakase.kok.notification.dto.UnreadCountResponse;
 import com.omakase.kok.notification.entity.Notification;
 import com.omakase.kok.notification.exception.NotificationErrorCode;
 import com.omakase.kok.notification.exception.NotificationException;
@@ -20,6 +20,7 @@ import java.util.UUID;
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final RedisUnreadCountService redisUnreadCountService;
 
     public Page<NotificationResponse> getNotifications(UUID userId, Pageable pageable) {
         return notificationRepository
@@ -28,30 +29,46 @@ public class NotificationService {
     }
 
     public UnreadCountResponse getUnreadCount(UUID userId) {
-        long count = notificationRepository.countByUserIdAndIsReadFalseAndDeletedAtIsNull(userId);
-        return new UnreadCountResponse(count);
+        return redisUnreadCountService.get(userId)
+                .stream()
+                .mapToObj(UnreadCountResponse::new)
+                .findFirst()
+                .orElseGet(() -> {
+                    // 캐시 미스: DB 조회 후 Redis 재구성
+                    long count = notificationRepository.countByUserIdAndIsReadFalseAndDeletedAtIsNull(userId);
+                    redisUnreadCountService.set(userId, count);
+                    return new UnreadCountResponse(count);
+                });
     }
 
     @Transactional
     public void markAsRead(UUID userId, UUID notificationId) {
         Notification notification = findOwnedNotification(userId, notificationId);
-        notification.markAsRead();
+        if (!notification.isRead()) {
+            notification.markAsRead();
+            redisUnreadCountService.decrement(userId);
+        }
     }
 
     @Transactional
     public void markAllAsRead(UUID userId) {
-        notificationRepository.markAllAsRead(userId);
+        int updatedCount = notificationRepository.markAllAsRead(userId);
+        if (updatedCount > 0) {
+            redisUnreadCountService.set(userId, 0);
+        }
     }
 
     @Transactional
     public void deleteNotification(UUID userId, UUID notificationId) {
         Notification notification = findOwnedNotification(userId, notificationId);
+        if (!notification.isRead()) {
+            redisUnreadCountService.decrement(userId);
+        }
         notification.delete(userId);
     }
 
     /**
-     * 알림을 조회하되, userId 불일치 시에도 동일하게 404를 반환한다.
-     * 타인의 알림 존재 여부를 노출하지 않기 위함.
+     * userId 불일치도 404로 처리 — 타인의 알림 존재 여부를 노출하지 않는다.
      */
     private Notification findOwnedNotification(UUID userId, UUID notificationId) {
         Notification notification = notificationRepository

@@ -8,6 +8,7 @@ import com.omakase.kok.notification.repository.SlackSendLogRepository;
 import com.omakase.kok.notification.service.SlackSendService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -15,12 +16,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Slack 발송 실패 건 재시도 스케줄러.
- *
- * NOTE: 멀티 인스턴스 환경에서는 중복 재시도가 발생할 수 있다.
- *       필요 시 ShedLock 또는 Redis 분산 락으로 보완해야 한다.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -34,6 +29,7 @@ public class RetryScheduler {
     private int maxAttemptCount;
 
     @Scheduled(fixedDelayString = "${notification.retry.fixed-delay-ms:300000}")
+    @SchedulerLock(name = "retryFailedSlackSend", lockAtLeastFor = "PT1M", lockAtMostFor = "PT9M")
     public void retryFailedSlackSend() {
         List<SlackSendLog> targets = slackSendLogRepository.findRetryTargets(
                 NotificationSendStatus.FAILED, maxAttemptCount

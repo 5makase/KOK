@@ -49,7 +49,8 @@ public class ReservationOutboxEvent {
     private LocalDateTime createdAt;
 
     @Builder
-    public ReservationOutboxEvent(UUID reservationId, EventType eventType, String payload) {
+    public ReservationOutboxEvent(UUID outboxEventId, UUID reservationId, EventType eventType, String payload) {
+        this.outboxEventId = outboxEventId;
         this.reservationId = reservationId;
         this.eventType = eventType;
         this.payload = payload;

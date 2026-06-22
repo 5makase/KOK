@@ -19,6 +19,11 @@ spring:
         format_sql: true
     open-in-view: false
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -35,6 +40,8 @@ notification:
   retry:
     max-attempt-count: 3
     fixed-delay-ms: 300000  # 5분
+  idempotency:
+    ttl-days: 7
 
 feign:
   client:

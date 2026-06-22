@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -130,6 +131,9 @@ public class StoreController {
             @RequestParam(required = false) List<AmenityType> amenities,
             @RequestParam(required = false) StoreStatus status,
             @RequestParam(required = false) StoreSearchCondition.SortType sort,
+            @RequestParam(required = false) BigDecimal latitude,
+            @RequestParam(required = false) BigDecimal longitude,
+            @RequestParam(required = false) Double radiusKm,
             @PageableDefault(size = 20) Pageable pageable
     ) {
         StoreSearchCondition condition = StoreSearchCondition.builder()
@@ -140,6 +144,9 @@ public class StoreController {
                 .amenities(amenities)
                 .status(status)
                 .sort(sort)
+                .latitude(latitude)
+                .longitude(longitude)
+                .radiusKm(radiusKm)
                 .build();
 
         Page<StoreResult> page = storeService.searchStores(condition, userId, role, pageable);

@@ -5,6 +5,7 @@ import com.omakase.kok.store.domain.enums.StoreStatus;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,7 +26,12 @@ public class StoreSearchCondition {
     private StoreStatus status;
     private SortType sort;
 
+    // 위치 기반 검색 (고도화) — latitude/longitude/radiusKm 모두 있을 때만 활성화
+    private BigDecimal latitude;
+    private BigDecimal longitude;
+    private Double radiusKm;
+
     public enum SortType {
-        CREATED_AT, RATING, REVIEW_COUNT
+        CREATED_AT, RATING, REVIEW_COUNT, DISTANCE
     }
 }

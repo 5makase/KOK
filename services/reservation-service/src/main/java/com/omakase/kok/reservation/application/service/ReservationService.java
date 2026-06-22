@@ -1,5 +1,7 @@
 package com.omakase.kok.reservation.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
@@ -7,6 +9,7 @@ import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.EventType;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
@@ -32,7 +35,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -51,6 +56,7 @@ public class ReservationService {
     private final RedissonClient redissonClient;
     private final PaymentFeignClient paymentFeignClient;
     private final PlatformTransactionManager transactionManager;
+    private final ObjectMapper objectMapper;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ReservationResponse createReservation(CreateReservationRequest request, UUID userId) {
@@ -193,6 +199,44 @@ public class ReservationService {
         return ReservationResponse.from(reservation);
     }
 
+    @Transactional
+    public ReservationResponse visitReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.visit();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_VISITED));
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional
+    public ReservationResponse noShowReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.noShow();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_NO_SHOW));
+
+        return ReservationResponse.from(reservation);
+    }
+
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ReservationResponse cancelReservation(UUID reservationId, UUID userId, CancelReservationRequest request) {
         Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
@@ -329,15 +373,24 @@ public class ReservationService {
     }
 
     private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
-        String payload = String.format(
-                "{\"reservationId\":\"%s\",\"storeId\":\"%s\",\"userId\":\"%s\",\"status\":\"%s\",\"occurredAt\":\"%s\"}",
-                reservation.getReservationId(), reservation.getStoreId(),
-                reservation.getUserId(), reservation.getStatus(), LocalDateTime.now()
-        );
-        return ReservationOutboxEvent.builder()
-                .reservationId(reservation.getReservationId())
-                .eventType(eventType)
-                .payload(payload)
-                .build();
+        UUID outboxEventId = UUID.randomUUID();
+        try {
+            Map<String, Object> payloadMap = new LinkedHashMap<>();
+            payloadMap.put("eventId", outboxEventId.toString());
+            payloadMap.put("eventType", eventType.name());
+            payloadMap.put("reservationId", reservation.getReservationId().toString());
+            payloadMap.put("userId", reservation.getUserId().toString());
+            payloadMap.put("storeId", reservation.getStoreId().toString());
+            payloadMap.put("visitedAt", reservation.getVisitedAt());
+            String payload = objectMapper.writeValueAsString(payloadMap);
+            return ReservationOutboxEvent.builder()
+                    .outboxEventId(outboxEventId)
+                    .reservationId(reservation.getReservationId())
+                    .eventType(eventType)
+                    .payload(payload)
+                    .build();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Outbox 이벤트 payload 직렬화 실패", e);
+        }
     }
 }

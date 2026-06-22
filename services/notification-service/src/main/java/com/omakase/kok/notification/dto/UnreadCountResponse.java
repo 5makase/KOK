@@ -1,4 +1,4 @@
-package com.omakase.kok.notification.dto.response;
+package com.omakase.kok.notification.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

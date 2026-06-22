@@ -1,4 +1,4 @@
-package com.omakase.kok.notification.dto.response;
+package com.omakase.kok.notification.dto;
 
 import com.omakase.kok.notification.entity.Notification;
 import com.omakase.kok.notification.enums.NotificationType;

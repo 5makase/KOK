@@ -26,6 +26,22 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+
+waiting:
+  kafka:
+    topic:
+      waiting-events:
+        name: ${WAITING_EVENTS_TOPIC:waiting.events.v1}
+        partitions: ${WAITING_EVENTS_TOPIC_PARTITIONS:1}
+        replicas: ${WAITING_EVENTS_TOPIC_REPLICAS:1}
 
 eureka:
   client:

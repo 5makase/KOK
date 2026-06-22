@@ -15,6 +15,7 @@ import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
+import com.omakase.kok.waiting.infrastructure.messaging.WaitingEventFactory;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.WaitingRegistration;
@@ -40,7 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -63,6 +63,7 @@ public class WaitingService {
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
     private final WaitingSettingService waitingSettingService;
+    private final WaitingEventFactory waitingEventFactory;
     private final ObjectMapper objectMapper;
     private final RedissonClient redissonClient;
 
@@ -99,8 +100,7 @@ public class WaitingService {
                 .requestMessage(request.getRequestMessage())
                 .build();
         Waiting savedWaiting = saveWaitingWithQueueRollback(storeId, waiting);
-        // TODO: Kafka Outbox Publisher 도입 시 WAITING_REGISTERED 이벤트 저장
-        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_REGISTERED);
+        saveRegisteredOutboxEvent(savedWaiting, registration.currentRank());
 
         return WaitingResponse.of(savedWaiting, registration.currentRank());
     }
@@ -148,8 +148,7 @@ public class WaitingService {
         waiting.cancel(request.getCancelReason());
         Waiting savedWaiting = waitingRepository.save(waiting);
         scheduleQueueRemovalAfterCommit(savedWaiting);
-        // TODO: Kafka Outbox Publisher 도입 시 WAITING_CANCELLED 이벤트 저장
-        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CANCELLED);
+        saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CANCELLED);
 
         return WaitingCancelResponse.from(savedWaiting);
     }
@@ -180,8 +179,8 @@ public class WaitingService {
             waiting.call();
             Waiting savedWaiting = waitingRepository.save(waiting);
             scheduleQueueRemovalAfterCommit(savedWaiting);
-            // TODO: Kafka Outbox Publisher 도입 시 WAITING_CALLED 이벤트 저장
-            // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_CALLED);
+            Integer callTimeoutMinutes = waitingSettingService.getStoreWaitingValues(storeId).callTimeoutMinutes();
+            saveCalledOutboxEvent(savedWaiting, callTimeoutMinutes);
 
             return WaitingCallResponse.from(savedWaiting);
         } catch (InterruptedException e) {
@@ -204,8 +203,7 @@ public class WaitingService {
         waiting.enter();
         Waiting savedWaiting = waitingRepository.save(waiting);
         scheduleQueueRemovalAfterCommit(savedWaiting);
-        // TODO: Kafka Outbox Publisher 도입 시 WAITING_ENTERED 이벤트 저장
-        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_ENTERED);
+        saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_ENTERED);
 
         return WaitingEnterResponse.from(savedWaiting);
     }
@@ -220,8 +218,7 @@ public class WaitingService {
         waiting.noShow(request.getReason());
         Waiting savedWaiting = waitingRepository.save(waiting);
         scheduleQueueRemovalAfterCommit(savedWaiting);
-        // TODO: Kafka Outbox Publisher 도입 시 WAITING_NO_SHOW 이벤트 저장
-        // saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
+        saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
 
         return WaitingNoShowResponse.from(savedWaiting);
     }
@@ -400,29 +397,43 @@ public class WaitingService {
      * Outbox
      */
 
+    // 웨이팅 등록 이벤트 저장
+    private void saveRegisteredOutboxEvent(Waiting waiting, Long currentRank) {
+        Object envelope = waitingEventFactory.createRegisteredEnvelope(UUID.randomUUID(), waiting, currentRank);
+        saveOutboxEvent(waiting, WaitingEventType.WAITING_REGISTERED, envelope);
+    }
+
+    // 웨이팅 호출 이벤트 저장
+    private void saveCalledOutboxEvent(Waiting waiting, Integer callTimeoutMinutes) {
+        Object envelope = waitingEventFactory.createCalledEnvelope(UUID.randomUUID(), waiting, callTimeoutMinutes);
+        saveOutboxEvent(waiting, WaitingEventType.WAITING_CALLED, envelope);
+    }
+
     // 아웃박스 테이블 저장
     private void saveOutboxEvent(Waiting waiting, WaitingEventType eventType) {
+        Object envelope = switch (eventType) {
+            case WAITING_ENTERED -> waitingEventFactory.createEnteredEnvelope(UUID.randomUUID(), waiting);
+            case WAITING_CANCELLED -> waitingEventFactory.createCancelledEnvelope(UUID.randomUUID(), waiting);
+            case WAITING_NO_SHOW -> waitingEventFactory.createNoShowEnvelope(UUID.randomUUID(), waiting);
+            default -> throw new IllegalArgumentException("Unsupported waiting event type: " + eventType);
+        };
+        saveOutboxEvent(waiting, eventType, envelope);
+    }
+
+    // 아웃박스 테이블 저장
+    private void saveOutboxEvent(Waiting waiting, WaitingEventType eventType, Object envelope) {
         WaitingOutboxEvent outboxEvent = WaitingOutboxEvent.builder()
                 .waiting(waiting)
                 .eventType(eventType)
-                .payload(createPayload(waiting, eventType))
+                .payload(serializeEnvelope(envelope))
                 .build();
         waitingOutboxEventRepository.save(outboxEvent);
     }
 
-    // Outbox 이벤트 payload 생성
-    private String createPayload(Waiting waiting, WaitingEventType eventType) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("eventType", eventType.name());
-        payload.put("waitingId", waiting.getId());
-        payload.put("storeId", waiting.getStoreId());
-        payload.put("userId", waiting.getUserId());
-        payload.put("waitingNumber", waiting.getWaitingNumber());
-        payload.put("peopleCount", waiting.getPeopleCount());
-        payload.put("status", waiting.getStatus().name());
-
+    // Outbox 이벤트 직렬화
+    private String serializeEnvelope(Object envelope) {
         try {
-            return objectMapper.writeValueAsString(payload);
+            return objectMapper.writeValueAsString(envelope);
         } catch (JsonProcessingException e) {
             throw new WaitingException(WaitingErrorCode.WAITING_EVENT_PAYLOAD_SERIALIZE_FAILED);
         }

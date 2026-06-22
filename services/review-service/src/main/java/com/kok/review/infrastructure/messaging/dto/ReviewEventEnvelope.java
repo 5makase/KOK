@@ -3,7 +3,7 @@ package com.kok.review.infrastructure.messaging.dto;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/** Kafka로 발행되는 공통 봉투(Envelope) */
+// 카프카로 데이터를 보낼 때 사용되는 전체 틀
 public record ReviewEventEnvelope(
         UUID eventId,
         String eventType,
@@ -12,6 +12,7 @@ public record ReviewEventEnvelope(
         String producer,
         ReviewEventPayload payload
 ) {
+    //전체 틀 생성
     public static ReviewEventEnvelope of(String eventType, ReviewEventPayload payload) {
         return new ReviewEventEnvelope(
                 UUID.randomUUID(),

@@ -23,50 +23,66 @@ public class ReviewRatingService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 리뷰 생성 시: 집계 반영 + REVIEW_CREATED Outbox 이벤트 저장.
-     * 호출자(createReview) 트랜잭션에 합류 — 별도 @Transactional 없음.
+     * 리뷰 생성 -> A 가게의 평점에 증가. -> Kafka 이벤트 만듦.
+     * @param reviewId
+     * @param storeId
+     * @param rating
      */
     public void applyCreated(UUID reviewId, UUID storeId, BigDecimal rating) {
+        //A가게의 총 평점을 가져옴.
         ReviewRatingSummary summary = getOrCreateSummary(storeId);
+        //A 가게의 평점을 증가
         summary.addRating(toScaledInt(rating));
+        //DB에 저장.
         reviewRatingSummaryRepository.save(summary);
 
-        // 집계 갱신 후의 최신 평균/개수를 payload에 담음 (스냅샷)
+        //A가게 평점 반영하고 Kafka의 Payload를 만듦.
         ReviewEventPayload payload = ReviewEventPayload.created(
-                reviewId, storeId, rating,
-                summary.getAverageRating(), summary.getReviewCount());
-
+                reviewId, storeId, rating, summary.getAverageRating(), summary.getReviewCount());
+        //Kafka 이벤트를 생성함.
         saveOutbox(reviewId, "REVIEW_CREATED", payload);
     }
 
     /**
-     * 리뷰 삭제 시: 집계 제외 + REVIEW_DELETED Outbox 이벤트 저장.
+     * 리뷰 삭제 시, 그 리뷰는 총 평점에서 제외 -> 카프카 이벤트 발행
+     * @param reviewId
+     * @param storeId
+     * @param rating
      */
     public void applyDeleted(UUID reviewId, UUID storeId, BigDecimal rating) {
+        //A가게의 총 평점을 가져옴.
         ReviewRatingSummary summary = reviewRatingSummaryRepository.findById(storeId)
                 .orElseThrow(() -> new IllegalStateException("집계 정보가 없습니다. storeId=" + storeId));
+        //그 총 평점에서 삭제할 리뷰의 평점을 삭제.
         summary.subtractRating(toScaledInt(rating));
+        // DB에 반영
         reviewRatingSummaryRepository.save(summary);
 
+        //삭제 전용 paylaod 생성
         ReviewEventPayload payload = ReviewEventPayload.deleted(
                 reviewId, storeId,
                 summary.getAverageRating(), summary.getReviewCount());
 
+        //kafka 이벤트 생성
         saveOutbox(reviewId, "REVIEW_DELETED", payload);
     }
-
+    //A가게의 총 평점을 가져온다. - 많이 없을 경우 새롭게 0.00의 평점을 만들어 가져온다.
     private ReviewRatingSummary getOrCreateSummary(UUID storeId) {
         return reviewRatingSummaryRepository.findById(storeId)
                 .orElseGet(() -> ReviewRatingSummary.init(storeId));
     }
 
+    // 카프카 이벤트 생성.
     private void saveOutbox(UUID reviewId, String eventType, ReviewEventPayload payload) {
+        //eventType(REVIEW_CREATED, REVIEW_DELETED)과 payload로 카프카로 보낼 데이터 만듦.
         ReviewEventEnvelope envelope = ReviewEventEnvelope.of(eventType, payload);
+        //보낼 데이터를 JSON 형태로 변환
         String json = serialize(envelope);
+        //OutBox에 저장.
         reviewOutboxEventRepository.save(
                 ReviewOutboxEvent.create(reviewId, eventType, json));
     }
-
+    //JSON으로 변환해주는..
     private String serialize(ReviewEventEnvelope envelope) {
         try {
             return objectMapper.writeValueAsString(envelope);

@@ -29,7 +29,7 @@ public class ReviewOutboxPublisher {
     @Scheduled(fixedDelay = 5000)
     @Transactional
     public void publishPendingEvents() {
-        //Outbux상태가 PENDING인 Outbox 이벤트들을 조회
+        //Outbox상태가 PENDING인 Outbox 이벤트들을 조회
         List<ReviewOutboxEvent> pendingEvents = outboxRepository.findTop100ByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING);
 
         // 없으면 종료하고,

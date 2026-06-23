@@ -40,7 +40,7 @@ public class ReviewService {
      * @return
      */
     @Retryable(
-            retryFor = {OptimisticLockException.class},
+            retryFor = {OptimisticLockException.class, DataIntegrityViolationException.class},
             maxAttempts = 3,
             backoff = @Backoff(delay = 50)
     )
@@ -51,35 +51,37 @@ public class ReviewService {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new IllegalArgumentException("리뷰 없음."));
 
-        // 작성자 본인 확인
-        if (!review.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("본인 아님.");
-        }
-
         // 권한 확인
         if (!userRole.equals("USER")) {
             throw new IllegalArgumentException("사용자 권한 아님.");
         }
-
+        // 작성자 본인 확인
+        if (!review.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("본인 아님.");
+        }
         // 평점 재집계용: 덮어쓰기 전에 기존 별점 확보
         BigDecimal oldRating = review.getRating();
 
         // 리뷰 본문/별점 수정
         review.update(dto);
 
-        // 이미지 전체 교체: 기존 전부 soft delete → 새로 저장
-        List<ReviewImage> oldImages = reviewImageRepository.findByReviewReviewId(reviewId);
-        oldImages.forEach(image -> image.delete(userId));
+        //이미지가 있을 때만 아래 로직 수행
+        if(dto.getImageUrls() != null) {
+            // 이미지 전체 교체: 기존 전부 soft delete → 새로 저장
+            List<ReviewImage> oldImages = reviewImageRepository.findByReviewReviewId(reviewId);
+            oldImages.forEach(image -> image.delete(userId));
 
-        List<String> newUrls = dto.getImageUrls();
-        List<ReviewImage> newImages = new ArrayList<>();
-        for (int i = 0; i < newUrls.size(); i++) {
-            newImages.add(ReviewImage.of(review, newUrls.get(i), i));
+            List<String> newUrls = dto.getImageUrls();
+            List<ReviewImage> newImages = new ArrayList<>();
+            for (int i = 0; i < newUrls.size(); i++) {
+                newImages.add(ReviewImage.of(review, newUrls.get(i), i));
+            }
+            reviewImageRepository.saveAll(newImages);
         }
-        reviewImageRepository.saveAll(newImages);
+
 
         // 평점 재집계 + REVIEW_UPDATED 이벤트 (별점이 실제로 바뀐 경우에만)
-        if (!dto.getRating().equals(oldRating)) {
+        if (dto.getRating().compareTo(oldRating) != 0) {
             reviewRatingService.applyUpdated(
                     review.getReviewId(), review.getStoreId(), oldRating, dto.getRating());
         }

@@ -31,6 +31,7 @@ public class StoreRankingRedisRepository implements StoreRankingRepository {
 
     // averageRating 내림차순(reverseRange) 상위 size개 storeId 반환
     public List<UUID> getTopRanking(int size) {
+        if (size <= 0) return Collections.emptyList();
         Set<String> result = redisTemplate.opsForZSet().reverseRange(RANKING_KEY, 0, size - 1L);
         if (result == null || result.isEmpty()) {
             return Collections.emptyList();

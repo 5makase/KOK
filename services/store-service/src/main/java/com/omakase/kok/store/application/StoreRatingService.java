@@ -31,7 +31,8 @@ public class StoreRatingService {
 
     @Transactional(readOnly = true)
     public List<StoreRankingResult> getRanking(int size) {
-        List<UUID> rankedIds = storeRankingRepository.getTopRanking(size);
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        List<UUID> rankedIds = storeRankingRepository.getTopRanking(safeSize);
         if (rankedIds.isEmpty()) {
             return List.of();
         }

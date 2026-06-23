@@ -120,13 +120,12 @@ public class StoreController {
     }
 
     // 인기 매장 랭킹 조회 - Redis Sorted Set 기반, 권한 불필요
-    // Redis 부하 및 응답 크기 제한 - size 최대 50
+    // size 범위(1~50) 보정은 StoreRatingService에서 처리
     @GetMapping("/ranking")
     public ResponseEntity<ApiResponse<StoreRankingResponse>> getRanking(
             @RequestParam(defaultValue = "10") int size
     ) {
-        int clampedSize = Math.min(size, 50);
-        return ResponseEntity.ok(ApiResponse.success(StoreRankingResponse.from(storeRatingService.getRanking(clampedSize))));
+        return ResponseEntity.ok(ApiResponse.success(StoreRankingResponse.from(storeRatingService.getRanking(size))));
     }
 
     // 매장 목록 검색 - 역할별 동작 차이는 Service에서 처리

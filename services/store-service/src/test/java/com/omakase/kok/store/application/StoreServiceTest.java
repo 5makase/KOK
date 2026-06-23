@@ -2,21 +2,22 @@ package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
 import com.omakase.kok.store.application.result.StoreResult;
+import com.omakase.kok.store.application.result.StoreSummaryResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.enums.StoreStatus;
-import com.omakase.kok.store.domain.repository.StoreSearchCondition;
-import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.domain.repository.MenuRepository;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
+import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
@@ -27,11 +28,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.time.DayOfWeek;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -183,7 +184,7 @@ class StoreServiceTest {
         StoreResult result = storeService.createStore(command);
 
         assertThat(result.getName()).isEqualTo("테스트 매장");
-        assertThat(result.getStatus()).isEqualTo(StoreStatus.PREPARING);
+        assertThat(result.getStatus()).isEqualTo(StoreStatus.PREPARING.name()); // Result DTO는 String 변환 적용
     }
 
     @Test
@@ -293,6 +294,26 @@ class StoreServiceTest {
     }
 
     @Test
+    @DisplayName("MASTER 역할 - 조건 그대로 통과 (status 강제 없음)")
+    void searchStores_master_passes_condition_as_is() {
+        StoreSearchCondition condition = StoreSearchCondition.builder()
+                .status(StoreStatus.PREPARING).build();
+        PageRequest pageable = PageRequest.of(0, 20);
+        Page<Store> emptyPage = new PageImpl<>(List.of());
+
+        when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), eq(pageable))).thenReturn(emptyPage);
+
+        storeService.searchStores(condition, UUID.randomUUID(), AuthConstants.MASTER, pageable);
+
+        // MASTER는 OPEN 강제 없이 PREPARING 그대로 전달
+        verify(storeRepository).search(
+                argThat(c -> c.getStatus() == StoreStatus.PREPARING),
+                eq(pageable)
+        );
+    }
+
+    @Test
     @DisplayName("USER 역할 - status OPEN 강제 적용")
     void searchStores_user_forces_open_status() {
         StoreSearchCondition condition = StoreSearchCondition.builder().build();
@@ -309,5 +330,76 @@ class StoreServiceTest {
                 argThat(c -> c.getStatus() == StoreStatus.OPEN),
                 eq(pageable)
         );
+    }
+
+    // getStore
+
+    @Test
+    @DisplayName("MASTER는 삭제된 매장도 조회 가능")
+    void getStore_master_can_read_deleted_store() {
+        when(storeRepository.findById(storeId)).thenReturn(Optional.of(store));
+        when(storeHoursRepository.findTodayHours(eq(storeId), any(DayOfWeek.class)))
+                .thenReturn(Optional.empty());
+        when(storeAmenityRepository.findAllAmenities(store)).thenReturn(List.of());
+        when(storeImageRepository.findImagePreview(storeId)).thenReturn(List.of());
+        when(menuRepository.findAllMenus(store)).thenReturn(List.of());
+
+        StoreResult result = storeService.getStore(storeId, AuthConstants.MASTER);
+
+        assertThat(result.getName()).isEqualTo("테스트 매장");
+        // MASTER 경로: storeRepository.findById 사용 (storeFinder 미사용)
+        verify(storeRepository).findById(storeId);
+    }
+
+    @Test
+    @DisplayName("USER는 삭제된(비활성) 매장 조회 시 예외")
+    void getStore_user_cannot_read_inactive_store() {
+        when(storeFinder.findActiveOrThrow(storeId))
+                .thenThrow(new BaseException(StoreErrorCode.STORE_NOT_FOUND));
+
+        assertThatThrownBy(() -> storeService.getStore(storeId, "USER"))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("오늘 영업시간이 없으면 todayHours null로 결과 반환")
+    void getStore_no_today_hours_returns_result_without_hours() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(eq(storeId), any(DayOfWeek.class)))
+                .thenReturn(Optional.empty());
+        when(storeAmenityRepository.findAllAmenities(store)).thenReturn(List.of());
+        when(storeImageRepository.findImagePreview(storeId)).thenReturn(List.of());
+        when(menuRepository.findAllMenus(store)).thenReturn(List.of());
+
+        StoreResult result = storeService.getStore(storeId, "USER");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getName()).isEqualTo("테스트 매장");
+    }
+
+    // getStoreSummary
+
+    @Test
+    @DisplayName("getStoreSummary - 활성 매장 요약 정보 반환")
+    void getStoreSummary_returns_summary() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        StoreSummaryResult result = storeService.getStoreSummary(storeId);
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    @DisplayName("getStoreSummary - 비활성 매장이면 예외")
+    void getStoreSummary_inactive_store_throws() {
+        when(storeFinder.findActiveOrThrow(storeId))
+                .thenThrow(new BaseException(StoreErrorCode.STORE_NOT_FOUND));
+
+        assertThatThrownBy(() -> storeService.getStoreSummary(storeId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
     }
 }

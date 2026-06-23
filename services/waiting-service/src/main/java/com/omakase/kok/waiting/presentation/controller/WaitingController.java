@@ -109,7 +109,7 @@ public class WaitingController {
                 AuthConstants.MASTER,
                 AuthConstants.OWNER
         );
-        PageResponse<StoreWaitingResponse> response = waitingService.getStoreWaitings(userId, storeId, status, pageable);
+        PageResponse<StoreWaitingResponse> response = waitingService.getStoreWaitings(userId, role, storeId, status, pageable);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -143,7 +143,7 @@ public class WaitingController {
                 AuthConstants.MASTER,
                 AuthConstants.OWNER
         );
-        WaitingCallResponse response = waitingService.callNextWaiting(storeId);
+        WaitingCallResponse response = waitingService.callNextWaiting(userId, role, storeId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -159,7 +159,7 @@ public class WaitingController {
                 AuthConstants.MASTER,
                 AuthConstants.OWNER
         );
-        WaitingEnterResponse response = waitingService.enterWaiting(userId, waitingId);
+        WaitingEnterResponse response = waitingService.enterWaiting(userId, role, waitingId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -176,7 +176,7 @@ public class WaitingController {
                 AuthConstants.MASTER,
                 AuthConstants.OWNER
         );
-        WaitingNoShowResponse response = waitingService.noShowWaiting(userId, waitingId, request);
+        WaitingNoShowResponse response = waitingService.noShowWaiting(userId, role, waitingId, request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

@@ -1,7 +1,10 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.command.AddStoreImageCommand;
+import com.omakase.kok.store.application.command.AddStoreImageCommand.ImageEntry;
 import com.omakase.kok.store.application.command.UpdateStoreImageCommand;
+import com.omakase.kok.store.application.result.StoreImageResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.entity.StoreImage;
@@ -19,11 +22,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +53,164 @@ class StoreImageServiceTest {
         store = Store.create(ownerId, StoreCategory.create("한식", 1, null), "테스트 매장", null,
                 new Address("서울", "강남", null, null, null, null), null, null);
     }
+
+    // addImages
+
+    @Test
+    @DisplayName("이미지 등록 성공 - 신규 슬롯")
+    void addImages_new_slot_success() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findAllByDisplayOrders(any(), anyList())).thenReturn(List.of());
+        StoreImage saved = StoreImage.create(store, "url1", 1);
+        when(storeImageRepository.saveAll(anyList())).thenReturn(List.of(saved));
+
+        AddStoreImageCommand command = AddStoreImageCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .images(List.of(ImageEntry.builder().imageUrl("url1").displayOrder(1).build()))
+                .build();
+
+        List<StoreImageResult> results = storeImageService.addImages(command);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getDisplayOrder()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("요청 내 displayOrder 중복 시 409")
+    void addImages_duplicate_display_order_in_request_throws() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        AddStoreImageCommand command = AddStoreImageCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .images(List.of(
+                        ImageEntry.builder().imageUrl("url1").displayOrder(1).build(),
+                        ImageEntry.builder().imageUrl("url2").displayOrder(1).build() // 중복
+                ))
+                .build();
+
+        assertThatThrownBy(() -> storeImageService.addImages(command))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_IMAGE_DUPLICATE_DISPLAY_ORDER);
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장에 이미지 등록 시 403")
+    void addImages_owner_cannot_add_to_others_store() {
+        UUID otherId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        AddStoreImageCommand command = AddStoreImageCommand.builder()
+                .storeId(storeId).requesterId(otherId)
+                .images(List.of(ImageEntry.builder().imageUrl("url1").displayOrder(1).build()))
+                .build();
+
+        assertThatThrownBy(() -> storeImageService.addImages(command))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("soft delete된 슬롯 재등록 시 restore 후 업데이트")
+    void addImages_restores_deleted_slot() {
+        StoreImage deleted = StoreImage.create(store, "old-url", 1);
+        deleted.delete(ownerId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findAllByDisplayOrders(any(), anyList())).thenReturn(List.of(deleted));
+        when(storeImageRepository.saveAll(anyList())).thenReturn(List.of(deleted));
+
+        AddStoreImageCommand command = AddStoreImageCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .images(List.of(ImageEntry.builder().imageUrl("new-url").displayOrder(1).build()))
+                .build();
+
+        storeImageService.addImages(command);
+
+        assertThat(deleted.isDeleted()).isFalse();
+        assertThat(deleted.getImageUrl()).isEqualTo("new-url");
+    }
+
+    // deleteImage
+
+    @Test
+    @DisplayName("이미지 삭제 성공")
+    void deleteImage_success() throws Exception {
+        UUID imageId = UUID.randomUUID();
+        StoreImage image = StoreImage.create(store, "url1", 1);
+        setImageId(image, imageId);
+
+        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(image));
+
+        assertThatCode(() -> storeImageService.deleteImage(storeId, imageId, ownerId))
+                .doesNotThrowAnyException();
+        assertThat(image.isDeleted()).isTrue();
+        assertThat(image.getDeletedBy()).isEqualTo(ownerId);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 이미지 삭제 시 404")
+    void deleteImage_not_found_throws() {
+        UUID imageId = UUID.randomUUID();
+        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_IMAGE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("이미 삭제된 이미지 삭제 시 400")
+    void deleteImage_already_deleted_throws() {
+        UUID imageId = UUID.randomUUID();
+        StoreImage deleted = StoreImage.create(store, "url1", 1);
+        deleted.delete(ownerId);
+
+        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_IMAGE_ALREADY_DELETED);
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 이미지 삭제 시 403")
+    void deleteImage_owner_cannot_delete_others() throws Exception {
+        UUID imageId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        StoreImage image = StoreImage.create(store, "url1", 1);
+        setImageId(image, imageId);
+
+        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(image));
+
+        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, otherId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
+    }
+
+    // getImages
+
+    @Test
+    @DisplayName("이미지 목록 조회 - displayOrder 오름차순")
+    void getImages_returns_sorted_list() {
+        StoreImage img1 = StoreImage.create(store, "url1", 1);
+        StoreImage img2 = StoreImage.create(store, "url2", 2);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findAllImages(storeId)).thenReturn(List.of(img2, img1));
+
+        List<StoreImageResult> results = storeImageService.getImages(storeId);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).getDisplayOrder()).isEqualTo(1);
+        assertThat(results.get(1).getDisplayOrder()).isEqualTo(2);
+    }
+
+    // updateImage
 
     @Test
     @DisplayName("displayOrder 변경 시 목표 슬롯에 활성 이미지가 있으면 soft delete")

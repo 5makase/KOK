@@ -2,6 +2,7 @@ package com.omakase.kok.reservation.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
@@ -34,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,6 +129,20 @@ public class ReservationService {
                         slot.getDepositAmount(),
                         request.getPaymentMethod()
                 ));
+            } catch (FeignException e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                    reservation.cancel("SYSTEM", "결제 처리 실패");
+                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
+                    return null;
+                });
+                if (e.status() >= 400 && e.status() < 500) {
+                    log.warn("결제 서비스 클라이언트 오류 - status: {}, reservationId: {}", e.status(), reservationId);
+                } else {
+                    log.error("결제 서비스 서버 오류 - status: {}, reservationId: {}", e.status(), reservationId, e);
+                }
+                throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             } catch (Exception e) {
                 capacityKey.addAndGet(request.getReservationSize());
                 new TransactionTemplate(transactionManager).execute(status -> {
@@ -135,6 +151,7 @@ public class ReservationService {
                     outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
                     return null;
                 });
+                log.error("결제 처리 중 예외 발생 - reservationId: {}", reservationId, e);
                 throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             }
 
@@ -375,14 +392,21 @@ public class ReservationService {
     private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
         UUID outboxEventId = UUID.randomUUID();
         try {
-            Map<String, Object> payloadMap = new LinkedHashMap<>();
-            payloadMap.put("eventId", outboxEventId.toString());
-            payloadMap.put("eventType", eventType.name());
-            payloadMap.put("reservationId", reservation.getReservationId().toString());
-            payloadMap.put("userId", reservation.getUserId().toString());
-            payloadMap.put("storeId", reservation.getStoreId().toString());
-            payloadMap.put("visitedAt", reservation.getVisitedAt());
-            String payload = objectMapper.writeValueAsString(payloadMap);
+            Map<String, Object> payloadData = new LinkedHashMap<>();
+            payloadData.put("reservationId", reservation.getReservationId().toString());
+            payloadData.put("userId", reservation.getUserId().toString());
+            payloadData.put("storeId", reservation.getStoreId().toString());
+            payloadData.put("visitedAt", reservation.getVisitedAt());
+
+            Map<String, Object> envelope = new LinkedHashMap<>();
+            envelope.put("eventId", outboxEventId.toString());
+            envelope.put("eventType", eventType.name());
+            envelope.put("schemaVersion", 1);
+            envelope.put("occurredAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")));
+            envelope.put("producer", "reservation-service");
+            envelope.put("payload", payloadData);
+
+            String payload = objectMapper.writeValueAsString(envelope);
             return ReservationOutboxEvent.builder()
                     .outboxEventId(outboxEventId)
                     .reservationId(reservation.getReservationId())
@@ -390,7 +414,7 @@ public class ReservationService {
                     .payload(payload)
                     .build();
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Outbox 이벤트 payload 직렬화 실패", e);
+            throw new BaseException(ReservationErrorCode.PAYLOAD_SERIALIZATION_FAILED);
         }
     }
 }

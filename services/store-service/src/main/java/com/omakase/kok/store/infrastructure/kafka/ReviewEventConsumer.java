@@ -2,6 +2,7 @@ package com.omakase.kok.store.infrastructure.kafka;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.StoreRatingService;
 import com.omakase.kok.store.infrastructure.kafka.event.ReviewEvent;
 import com.omakase.kok.store.infrastructure.kafka.event.ReviewEventType;
@@ -53,6 +54,9 @@ public class ReviewEventConsumer {
             // 재처리해도 고쳐지지 않는 poison pill - 오프셋 커밋하고 넘어감
             // raw payload는 개인정보 노출 방지를 위해 로그에서 제외
             log.warn("review.events.v1 역직렬화 실패 — 메시지 버림 (raw payload omitted)", e);
+        } catch (BaseException e) {
+            // 비즈니스 예외 - 재처리해도 해결 안 됨 (삭제/비활성 매장 등), 버림
+            log.warn("review.events.v1 처리 불가 — 비즈니스 예외. error={}", e.getMessage());
         } catch (Exception e) {
             log.error("review.events.v1 처리 실패. error={}", e.getMessage(), e);
             throw new RuntimeException("review.events.v1 처리 실패 — Kafka 재처리 유도", e);

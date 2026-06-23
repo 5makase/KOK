@@ -111,14 +111,7 @@ public class StoreQueryRepository {
     // latitude/longitude/radiusKm 셋 모두 있을 때만 반경 필터 활성화
     private BooleanExpression withinRadius(QStore store, BigDecimal lat, BigDecimal lng, Double radiusKm) {
         if (lat == null || lng == null || radiusKm == null) return null;
-
-        // Haversine 공식 — 지구 반지름 6371km 기준, 결과 단위: km
-        NumberTemplate<Double> distance = Expressions.numberTemplate(Double.class,
-                "6371 * acos(cos(radians({0})) * cos(radians({1})) * cos(radians({2}) - radians({3})) + sin(radians({0})) * sin(radians({1})))",
-                lat, store.address.latitude, store.address.longitude, lng
-        );
-
-        return distance.loe(radiusKm);
+        return distanceExpression(store, lat, lng).loe(radiusKm);
     }
 
     private OrderSpecifier<?> resolveSort(QStore store, StoreSearchCondition condition) {
@@ -134,7 +127,7 @@ public class StoreQueryRepository {
         };
     }
 
-    // DISTANCE 정렬용 Haversine 수식 — 기준 좌표(lat, lng) 대비 각 매장까지의 거리
+    // DISTANCE 정렬용 Haversine 수식 - 기준 좌표(lat, lng) 대비 각 매장까지의 거리
     private NumberTemplate<Double> distanceExpression(QStore store, BigDecimal lat, BigDecimal lng) {
         return Expressions.numberTemplate(Double.class,
                 "6371 * acos(cos(radians({0})) * cos(radians({1})) * cos(radians({2}) - radians({3})) + sin(radians({0})) * sin(radians({1})))",

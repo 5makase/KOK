@@ -45,6 +45,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDate;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -87,7 +88,8 @@ public class WaitingService {
                 storeId,
                 userId,
                 waitingId,
-                storeWaitingValues.maxWaitingCount()
+                storeWaitingValues.maxWaitingCount(),
+                LocalDate.now()
         ).orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CAPACITY_EXCEEDED));
         // 웨이팅 생성
         Waiting waiting = Waiting.builder()
@@ -342,14 +344,14 @@ public class WaitingService {
     // 트랜잭션이 정상 커밋된 뒤에만 Redis 대기열을 제거
     private void scheduleQueueRemovalAfterCommit(Waiting waiting) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+            waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId(), waitingDate(waiting));
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
-                    waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId());
+                    waitingQueueRedisStore.remove(waiting.getStoreId(), waiting.getUserId(), waiting.getId(), waitingDate(waiting));
                 } catch (RuntimeException e) {
                     log.warn("Failed to cleanup waiting queue after commit. storeId={}, userId={}, waitingId={}",
                             waiting.getStoreId(), waiting.getUserId(), waiting.getId(), e);
@@ -392,7 +394,7 @@ public class WaitingService {
     // 대기열과 active user 키를 함께 제거
     private void rollbackQueueRegistrationSafely(UUID storeId, Waiting waiting, RuntimeException originalException) {
         try {
-            waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId());
+            waitingQueueRedisStore.remove(storeId, waiting.getUserId(), waiting.getId(), waitingDate(waiting));
         } catch (RuntimeException rollbackException) {
             log.warn("Failed to rollback waiting queue. storeId={}, userId={}, waitingId={}",
                     storeId, waiting.getUserId(), waiting.getId(), rollbackException);
@@ -411,12 +413,16 @@ public class WaitingService {
         if (!isQueueTrackedStatus(waiting.getStatus())) {
             return null;
         }
-        return waitingQueueRedisStore.getRank(waiting.getStoreId(), waiting.getId());
+        return waitingQueueRedisStore.getRank(waiting.getStoreId(), waiting.getId(), waitingDate(waiting));
     }
 
     // 현재 순위를 조회할 수 있는 진행 중 상태인지 확인
     private boolean isQueueTrackedStatus(WaitingStatus status) {
         return status == WaitingStatus.WAITING;
+    }
+
+    private LocalDate waitingDate(Waiting waiting) {
+        return waiting.getCreatedAt() != null ? waiting.getCreatedAt().toLocalDate() : LocalDate.now();
     }
 
     /**

@@ -41,6 +41,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -99,7 +100,7 @@ class WaitingServiceTest {
                 .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
         given(waitingSettingService.getStoreWaitingValues(storeId))
                 .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
-        given(waitingQueueRedisStore.register(eq(storeId), eq(userId), any(UUID.class), eq(50)))
+        given(waitingQueueRedisStore.register(eq(storeId), eq(userId), any(UUID.class), eq(50), any(LocalDate.class)))
                 .willReturn(Optional.of(new WaitingRegistration(7L, 3L)));
         given(waitingRepository.saveAndFlush(any(Waiting.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -143,7 +144,8 @@ class WaitingServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_OWN_STORE_NOT_ALLOWED));
 
         then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
-        then(waitingQueueRedisStore).should(never()).register(any(UUID.class), any(UUID.class), any(UUID.class), any(Integer.class));
+        then(waitingQueueRedisStore).should(never())
+                .register(any(UUID.class), any(UUID.class), any(UUID.class), any(Integer.class), any(LocalDate.class));
         then(waitingRepository).should(never()).saveAndFlush(any(Waiting.class));
     }
 
@@ -157,7 +159,7 @@ class WaitingServiceTest {
 
         given(waitingRepository.findByUserIdAndStatus(userId, WaitingStatus.WAITING, pageable))
                 .willReturn(new PageImpl<>(List.of(waiting), pageable, 1));
-        given(waitingQueueRedisStore.getRank(storeId, waiting.getId())).willReturn(2L);
+        given(waitingQueueRedisStore.getRank(eq(storeId), eq(waiting.getId()), any(LocalDate.class))).willReturn(2L);
 
         PageResponse<WaitingResponse> response = waitingService.getMyWaitings(userId, WaitingStatus.WAITING, pageable);
 
@@ -195,7 +197,7 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "id", waitingId);
 
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
-        given(waitingQueueRedisStore.getRank(storeId, waitingId)).willReturn(4L);
+        given(waitingQueueRedisStore.getRank(eq(storeId), eq(waitingId), any(LocalDate.class))).willReturn(4L);
 
         var response = waitingService.getWaiting(userId, "USER", waitingId);
 
@@ -244,7 +246,7 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "id", waitingId);
 
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
-        given(waitingQueueRedisStore.getRank(storeId, waitingId)).willReturn(1L);
+        given(waitingQueueRedisStore.getRank(eq(storeId), eq(waitingId), any(LocalDate.class))).willReturn(1L);
 
         var response = waitingService.getWaiting(masterId, "MASTER", waitingId);
 
@@ -320,7 +322,7 @@ class WaitingServiceTest {
         assertThat(response.getCancelledAt()).isNotNull();
 
         then(waitingRepository).should().save(waiting);
-        then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(userId), eq(waitingId), any(LocalDate.class));
     }
 
     @Test
@@ -343,7 +345,7 @@ class WaitingServiceTest {
         assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
         assertThat(response.getCancelReason()).isEqualTo("관리자 취소");
         then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
-        then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(ownerId), eq(waitingId), any(LocalDate.class));
     }
 
     @Test
@@ -366,7 +368,7 @@ class WaitingServiceTest {
 
         then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
         then(waitingRepository).should(never()).save(any(Waiting.class));
-        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
     }
 
     @Test
@@ -388,7 +390,7 @@ class WaitingServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CANCEL_DISABLED));
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
-        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
     }
 
     @Test
@@ -409,7 +411,7 @@ class WaitingServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(WaitingStatus.CANCELLED);
         then(waitingSettingService).should(never()).getStoreWaitingValues(any(UUID.class));
-        then(waitingQueueRedisStore).should().remove(storeId, ownerId, waitingId);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(ownerId), eq(waitingId), any(LocalDate.class));
     }
 
     @Test
@@ -440,7 +442,7 @@ class WaitingServiceTest {
         assertThat(response.getCalledAt()).isNotNull();
 
         then(waitingRepository).should().save(waiting);
-        then(waitingQueueRedisStore).should().remove(storeId, userId, waitingId);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(userId), eq(waitingId), any(LocalDate.class));
         then(callNextLock).should().unlock();
     }
 
@@ -530,7 +532,7 @@ class WaitingServiceTest {
         assertThat(response.getEnteredAt()).isNotNull();
 
         then(waitingRepository).should().save(waiting);
-        then(waitingQueueRedisStore).should().remove(storeId, waiting.getUserId(), waitingId);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(waiting.getUserId()), eq(waitingId), any(LocalDate.class));
     }
 
     @Test
@@ -551,7 +553,7 @@ class WaitingServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_ENTER_NOT_ALLOWED));
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
-        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
     }
 
     @Test
@@ -578,7 +580,7 @@ class WaitingServiceTest {
         assertThat(response.getNoShowAt()).isNotNull();
 
         then(waitingRepository).should().save(waiting);
-        then(waitingQueueRedisStore).should().remove(storeId, waiting.getUserId(), waitingId);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(waiting.getUserId()), eq(waitingId), any(LocalDate.class));
     }
 
     @Test
@@ -600,7 +602,7 @@ class WaitingServiceTest {
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_NO_SHOW_NOT_ALLOWED));
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
-        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
     }
 
     @Test
@@ -618,7 +620,7 @@ class WaitingServiceTest {
                 .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
         given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
-                .when(waitingQueueRedisStore).remove(storeId, userId, waitingId);
+                .when(waitingQueueRedisStore).remove(eq(storeId), eq(userId), eq(waitingId), any(LocalDate.class));
 
         TransactionSynchronizationManager.initSynchronization();
         try {

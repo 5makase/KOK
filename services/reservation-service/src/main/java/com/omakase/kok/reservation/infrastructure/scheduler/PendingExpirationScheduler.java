@@ -2,10 +2,12 @@ package com.omakase.kok.reservation.infrastructure.scheduler;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
 import com.omakase.kok.reservation.domain.enums.EventType;
 import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
@@ -122,7 +124,7 @@ public class PendingExpirationScheduler {
                     .payload(payload)
                     .build();
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Outbox 이벤트 payload 직렬화 실패", e);
+            throw new BaseException(ReservationErrorCode.PAYLOAD_SERIALIZATION_FAILED);
         }
     }
 }

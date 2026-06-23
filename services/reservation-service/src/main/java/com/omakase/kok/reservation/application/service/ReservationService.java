@@ -2,6 +2,7 @@ package com.omakase.kok.reservation.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
@@ -127,6 +128,20 @@ public class ReservationService {
                         slot.getDepositAmount(),
                         request.getPaymentMethod()
                 ));
+            } catch (FeignException e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                    reservation.cancel("SYSTEM", "결제 처리 실패");
+                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
+                    return null;
+                });
+                if (e.status() >= 400 && e.status() < 500) {
+                    log.warn("결제 서비스 클라이언트 오류 - status: {}, reservationId: {}", e.status(), reservationId);
+                } else {
+                    log.error("결제 서비스 서버 오류 - status: {}, reservationId: {}", e.status(), reservationId, e);
+                }
+                throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             } catch (Exception e) {
                 capacityKey.addAndGet(request.getReservationSize());
                 new TransactionTemplate(transactionManager).execute(status -> {
@@ -135,6 +150,7 @@ public class ReservationService {
                     outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
                     return null;
                 });
+                log.error("결제 처리 중 예외 발생 - reservationId: {}", reservationId, e);
                 throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             }
 
@@ -390,7 +406,7 @@ public class ReservationService {
                     .payload(payload)
                     .build();
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("Outbox 이벤트 payload 직렬화 실패", e);
+            throw new BaseException(ReservationErrorCode.PAYLOAD_SERIALIZATION_FAILED);
         }
     }
 }

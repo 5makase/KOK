@@ -1,10 +1,9 @@
 package com.omakase.kok.store.application;
 
-import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
+import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
-import com.omakase.kok.store.domain.service.StoreFinder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,6 +12,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -20,14 +20,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StoreRatingService {
 
-    private final StoreFinder storeFinder;
     private final StoreRepository storeRepository;
     private final StoreRankingRepository storeRankingRepository;
     private final StoreListCacheRepository storeListCacheRepository;
 
     @Transactional
     public void updateRating(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
-        Store store = storeFinder.findActiveOrThrow(storeId);
+        Optional<Store> storeOpt = storeRepository.findById(storeId);
+        // 삭제되거나 PERMANENTLY_CLOSED 매장은 평점 갱신 skip - Kafka 재시도 루프 방지
+        if (storeOpt.isEmpty() || !storeOpt.get().isAvailableForService()) {
+            log.info("비활성 매장 평점 갱신 skip. storeId={}", storeId);
+            return;
+        }
+        Store store = storeOpt.get();
         store.updateRating(averageRating, reviewCount);
         storeRepository.save(store);
 

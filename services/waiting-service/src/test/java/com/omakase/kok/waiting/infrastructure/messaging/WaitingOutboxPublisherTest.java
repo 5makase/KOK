@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
@@ -60,6 +61,54 @@ class WaitingOutboxPublisherTest {
         assertThat(failedEvent.getStatus()).isEqualTo(OutboxStatus.PUBLISHED);
         assertThat(failedEvent.getRetryCount()).isEqualTo(1);
         assertThat(failedEvent.getFailedReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("FAILED 이벤트는 생성 순으로 한 배치만 재시도한다")
+    void retryFailedEvents_loadsFailedEventsBatch() {
+        WaitingOutboxPublisher publisher = new WaitingOutboxPublisher(
+                waitingOutboxEventRepository,
+                waitingKafkaTemplate,
+                new WaitingKafkaProperties("waiting.events.v1", 1, (short) 1),
+                new WaitingKafkaPublisherProperties(5000L, 60000L, 3000L, 100)
+        );
+
+        given(waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(eq(OutboxStatus.FAILED), any(Pageable.class)))
+                .willReturn(List.of());
+
+        publisher.retryFailedEvents();
+
+        org.mockito.BDDMockito.then(waitingOutboxEventRepository).should()
+                .findByStatusOrderByCreatedAtAsc(eq(OutboxStatus.FAILED), eq(PageRequest.of(0, 100)));
+    }
+
+    @Test
+    @DisplayName("최대 재시도 횟수에 도달한 실패 이벤트는 DEAD_LETTER로 전이한다")
+    void publishPendingEvents_deadLettersPoisonEvent() {
+        WaitingOutboxEvent pendingEvent = WaitingOutboxEvent.builder()
+                .waiting(waiting())
+                .eventType(WaitingEventType.WAITING_REGISTERED)
+                .payload("{\"waitingId\":\"test\"}")
+                .build();
+
+        given(waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(eq(OutboxStatus.PENDING), any(Pageable.class)))
+                .willReturn(List.of(pendingEvent));
+        CompletableFuture<SendResult<String, String>> failedFuture = new CompletableFuture<>();
+        failedFuture.completeExceptionally(new RuntimeException("kafka down"));
+        given(waitingKafkaTemplate.send(any(String.class), any(String.class), any(String.class))).willReturn(failedFuture);
+
+        WaitingOutboxPublisher publisher = new WaitingOutboxPublisher(
+                waitingOutboxEventRepository,
+                waitingKafkaTemplate,
+                new WaitingKafkaProperties("waiting.events.v1", 1, (short) 1),
+                new WaitingKafkaPublisherProperties(5000L, 60000L, 3000L, 100)
+        );
+
+        publisher.publishPendingEvents();
+
+        assertThat(pendingEvent.getStatus()).isEqualTo(OutboxStatus.FAILED);
+        assertThat(pendingEvent.getRetryCount()).isEqualTo(1);
+        assertThat(pendingEvent.getFailedReason()).isEqualTo("kafka down");
     }
 
     private Waiting waiting() {

@@ -1,7 +1,6 @@
 package com.omakase.kok.waiting.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.common.exception.CommonErrorCode;
@@ -11,7 +10,7 @@ import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
-import com.omakase.kok.waiting.infrastructure.client.StoreFeignClient;
+import com.omakase.kok.waiting.infrastructure.client.StoreSummaryReader;
 import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
 import com.omakase.kok.waiting.infrastructure.messaging.WaitingEventFactory;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
@@ -72,7 +71,7 @@ class WaitingServiceTest {
     private WaitingSettingService waitingSettingService;
 
     @Mock
-    private StoreFeignClient storeFeignClient;
+    private StoreSummaryReader storeSummaryReader;
 
     @Mock
     private WaitingEventFactory waitingEventFactory;
@@ -96,8 +95,8 @@ class WaitingServiceTest {
         UUID userId = UUID.randomUUID();
         WaitingCreateRequest request = waitingCreateRequest(storeId, 3, "창가 자리 부탁드립니다.");
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID())));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
         given(waitingSettingService.getStoreWaitingValues(storeId))
                 .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
         given(waitingQueueRedisStore.register(eq(storeId), eq(userId), any(UUID.class), eq(50)))
@@ -136,8 +135,8 @@ class WaitingServiceTest {
         UUID ownerId = UUID.randomUUID();
         WaitingCreateRequest request = waitingCreateRequest(storeId, 2, null);
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "내 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "내 매장", ownerId));
 
         assertThatThrownBy(() -> waitingService.createWaiting(ownerId, request))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->
@@ -263,8 +262,8 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
         PageRequest pageable = PageRequest.of(0, 20);
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", userId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", userId));
         given(waitingRepository.findByStoreIdAndStatus(storeId, WaitingStatus.CALLED, pageable))
                 .willReturn(new PageImpl<>(List.of(waiting), pageable, 1));
 
@@ -285,8 +284,8 @@ class WaitingServiceTest {
         UUID storeId = UUID.randomUUID();
         UUID requesterId = UUID.randomUUID();
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID())));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
 
         assertThatThrownBy(() -> waitingService.getStoreWaitings(requesterId, "OWNER", storeId, null, PageRequest.of(0, 10)))
                 .isInstanceOf(BaseException.class)
@@ -422,8 +421,8 @@ class WaitingServiceTest {
         Waiting waiting = waiting(storeId, userId, 10L, WaitingStatus.WAITING, "문 앞 자리");
         ReflectionTestUtils.setField(waiting, "id", waitingId);
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", userId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", userId));
         givenCallNextLockAcquired(storeId);
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
@@ -451,8 +450,8 @@ class WaitingServiceTest {
         UUID storeId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         givenCallNextLockAcquired(storeId);
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.empty());
 
@@ -475,8 +474,8 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         givenCallNextLockAcquired(storeId);
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
@@ -494,8 +493,8 @@ class WaitingServiceTest {
     void callNextWaiting_failWhenLockNotAcquired() throws InterruptedException {
         UUID storeId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         given(redissonClient.getLock("waiting:store:" + storeId + ":call-next:lock")).willReturn(callNextLock);
         given(callNextLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(false);
 
@@ -519,8 +518,8 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
         given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -543,8 +542,8 @@ class WaitingServiceTest {
         Waiting waiting = waiting(storeId, UUID.randomUUID(), 14L, WaitingStatus.WAITING, null);
         ReflectionTestUtils.setField(waiting, "id", waitingId);
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
 
         assertThatThrownBy(() -> waitingService.enterWaiting(ownerId, "OWNER", waitingId))
@@ -566,8 +565,8 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
         WaitingNoShowRequest request = waitingNoShowRequest("호출 후 미방문");
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
         given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -592,8 +591,8 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         WaitingNoShowRequest request = waitingNoShowRequest("부재");
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
 
         assertThatThrownBy(() -> waitingService.noShowWaiting(ownerId, "OWNER", waitingId, request))

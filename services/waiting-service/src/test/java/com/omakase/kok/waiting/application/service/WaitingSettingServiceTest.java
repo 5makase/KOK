@@ -1,12 +1,10 @@
 package com.omakase.kok.waiting.application.service;
 
-import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.waiting.domain.entity.WaitingSetting;
 import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
-import com.omakase.kok.waiting.infrastructure.client.StoreFeignClient;
-import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
+import com.omakase.kok.waiting.infrastructure.client.StoreSummaryReader;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
@@ -20,9 +18,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Constructor;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,7 +43,7 @@ class WaitingSettingServiceTest {
     private WaitingQueueRedisStore waitingQueueRedisStore;
 
     @Mock
-    private StoreFeignClient storeFeignClient;
+    private StoreSummaryReader storeSummaryReader;
 
     @InjectMocks
     private WaitingSettingService waitingSettingService;
@@ -125,8 +126,8 @@ class WaitingSettingServiceTest {
         WaitingSetting setting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
         WaitingSettingUpdateRequest request = waitingSettingUpdateRequest(false, 50, null, false, 18);
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
         given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
 
         WaitingSettingResponse response = waitingSettingService.updateWaitingSetting(ownerId, "OWNER", storeId, request);
@@ -148,8 +149,8 @@ class WaitingSettingServiceTest {
         UUID storeId = UUID.randomUUID();
         UUID requesterId = UUID.randomUUID();
 
-        given(storeFeignClient.getStoreSummary(storeId))
-                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID())));
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
 
         assertThatThrownBy(() -> waitingSettingService.updateWaitingSetting(
                 requesterId,
@@ -184,6 +185,38 @@ class WaitingSettingServiceTest {
         assertThat(values.averageWaitingMinutes()).isEqualTo(13);
         then(waitingQueueRedisStore).should()
                 .cacheStoreValues(storeId, true, 40, 7, false, 13);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 수정은 트랜잭션 커밋 후에만 Redis 캐시를 갱신한다")
+    void updateWaitingSetting_updatesCacheAfterCommit() {
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
+        WaitingSettingUpdateRequest request = waitingSettingUpdateRequest(false, 50, null, false, 18);
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            WaitingSettingResponse response = waitingSettingService.updateWaitingSetting(ownerId, "OWNER", storeId, request);
+
+            assertThat(response.getWaitingEnabled()).isFalse();
+            then(waitingQueueRedisStore).should(never())
+                    .cacheStoreValues(any(UUID.class), any(), any(), any(), any(), any());
+
+            List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+
+            then(waitingQueueRedisStore).should()
+                    .cacheStoreValues(storeId, false, 50, 8, false, 18);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     private WaitingSettingInitializeRequest waitingSettingInitializeRequest(

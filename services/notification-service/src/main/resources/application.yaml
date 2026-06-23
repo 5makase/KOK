@@ -19,8 +19,38 @@ spring:
         format_sql: true
     open-in-view: false
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+
+slack:
+  bot-token: ${SLACK_BOT_TOKEN}
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
+
+notification:
+  retry:
+    max-attempt-count: 3
+    fixed-delay-ms: 300000  # 5분
+  idempotency:
+    ttl-days: 7
+
+feign:
+  client:
+    config:
+      user-service:
+        connectTimeout: 3000
+        readTimeout: 3000
 
 eureka:
   client:

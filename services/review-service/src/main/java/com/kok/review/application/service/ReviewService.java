@@ -8,7 +8,11 @@ import com.kok.review.domain.repository.ReviewRepository;
 import com.kok.review.infrastructure.persistence.ReviewEligibilityRepository;
 import com.kok.review.presentation.dto.ReviewRequestDto;
 import com.kok.review.presentation.dto.ReviewResponseDto;
+import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,59 +23,95 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ReviewService {
+
     private final ReviewRepository reviewRepository;
     private final ReviewEligibilityRepository reviewEligibilityRepository;
     private final ReviewImageRepository reviewImageRepository;
+    private final ReviewRatingService reviewRatingService;
 
     /**
      * 리뷰 생성
-     *
-     * @param dto
-     * @return
+     * 방문 권한 검증 → 리뷰/이미지 저장 → 권한 소진 → 집계 갱신 + Outbox 이벤트 저장.
+     * 전 과정이 하나의 트랜잭션. 낙관적 락/중복 키 충돌 시 트랜잭션 전체를 최대 3회 재시도.
      */
+    @Retryable(
+            retryFor = { OptimisticLockException.class, DataIntegrityViolationException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50))
     @Transactional
     public ReviewResponseDto createReview(ReviewRequestDto dto, UUID userId) {
-        //적재된 권한을 가져옴.
-        ReviewEligibility reviewEligibility = reviewEligibilityRepository.findById(dto.getReservationId()).orElseThrow(() -> new IllegalArgumentException("적재된 권한이 없음."));
+        // 적재된 권한 조회
+        ReviewEligibility reviewEligibility = reviewEligibilityRepository
+                .findById(dto.getReservationId())
+                .orElseThrow(() -> new IllegalArgumentException("적재된 권한이 없음."));
 
-        //예약자와 리뷰 작성자가 동일한지
+        // 예약자와 리뷰 작성자가 동일한지
         if (!reviewEligibility.getUserId().equals(userId)) {
             throw new IllegalArgumentException("리뷰 작성자와 동일하지 않음.");
         }
 
-        //예약했던 가게가 맞는지
+        // 예약했던 가게가 맞는지
         if (!reviewEligibility.getStoreId().equals(dto.getStoreId())) {
             throw new IllegalArgumentException("리뷰 작성할 가게와 동일하지 않음.");
         }
 
-        //중복리뷰 확인.
+        // 중복 리뷰 확인 (1차 방어 — 최종 방어는 Review.reservation_id UNIQUE 제약)
         if (reviewEligibility.isUsed()) {
             throw new IllegalArgumentException("중복된 리뷰");
         }
 
-        //리뷰 생성
+        // 리뷰 저장 (이미지가 FK로 참조하므로 먼저 저장)
         Review review = Review.create(dto, userId);
         reviewRepository.save(review);
 
-        // 리뷰 이미지 저장.
-            //이미지 url 묶음을 꺼냄
+        // 리뷰 이미지 저장 (있을 때만)
         List<String> imageUrls = dto.getImageUrls();
-            //이미지 URL 묶음들이 실제로 존재하는지 확인.
         if (imageUrls != null && !imageUrls.isEmpty()) {
-                //DB에 저장시킬 ReviewImage 리스트를 생성.
             List<ReviewImage> reviewImageList = new ArrayList<>();
-                // 이미지 URR 묶음들 크기만큼 반복하여
             for (int i = 0; i < imageUrls.size(); i++) {
-                    //ReviewImage 리스트에 ReviewImage를 추가.(리뷰, 리뷰 이미지 1장, 순서)
-                reviewImageList.add(ReviewImage.of(review,imageUrls.get(i),i));
+                reviewImageList.add(ReviewImage.of(review, imageUrls.get(i), i));
             }
-                //ReviewImage를 한번에 저장.
             reviewImageRepository.saveAll(reviewImageList);
         }
-        //중복처리
+
+        // 권한 소진 처리 (재사용 차단)
         reviewEligibility.markAsUsed();
 
-        //반환객체로 변환
+        // 집계 갱신 + REVIEW_CREATED Outbox 이벤트 저장 (같은 트랜잭션)
+        reviewRatingService.applyCreated(
+                review.getReviewId(), review.getStoreId(), review.getRating());
+
         return ReviewResponseDto.form(review);
+    }
+
+    /**
+     * 리뷰 삭제 (Soft Delete)
+     * 본인 확인 → 이미지/리뷰 soft delete → 집계 제외 + Outbox 이벤트 저장.
+     */
+    @Retryable(
+            retryFor = { OptimisticLockException.class, DataIntegrityViolationException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50))
+    @Transactional
+    public void deleteReview(UUID reviewId, UUID userId) {
+        // 리뷰 조회 (@SQLRestriction 으로 이미 삭제된 리뷰는 조회되지 않음 → 재삭제 자동 방지)
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않은 리뷰"));
+
+        // 작성자 본인 확인
+        if (!review.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("본인 아님");
+        }
+
+        // 연관 이미지 함께 soft delete
+        List<ReviewImage> images = reviewImageRepository.findByReviewReviewId(reviewId);
+        images.forEach(image -> image.delete(userId));
+
+        // 리뷰 soft delete
+        review.delete(userId);
+
+        // 집계 제외 + REVIEW_DELETED Outbox 이벤트 저장 (같은 트랜잭션)
+        reviewRatingService.applyDeleted(
+                review.getReviewId(), review.getStoreId(), review.getRating());
     }
 }

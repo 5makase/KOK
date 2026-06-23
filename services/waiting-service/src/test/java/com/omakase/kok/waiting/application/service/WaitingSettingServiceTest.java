@@ -1,10 +1,16 @@
 package com.omakase.kok.waiting.application.service;
 
+import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.waiting.domain.entity.WaitingSetting;
 import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
+import com.omakase.kok.waiting.infrastructure.client.StoreFeignClient;
+import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingUpdateRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +27,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -33,6 +40,9 @@ class WaitingSettingServiceTest {
 
     @Mock
     private WaitingQueueRedisStore waitingQueueRedisStore;
+
+    @Mock
+    private StoreFeignClient storeFeignClient;
 
     @InjectMocks
     private WaitingSettingService waitingSettingService;
@@ -108,6 +118,55 @@ class WaitingSettingServiceTest {
     }
 
     @Test
+    @DisplayName("웨이팅 설정 수정은 본인 매장이면 요청값만 반영하고 Redis 캐시를 갱신한다")
+    void updateWaitingSetting_success() {
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
+        WaitingSettingUpdateRequest request = waitingSettingUpdateRequest(false, 50, null, false, 18);
+
+        given(storeFeignClient.getStoreSummary(storeId))
+                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId)));
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
+
+        WaitingSettingResponse response = waitingSettingService.updateWaitingSetting(ownerId, "OWNER", storeId, request);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getWaitingEnabled()).isFalse();
+        assertThat(response.getMaxWaitingCount()).isEqualTo(50);
+        assertThat(response.getCallTimeoutMinutes()).isEqualTo(8);
+        assertThat(response.getAllowUserCancel()).isFalse();
+        assertThat(response.getAverageWaitingMinutes()).isEqualTo(18);
+
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, false, 50, 8, false, 18);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 수정은 본인 매장이 아니면 거부된다")
+    void updateWaitingSetting_forbiddenWhenNotOwner() {
+        UUID storeId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+
+        given(storeFeignClient.getStoreSummary(storeId))
+                .willReturn(ApiResponse.success(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID())));
+
+        assertThatThrownBy(() -> waitingSettingService.updateWaitingSetting(
+                requesterId,
+                "OWNER",
+                storeId,
+                waitingSettingUpdateRequest(true, null, null, null, null)
+        ))
+                .isInstanceOf(BaseException.class)
+                .satisfies(exception -> assertThat(((BaseException) exception).getErrorCode())
+                        .isEqualTo(CommonErrorCode.ACCESS_DENIED));
+
+        then(waitingSettingRepository).should(never()).findByStoreId(any(UUID.class));
+        then(waitingQueueRedisStore).should(never())
+                .cacheStoreValues(any(UUID.class), any(), any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("웨이팅 기준값 캐시가 없으면 DB에서 조회한 뒤 Redis에 캐싱한다")
     void getStoreWaitingValues_cacheMiss() {
         UUID storeId = UUID.randomUUID();
@@ -135,6 +194,22 @@ class WaitingSettingServiceTest {
             Integer averageWaitingMinutes
     ) {
         WaitingSettingInitializeRequest request = newInstance(WaitingSettingInitializeRequest.class);
+        ReflectionTestUtils.setField(request, "waitingEnabled", waitingEnabled);
+        ReflectionTestUtils.setField(request, "maxWaitingCount", maxWaitingCount);
+        ReflectionTestUtils.setField(request, "callTimeoutMinutes", callTimeoutMinutes);
+        ReflectionTestUtils.setField(request, "allowUserCancel", allowUserCancel);
+        ReflectionTestUtils.setField(request, "averageWaitingMinutes", averageWaitingMinutes);
+        return request;
+    }
+
+    private WaitingSettingUpdateRequest waitingSettingUpdateRequest(
+            Boolean waitingEnabled,
+            Integer maxWaitingCount,
+            Integer callTimeoutMinutes,
+            Boolean allowUserCancel,
+            Integer averageWaitingMinutes
+    ) {
+        WaitingSettingUpdateRequest request = newInstance(WaitingSettingUpdateRequest.class);
         ReflectionTestUtils.setField(request, "waitingEnabled", waitingEnabled);
         ReflectionTestUtils.setField(request, "maxWaitingCount", maxWaitingCount);
         ReflectionTestUtils.setField(request, "callTimeoutMinutes", callTimeoutMinutes);

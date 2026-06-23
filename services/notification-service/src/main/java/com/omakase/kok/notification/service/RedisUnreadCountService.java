@@ -43,7 +43,13 @@ public class RedisUnreadCountService {
         if (value == null) {
             return OptionalLong.empty();
         }
-        return OptionalLong.of(Long.parseLong(value));
+        try {
+            return OptionalLong.of(Long.parseLong(value));
+        } catch (NumberFormatException e) {
+            log.warn("[RedisUnreadCountService] 미읽음 카운트 파싱 실패, 캐시 제거. userId={}, value={}", userId, value);
+            redisTemplate.delete(buildKey(userId));
+            return OptionalLong.empty();
+        }
     }
 
     public void delete(UUID userId) {

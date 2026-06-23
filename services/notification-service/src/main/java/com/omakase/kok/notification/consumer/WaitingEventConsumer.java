@@ -31,7 +31,7 @@ public class WaitingEventConsumer {
             return;
         }
 
-        if (!isValidEvent(event)) {
+        if (event == null || !isValidEvent(event)) {
             // Irrecoverable Error: 필수 필드 누락
             // TODO: waiting.events.v1.dlq 토픽으로 격리
             log.error("[WaitingEventConsumer] 필수 필드 누락 (Irrecoverable). eventType={}, producer={}",

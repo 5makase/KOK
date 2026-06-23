@@ -60,7 +60,11 @@ public class RetryScheduler {
                 continue;
             }
 
-            slackSendService.send(notification.getUserId(), notification.getMessage(), slackSendLog);
+            try {
+                slackSendService.send(notification.getUserId(), notification.getMessage(), slackSendLog);
+            } catch (Exception e) {
+                log.error("[RetryScheduler] 재시도 중 예외 발생. notificationId={}", slackSendLog.getNotificationId(), e);
+            }
         }
     }
 }

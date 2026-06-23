@@ -31,7 +31,7 @@ public class ReservationEventConsumer {
             return;
         }
 
-        if (!isValidEvent(event)) {
+        if (event == null || !isValidEvent(event)) {
             // Irrecoverable Error: 필수 필드 누락
             // TODO: reservation.events.v1.dlq 토픽으로 격리
             log.error("[ReservationEventConsumer] 필수 필드 누락 (Irrecoverable). eventType={}, producer={}",

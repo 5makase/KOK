@@ -47,6 +47,9 @@ public class SlackClient {
         }
 
         Map<String, Object> user = (Map<String, Object>) body.get("user");
+        if (user == null || user.get("id") == null) {
+            throw new RuntimeException("users.lookupByEmail 실패: user 필드 없음");
+        }
         return (String) user.get("id");
     }
 
@@ -72,6 +75,9 @@ public class SlackClient {
         }
 
         Map<String, Object> channel = (Map<String, Object>) body.get("channel");
+        if (channel == null || channel.get("id") == null) {
+            throw new RuntimeException("conversations.open 실패: channel 필드 없음");
+        }
         return (String) channel.get("id");
     }
 

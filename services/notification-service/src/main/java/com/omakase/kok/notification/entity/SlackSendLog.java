@@ -60,7 +60,9 @@ public class SlackSendLog {
     public void markAsFailed(String reason) {
         this.status = NotificationSendStatus.FAILED;
         this.attemptCount++;
-        this.failedReason = reason;
+        this.failedReason = reason != null && reason.length() > 200
+                ? reason.substring(0, 200)
+                : reason;
     }
 
     public void markAsSkipped() {

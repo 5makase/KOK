@@ -120,6 +120,7 @@ public class StoreController {
     }
 
     // 인기 매장 랭킹 조회 - Redis Sorted Set 기반, 권한 불필요
+    // Redis 부하 및 응답 크기 제한 - size 최대 50
     @GetMapping("/ranking")
     public ResponseEntity<ApiResponse<StoreRankingResponse>> getRanking(
             @RequestParam(defaultValue = "10") int size

@@ -19,10 +19,12 @@ public class StoreRankingRedisRepository implements StoreRankingRepository {
 
     private final RedisTemplate<String, String> redisTemplate;
 
+    // ZADD store:ranking {score} {storeId} - score 중복 시 덮어씀 (멱등)
     public void updateScore(UUID storeId, BigDecimal averageRating) {
         redisTemplate.opsForZSet().add(RANKING_KEY, storeId.toString(), averageRating.doubleValue());
     }
 
+    // reviewCount == 0 (마지막 리뷰 삭제) 시 랭킹에서 제거
     public void remove(UUID storeId) {
         redisTemplate.opsForZSet().remove(RANKING_KEY, storeId.toString());
     }

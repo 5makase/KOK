@@ -35,6 +35,8 @@ spring:
 
 slack:
   bot-token: ${SLACK_BOT_TOKEN}
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
 
 notification:
   retry:

@@ -4,7 +4,6 @@ import com.omakase.kok.store.domain.entity.Menu;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
-import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Builder;
 import lombok.Getter;
@@ -32,7 +31,7 @@ public class StoreResult {
     private BigDecimal latitude;
     private BigDecimal longitude;
     private String description;
-    private StoreStatus status;
+    private String status; // enum → String 변환 (Presentation 계층에 도메인 타입 노출 방지)
     private Integer maxCapacity;
     private BigDecimal averageRating;
     private int reviewCount;
@@ -95,7 +94,7 @@ public class StoreResult {
                 .latitude(store.getAddress().getLatitude())
                 .longitude(store.getAddress().getLongitude())
                 .description(store.getDescription())
-                .status(store.getStatus())
+                .status(store.getStatus().name())
                 .maxCapacity(store.getMaxCapacity())
                 .averageRating(store.getAverageRating())
                 .reviewCount(store.getReviewCount())

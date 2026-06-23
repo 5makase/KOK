@@ -2,7 +2,6 @@ package com.omakase.kok.store.application.result;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.omakase.kok.store.domain.entity.StoreAmenity;
-import com.omakase.kok.store.domain.enums.AmenityType;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -16,12 +15,12 @@ import java.util.UUID;
 public class StoreAmenityResult {
 
     private UUID amenityId;
-    private AmenityType amenityType;
+    private String amenityType; // enum → String 변환 (Presentation 계층에 도메인 타입 노출 방지)
 
     public static StoreAmenityResult from(StoreAmenity amenity) {
         return StoreAmenityResult.builder()
             .amenityId(amenity.getAmenityId())
-            .amenityType(amenity.getAmenityType())
+            .amenityType(amenity.getAmenityType().name())
             .build();
     }
 

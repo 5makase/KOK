@@ -1,7 +1,6 @@
 package com.omakase.kok.store.presentation.dto.response;
 
 import com.omakase.kok.store.application.result.StoreRankingResult;
-import com.omakase.kok.store.domain.enums.StoreStatus;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -23,7 +22,7 @@ public class StoreRankingResponse {
         private UUID storeId;
         private String name;
         private String categoryName;
-        private StoreStatus status;
+        private String status;
         private BigDecimal averageRating;
         private int reviewCount;
         private String thumbnailUrl;

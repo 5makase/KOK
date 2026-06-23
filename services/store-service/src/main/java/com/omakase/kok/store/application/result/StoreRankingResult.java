@@ -1,7 +1,6 @@
 package com.omakase.kok.store.application.result;
 
 import com.omakase.kok.store.domain.entity.Store;
-import com.omakase.kok.store.domain.enums.StoreStatus;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -16,7 +15,7 @@ public class StoreRankingResult {
     private UUID storeId;
     private String name;
     private String categoryName;
-    private StoreStatus status;
+    private String status; // enum → String 변환 (Presentation 계층에 도메인 타입 노출 방지)
     private BigDecimal averageRating;
     private int reviewCount;
     private String thumbnailUrl;
@@ -27,7 +26,7 @@ public class StoreRankingResult {
                 .storeId(store.getStoreId())
                 .name(store.getName())
                 .categoryName(store.getCategory().getName())
-                .status(store.getStatus())
+                .status(store.getStatus().name())
                 .averageRating(store.getAverageRating())
                 .reviewCount(store.getReviewCount())
                 .thumbnailUrl(store.getThumbnailUrl())

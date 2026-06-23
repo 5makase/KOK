@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
+import com.omakase.kok.store.application.result.StoreRankingResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
@@ -12,8 +13,12 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -23,6 +28,22 @@ public class StoreRatingService {
     private final StoreRepository storeRepository;
     private final StoreRankingRepository storeRankingRepository;
     private final StoreListCacheRepository storeListCacheRepository;
+
+    @Transactional(readOnly = true)
+    public List<StoreRankingResult> getRanking(int size) {
+        List<UUID> rankedIds = storeRankingRepository.getTopRanking(size);
+        if (rankedIds.isEmpty()) {
+            return List.of();
+        }
+        // Redis 순서(rank)를 보존하기 위해 Map으로 조회 후 rankedIds 순서대로 재정렬
+        Map<UUID, Store> storeMap = storeRepository.findActiveStoresByIds(rankedIds)
+                .stream().collect(Collectors.toMap(Store::getStoreId, s -> s));
+
+        return IntStream.range(0, rankedIds.size())
+                .filter(i -> storeMap.containsKey(rankedIds.get(i)))
+                .mapToObj(i -> StoreRankingResult.of(i + 1, storeMap.get(rankedIds.get(i))))
+                .toList();
+    }
 
     @Transactional
     public void updateRating(UUID storeId, BigDecimal averageRating, Integer reviewCount) {

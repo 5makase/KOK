@@ -27,7 +27,8 @@ public class StoreRatingService {
     @Transactional
     public void updateRating(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
         Optional<Store> storeOpt = storeRepository.findById(storeId);
-        // 삭제되거나 PERMANENTLY_CLOSED 매장은 평점 갱신 skip - Kafka 재시도 루프 방지
+        // soft delete된 매장 또는 PERMANENTLY_CLOSED 매장은 평점 갱신 skip
+        // findActiveOrThrow() 대신 findById() 사용. 예외 발생 시 Kafka 재시도 루프 방지
         if (storeOpt.isEmpty() || !storeOpt.get().isAvailableForService()) {
             log.info("비활성 매장 평점 갱신 skip. storeId={}", storeId);
             return;

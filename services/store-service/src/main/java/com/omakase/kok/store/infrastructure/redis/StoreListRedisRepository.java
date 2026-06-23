@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.result.StoreResult;
+import com.omakase.kok.store.domain.enums.AmenityType;
+import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
     private final ObjectMapper objectMapper;
 
     @Override
-    public Optional<Page<StoreResult>> get(String cacheKey, Pageable pageable) {
+    public Optional<Page<StoreResult>> get(StoreSearchCondition condition, Pageable pageable) {
+        String cacheKey = buildKey(condition, pageable);
         try {
             String json = redisTemplate.opsForValue().get(cacheKey);
             if (json == null) return Optional.empty();
@@ -48,7 +51,8 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
     }
 
     @Override
-    public void set(String cacheKey, Page<StoreResult> page) {
+    public void set(StoreSearchCondition condition, Pageable pageable, Page<StoreResult> page) {
+        String cacheKey = buildKey(condition, pageable);
         try {
             String json = objectMapper.writeValueAsString(CachedPage.from(page));
             redisTemplate.opsForValue().set(cacheKey, json, TTL);
@@ -75,6 +79,33 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
         } catch (Exception e) {
             log.warn("store:list:* 캐시 무효화 실패 - TTL 만료 후 자동 제거됨", e);
         }
+    }
+
+    // 키 형식: store:list:{category}:{sido}:{sigungu}:{keyword}:{amenities}:{status}:{sort}:{page}:{size}
+    // 조건 미지정 필드는 "ALL"로 대체해 키 충돌 방지
+    // ownerId는 키에 포함하지 않음: OWNER 요청은 캐시 효과가 낮고 다른 OWNER 데이터와 격리 필요, StoreService에서 바이패스
+    private String buildKey(StoreSearchCondition condition, Pageable pageable) {
+        String amenityPart = (condition.getAmenities() == null || condition.getAmenities().isEmpty())
+                ? "ALL"
+                : condition.getAmenities().stream()
+                        .map(AmenityType::name)
+                        .sorted()
+                        .reduce((a, b) -> a + "_" + b)
+                        .orElse("ALL");
+        return LIST_KEY_PREFIX +
+                orAll(condition.getCategoryId()) + ":" +
+                orAll(condition.getSido()) + ":" +
+                orAll(condition.getSigungu()) + ":" +
+                orAll(condition.getKeyword()) + ":" +
+                amenityPart + ":" +
+                orAll(condition.getStatus()) + ":" +
+                orAll(condition.getSort()) + ":" +
+                pageable.getPageNumber() + ":" +
+                pageable.getPageSize();
+    }
+
+    private String orAll(Object value) {
+        return value != null ? value.toString() : "ALL";
     }
 
     // Jackson 직렬화/역직렬화용 내부 DTO - PageImpl은 역직렬화 불가

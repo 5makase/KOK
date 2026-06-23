@@ -4,8 +4,6 @@ import com.omakase.kok.store.domain.enums.AmenityType;
 import com.omakase.kok.store.domain.enums.StoreStatus;
 import lombok.Builder;
 import lombok.Getter;
-import org.springframework.data.domain.Pageable;
-
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -36,26 +34,4 @@ public class StoreSearchCondition {
         CREATED_AT, RATING, REVIEW_COUNT, DISTANCE
     }
 
-    // SA 문서 키 형식: store:list:{category}:{sido}:{sigungu}:{page}:{size}
-    // 조건 미지정 필드는 "ALL"로 대체해 키 충돌 방지
-    // ownerId는 키에 포함하지 않음. OWNER 요청은 캐시 효과가 낮고 다른 OWNER 데이터와 격리 필요, searchStores()에서 바이패스
-    public String toCacheKey(Pageable pageable) {
-        String amenityPart = (amenities == null || amenities.isEmpty())
-                ? "ALL"
-                : amenities.stream().map(Enum::name).sorted().reduce((a, b) -> a + "_" + b).orElse("ALL");
-        return "store:list:" +
-                orAll(categoryId) + ":" +
-                orAll(sido) + ":" +
-                orAll(sigungu) + ":" +
-                orAll(keyword) + ":" +
-                amenityPart + ":" +
-                orAll(status) + ":" +
-                orAll(sort) + ":" +
-                pageable.getPageNumber() + ":" +
-                pageable.getPageSize();
-    }
-
-    private String orAll(Object value) {
-        return value != null ? value.toString() : "ALL";
-    }
 }

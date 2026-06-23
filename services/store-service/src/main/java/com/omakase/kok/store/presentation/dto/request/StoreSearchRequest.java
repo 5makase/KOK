@@ -22,6 +22,7 @@ public class StoreSearchRequest {
     private StoreStatus status;
     private StoreSearchCondition.SortType sort;
 
+    // 위치 기반 반경 검색 - latitude/longitude/radiusKm 셋 모두 있을 때만 활성화
     @DecimalMin("-90.0") @DecimalMax("90.0")
     private BigDecimal latitude;
 

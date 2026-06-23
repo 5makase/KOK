@@ -162,10 +162,9 @@ public class StoreService {
             return storeRepository.search(resolved, pageable).map(StoreResult::from);
         }
 
-        String cacheKey = resolved.toCacheKey(pageable);
-        return storeListCacheRepository.get(cacheKey, pageable).orElseGet(() -> {
+        return storeListCacheRepository.get(resolved, pageable).orElseGet(() -> {
             Page<StoreResult> result = storeRepository.search(resolved, pageable).map(StoreResult::from);
-            storeListCacheRepository.set(cacheKey, result);
+            storeListCacheRepository.set(resolved, pageable, result);
             return result;
         });
     }

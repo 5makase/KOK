@@ -31,7 +31,10 @@ public class WaitingOutboxPublisher {
     @Scheduled(fixedDelayString = "${waiting.kafka.publisher.fixed-delay-ms}")
     @Transactional
     public void publishPendingEvents() {
-        List<WaitingOutboxEvent> pendingEvents = loadEventsByStatus(OutboxStatus.PENDING);
+        List<WaitingOutboxEvent> pendingEvents = waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(
+                OutboxStatus.PENDING,
+                PageRequest.of(0, waitingKafkaPublisherProperties.batchSize())
+        );
 
         for (WaitingOutboxEvent pendingEvent : pendingEvents) {
             publishEvent(pendingEvent);
@@ -42,19 +45,15 @@ public class WaitingOutboxPublisher {
     @Scheduled(fixedDelayString = "${waiting.kafka.publisher.failed-fixed-delay-ms}")
     @Transactional
     public void retryFailedEvents() {
-        List<WaitingOutboxEvent> failedEvents = loadEventsByStatus(OutboxStatus.FAILED);
+        List<WaitingOutboxEvent> failedEvents = waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(
+                OutboxStatus.FAILED,
+                PageRequest.of(0, waitingKafkaPublisherProperties.batchSize())
+        );
 
         for (WaitingOutboxEvent failedEvent : failedEvents) {
             failedEvent.retry();
             publishEvent(failedEvent);
         }
-    }
-
-    private List<WaitingOutboxEvent> loadEventsByStatus(OutboxStatus status) {
-        return waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(
-                status,
-                PageRequest.of(0, waitingKafkaPublisherProperties.batchSize())
-        );
     }
 
     // 단건 Outbox 이벤트 발행
@@ -68,15 +67,19 @@ public class WaitingOutboxPublisher {
             outboxEvent.publish();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            outboxEvent.fail("Kafka publish interrupted");
+            markPublishFailure(outboxEvent, "Kafka publish interrupted");
             log.warn("Interrupted while publishing waiting outbox event. outboxEventId={}", outboxEvent.getId(), e);
         } catch (TimeoutException e) {
-            outboxEvent.fail("Kafka publish timed out");
+            markPublishFailure(outboxEvent, "Kafka publish timed out");
             log.warn("Timed out while publishing waiting outbox event. outboxEventId={}", outboxEvent.getId(), e);
         } catch (ExecutionException e) {
-            outboxEvent.fail(resolveFailureReason(e));
+            markPublishFailure(outboxEvent, resolveFailureReason(e));
             log.warn("Failed to publish waiting outbox event. outboxEventId={}", outboxEvent.getId(), e);
         }
+    }
+
+    private void markPublishFailure(WaitingOutboxEvent outboxEvent, String failedReason) {
+        outboxEvent.fail(failedReason);
     }
 
     // 발행 실패 사유 추출

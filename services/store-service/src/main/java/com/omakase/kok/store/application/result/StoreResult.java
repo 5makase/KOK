@@ -4,9 +4,9 @@ import com.omakase.kok.store.domain.entity.Menu;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,8 +15,7 @@ import java.util.UUID;
 
 @Getter
 @Builder(toBuilder = true)
-// @JsonDeserialize: Builder만 있으면 Jackson이 기본 생성자 없이 역직렬화 불가. Redis 캐시 복원 시 필요
-@JsonDeserialize(builder = StoreResult.StoreResultBuilder.class)
+@Jacksonized // Lombok Builder와 Jackson 역직렬화 연동(Redis 캐시 복원 시 필요)
 public class StoreResult {
 
     private UUID storeId;
@@ -46,7 +45,7 @@ public class StoreResult {
 
     @Getter
     @Builder
-    @JsonDeserialize(builder = StoreResult.CategoryInfo.CategoryInfoBuilder.class)
+    @Jacksonized // Lombok Builder와 Jackson 역직렬화 연동
     public static class CategoryInfo {
         private UUID categoryId;
         private String categoryName;
@@ -56,7 +55,7 @@ public class StoreResult {
 
     @Getter
     @Builder
-    @JsonDeserialize(builder = StoreResult.MenuPreviewResult.MenuPreviewResultBuilder.class)
+    @Jacksonized // Lombok Builder와 Jackson 역직렬화 연동
     public static class MenuPreviewResult {
         private UUID menuId;
         private String name;

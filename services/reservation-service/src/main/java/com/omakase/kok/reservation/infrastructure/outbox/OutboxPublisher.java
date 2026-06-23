@@ -96,7 +96,8 @@ public class OutboxPublisher {
 
     private String extractStoreId(String payload) throws JsonProcessingException {
         JsonNode node = objectMapper.readTree(payload);
-        JsonNode storeIdNode = node.get("storeId");
+        JsonNode payloadNode = node.get("payload");
+        JsonNode storeIdNode = payloadNode != null ? payloadNode.get("storeId") : null;
         if (storeIdNode == null) {
             throw new IllegalArgumentException("payload에 storeId 필드가 없습니다: " + payload);
         }

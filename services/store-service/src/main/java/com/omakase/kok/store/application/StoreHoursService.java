@@ -85,6 +85,10 @@ public class StoreHoursService {
         StoreHours hours = findHours(storeId, hoursId);
         validateOwner(hours.getStore(), requesterId);
 
+        if (hours.isDeleted()) {
+            throw new BaseException(StoreErrorCode.STORE_HOURS_ALREADY_DELETED);
+        }
+
         // OPEN 매장의 영업시간 삭제 차단 — 7개 미만 시 OPEN 상태가 깨지므로
         if (hours.getStore().isAvailableForService()) {
             throw new BaseException(StoreErrorCode.STORE_HOURS_CANNOT_DELETE_WHILE_OPEN);

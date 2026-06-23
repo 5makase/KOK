@@ -5,6 +5,7 @@ import com.omakase.kok.store.domain.entity.StoreCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,4 +24,7 @@ public interface StoreRepository {
 
     // 해당 카테고리에 활성 매장 존재 여부 (소분류 삭제 전 체크)
     boolean existsActiveStoreByCategory(StoreCategory category);
+
+    // 랭킹 조회용 - storeId 목록으로 활성 매장 일괄 조회
+    List<Store> findActiveStoresByIds(List<UUID> storeIds);
 }

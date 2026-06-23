@@ -283,6 +283,40 @@ class StoreHoursServiceTest {
     }
 
     @Test
+    @DisplayName("이미 삭제된 영업시간 삭제 시 400")
+    void deleteHours_already_deleted_throws() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+        hours.delete(ownerId);
+
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_ALREADY_DELETED);
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 영업시간 삭제 시 403")
+    void deleteHours_owner_cannot_delete_others() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, otherId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+    }
+
+    @Test
     @DisplayName("존재하지 않는 영업시간 삭제 시 404")
     void deleteHours_not_found_throws() {
         UUID hoursId = UUID.randomUUID();
@@ -292,6 +326,25 @@ class StoreHoursServiceTest {
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_NOT_FOUND);
+    }
+
+    // getStoreHours
+
+    @Test
+    @DisplayName("영업시간 목록 조회 - 요일 오름차순 반환")
+    void getStoreHours_returns_sorted_by_day() {
+        StoreHours mon = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        StoreHours wed = StoreHours.createDayOff(store, DayOfWeek.WEDNESDAY);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findAllHours(store)).thenReturn(List.of(wed, mon));
+
+        List<StoreHoursResult> results = storeHoursService.getStoreHours(storeId);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).isDayOff()).isFalse();
+        assertThat(results.get(1).isDayOff()).isTrue();
     }
 
     // helpers

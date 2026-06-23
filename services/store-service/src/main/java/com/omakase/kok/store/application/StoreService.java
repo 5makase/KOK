@@ -171,7 +171,6 @@ public class StoreService {
     }
 
     // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로
-    // TODO: Gateway 인가 필터 구현 후 role/userId 헤더 위조 방어 검토 필요
     private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
         if ("OWNER".equals(role)) {
             return condition.toBuilder()

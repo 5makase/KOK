@@ -11,6 +11,7 @@ import java.util.UUID;
 
 @Getter
 @Builder
+// @JsonDeserialize: Builder만 있으면 Jackson이 기본 생성자 없이 역직렬화 불가. Redis 캐시 복원 시 필요
 @JsonDeserialize(builder = StoreAmenityResult.StoreAmenityResultBuilder.class)
 public class StoreAmenityResult {
 
@@ -19,9 +20,9 @@ public class StoreAmenityResult {
 
     public static StoreAmenityResult from(StoreAmenity amenity) {
         return StoreAmenityResult.builder()
-                .amenityId(amenity.getAmenityId())
-                .amenityType(amenity.getAmenityType())
-                .build();
+            .amenityId(amenity.getAmenityId())
+            .amenityType(amenity.getAmenityType())
+            .build();
     }
 
     @Getter

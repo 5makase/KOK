@@ -9,6 +9,9 @@ import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.enums.StoreStatus;
+import com.omakase.kok.store.domain.repository.StoreSearchCondition;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
+import com.omakase.kok.store.domain.repository.MenuRepository;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
@@ -25,12 +28,22 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +54,8 @@ class StoreServiceTest {
     @Mock StoreHoursRepository storeHoursRepository;
     @Mock StoreAmenityRepository storeAmenityRepository;
     @Mock StoreImageRepository storeImageRepository;
+    @Mock MenuRepository menuRepository;
+    @Mock StoreListCacheRepository storeListCacheRepository;
     @Mock StoreFinder storeFinder;
 
     @InjectMocks
@@ -224,5 +239,75 @@ class StoreServiceTest {
 
         assertThat(result.getName()).isEqualTo("변경된 이름");
         assertThat(store.getCategory().getName()).isEqualTo("한식"); // 카테고리 유지
+    }
+
+    // searchStores
+
+    @Test
+    @DisplayName("OWNER 역할 - 캐시 바이패스, DB 직접 조회")
+    void searchStores_owner_bypasses_cache() {
+        UUID ownerId = UUID.randomUUID();
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 20);
+        Page<Store> emptyPage = new PageImpl<>(List.of());
+
+        when(storeRepository.search(any(), eq(pageable))).thenReturn(emptyPage);
+
+        storeService.searchStores(condition, ownerId, "OWNER", pageable);
+
+        verify(storeListCacheRepository, never()).get(any(), any());
+        verify(storeListCacheRepository, never()).set(any(), any(), any());
+        verify(storeRepository).search(any(), eq(pageable));
+    }
+
+    @Test
+    @DisplayName("캐시 히트 - DB 조회 생략")
+    void searchStores_cache_hit_skips_db() {
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 20);
+        Page<StoreResult> cachedPage = new PageImpl<>(List.of());
+
+        when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.of(cachedPage));
+
+        Page<StoreResult> result = storeService.searchStores(condition, null, "USER", pageable);
+
+        assertThat(result).isEqualTo(cachedPage);
+        verify(storeRepository, never()).search(any(), any());
+        verify(storeListCacheRepository, never()).set(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("캐시 미스 - DB 조회 후 캐시 저장")
+    void searchStores_cache_miss_queries_db_and_caches() {
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 20);
+        Page<Store> dbPage = new PageImpl<>(List.of());
+
+        when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), eq(pageable))).thenReturn(dbPage);
+
+        storeService.searchStores(condition, null, "USER", pageable);
+
+        verify(storeRepository).search(any(), eq(pageable));
+        verify(storeListCacheRepository).set(any(), eq(pageable), any());
+    }
+
+    @Test
+    @DisplayName("USER 역할 - status OPEN 강제 적용")
+    void searchStores_user_forces_open_status() {
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 20);
+        Page<Store> emptyPage = new PageImpl<>(List.of());
+
+        when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), eq(pageable))).thenReturn(emptyPage);
+
+        storeService.searchStores(condition, null, "USER", pageable);
+
+        // resolveCondition이 status=OPEN으로 설정했는지 검증
+        verify(storeRepository).search(
+                argThat(c -> c.getStatus() == StoreStatus.OPEN),
+                eq(pageable)
+        );
     }
 }

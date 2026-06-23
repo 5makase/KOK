@@ -15,6 +15,8 @@ import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
+import com.omakase.kok.waiting.infrastructure.client.StoreFeignClient;
+import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
 import com.omakase.kok.waiting.infrastructure.messaging.WaitingEventFactory;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
@@ -63,6 +65,7 @@ public class WaitingService {
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
     private final WaitingSettingService waitingSettingService;
+    private final StoreFeignClient storeFeignClient;
     private final WaitingEventFactory waitingEventFactory;
     private final ObjectMapper objectMapper;
     private final RedissonClient redissonClient;
@@ -71,9 +74,9 @@ public class WaitingService {
     @Transactional
     public WaitingResponse createWaiting(UUID userId, WaitingCreateRequest request) {
         UUID storeId = request.getStoreId();
-
-        // TODO: Store Service 내부 API 연동 후 본인 매장 웨이팅 등록 제한 검증 추가
-
+        // 본인 가게 검증
+        StoreSummaryResponse storeSummary = getStoreSummary(storeId);
+        validateNotOwnStore(userId, storeSummary);
         // 매장 웨이팅 설정/평균 대기시간 조회
         StoreWaitingValues storeWaitingValues = waitingSettingService.getStoreWaitingValues(storeId);
         // 웨이팅 활성화 여부 검증
@@ -90,8 +93,7 @@ public class WaitingService {
         Waiting waiting = Waiting.builder()
                 .id(waitingId)
                 .storeId(storeId)
-                // TODO: Store Service 내부 API 연동 후 매장명 스냅샷 저장
-                .storeName("UNKNOWN")
+                .storeName(storeSummary.getStoreName())
                 .userId(userId)
                 // TODO: User Service 내부 API 연동 후 방문자명 스냅샷 저장
                 .visitorName("UNKNOWN")
@@ -126,11 +128,12 @@ public class WaitingService {
     // 매장별 웨이팅 목록 조회
     public PageResponse<StoreWaitingResponse> getStoreWaitings(
             UUID userId,
+            String role,
             UUID storeId,
             WaitingStatus status,
             Pageable pageable
     ) {
-        // TODO: Store Service 내부 API 연동 후 요청 userId가 storeId의 소유자인지 검증 추가
+        validateStoreOwnerAccess(userId, role, storeId);
         Page<Waiting> waitings = status == null
                 ? waitingRepository.findByStoreId(storeId, pageable)
                 : waitingRepository.findByStoreIdAndStatus(storeId, status, pageable);
@@ -155,8 +158,8 @@ public class WaitingService {
 
     // 다음 순번 웨이팅 호출
     @Transactional
-    public WaitingCallResponse callNextWaiting(UUID storeId) {
-        // TODO: Store Service 내부 API 연동 후 요청 userId가 storeId의 소유자인지 검증 추가
+    public WaitingCallResponse callNextWaiting(UUID userId, String role, UUID storeId) {
+        validateStoreOwnerAccess(userId, role, storeId);
         RLock lock = redissonClient.getLock(callNextLockKey(storeId));
         boolean unlockInFinally = false;
         try {
@@ -195,10 +198,10 @@ public class WaitingService {
 
     // 웨이팅 입장 완료 처리
     @Transactional
-    public WaitingEnterResponse enterWaiting(UUID userId, UUID waitingId) {
-        // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
+    public WaitingEnterResponse enterWaiting(UUID userId, String role, UUID waitingId) {
         Waiting waiting = waitingRepository.findById(waitingId)
                 .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+        validateStoreOwnerAccess(userId, role, waiting.getStoreId());
 
         waiting.enter();
         Waiting savedWaiting = waitingRepository.save(waiting);
@@ -210,10 +213,10 @@ public class WaitingService {
 
     // 웨이팅 미입장 처리
     @Transactional
-    public WaitingNoShowResponse noShowWaiting(UUID userId, UUID waitingId, WaitingNoShowRequest request) {
-        // TODO: Store Service 내부 API 연동 후 요청 userId가 waitingId의 storeId 소유자인지 검증 추가
+    public WaitingNoShowResponse noShowWaiting(UUID userId, String role, UUID waitingId, WaitingNoShowRequest request) {
         Waiting waiting = waitingRepository.findById(waitingId)
                 .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_NOT_FOUND));
+        validateStoreOwnerAccess(userId, role, waiting.getStoreId());
 
         waiting.noShow(request.getReason());
         Waiting savedWaiting = waitingRepository.save(waiting);
@@ -257,6 +260,13 @@ public class WaitingService {
         }
     }
 
+    // 본인 가게인지 확인(본인 가게 웨이팅 불가)
+    private void validateNotOwnStore(UUID userId, StoreSummaryResponse storeSummary) {
+        if (userId.equals(storeSummary.getOwnerId())) {
+            throw new WaitingException(WaitingErrorCode.WAITING_OWN_STORE_NOT_ALLOWED);
+        }
+    }
+
     // 권한 확인 - 본인 or 마스터
     private void validateWaitingAccess(UUID userId, String role, Waiting waiting) {
         if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
@@ -276,6 +286,22 @@ public class WaitingService {
         if (!Boolean.TRUE.equals(storeWaitingValues.allowUserCancel())) {
             throw new WaitingException(WaitingErrorCode.WAITING_CANCEL_DISABLED);
         }
+    }
+
+    // 본인 가게 여부 확인
+    private void validateStoreOwnerAccess(UUID userId, String role, UUID storeId) {
+        if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
+            return;
+        }
+        StoreSummaryResponse storeSummary = getStoreSummary(storeId);
+        if (!userId.equals(storeSummary.getOwnerId())) {
+            throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    // 가게 내부 API 호출
+    private StoreSummaryResponse getStoreSummary(UUID storeId) {
+        return storeFeignClient.getStoreSummary(storeId).getData();
     }
 
     /**

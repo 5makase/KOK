@@ -51,18 +51,20 @@ public class ReviewOutboxEvent {
     private LocalDateTime updatedAt;
 
     @Builder
-    private ReviewOutboxEvent(UUID reviewId, String eventType, String payload) {
+    private ReviewOutboxEvent(UUID reviewId, String eventType, String payload, UUID  storeId) {
         this.reviewId = reviewId;
         this.eventType = eventType;
         this.payload = payload;
+        this.storeId = storeId;
         this.status = OutboxStatus.PENDING;   // 생성 시 항상 발행 대기
         this.retryCount = 0;
         this.createdAt = LocalDateTime.now();
     }
 
-    public static ReviewOutboxEvent create(UUID reviewId, String eventType, String payload) {
+    public static ReviewOutboxEvent create(UUID reviewId, String eventType, String payload, UUID storeId) {
         return ReviewOutboxEvent.builder()
                 .reviewId(reviewId)
+                .storeId(storeId)
                 .eventType(eventType)
                 .payload(payload)
                 .build();

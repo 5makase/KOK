@@ -20,12 +20,12 @@ import java.util.UUID;
 public class ReviewController {
     private final ReviewService reviewService;
 
-    @PutMapping("/{reviewid}")
-    public ResponseEntity<ApiResponse<ReviewUpdateResponseDto>> updateReview(@PathVariable UUID reviewid,
+    @PutMapping("/{reviewId}")
+    public ResponseEntity<ApiResponse<ReviewUpdateResponseDto>> updateReview(@PathVariable UUID reviewId,
                                                                              @RequestHeader("X-User-Id")UUID userId,
                                                                              @Valid @RequestBody ReviewUpdateRequestDto dto,
                                                                              @RequestHeader("X-User-Role") String userRole) {
-        ReviewUpdateResponseDto reviewUpdateResponseDto =  reviewService.updateReview(reviewid,userId,dto,userRole);
+        ReviewUpdateResponseDto reviewUpdateResponseDto =  reviewService.updateReview(reviewId,userId,dto,userRole);
         return ResponseEntity.ok(ApiResponse.success(reviewUpdateResponseDto));
     }
 

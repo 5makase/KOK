@@ -104,7 +104,7 @@ public class ReviewRatingService {
         /*만든 ReviewEventEnvelope을 json으로 변환.*/
         String json = serialize(envelope);
         /*Outbox 테이블에 저장.*/
-        reviewOutboxEventRepository.save(ReviewOutboxEvent.create(reviewId, eventType, json));
+        reviewOutboxEventRepository.save(ReviewOutboxEvent.create(reviewId, eventType, json, payload.storeId()));
     }
 
     //JSON으로 변환해주는..

@@ -31,14 +31,30 @@ public class WaitingOutboxPublisher {
     @Scheduled(fixedDelayString = "${waiting.kafka.publisher.fixed-delay-ms}")
     @Transactional
     public void publishPendingEvents() {
-        List<WaitingOutboxEvent> pendingEvents = waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(
-                OutboxStatus.PENDING,
-                PageRequest.of(0, waitingKafkaPublisherProperties.batchSize())
-        );
+        List<WaitingOutboxEvent> pendingEvents = loadEventsByStatus(OutboxStatus.PENDING);
 
         for (WaitingOutboxEvent pendingEvent : pendingEvents) {
             publishEvent(pendingEvent);
         }
+    }
+
+    // 실패 이벤트 재시도
+    @Scheduled(fixedDelayString = "${waiting.kafka.publisher.failed-fixed-delay-ms}")
+    @Transactional
+    public void retryFailedEvents() {
+        List<WaitingOutboxEvent> failedEvents = loadEventsByStatus(OutboxStatus.FAILED);
+
+        for (WaitingOutboxEvent failedEvent : failedEvents) {
+            failedEvent.retry();
+            publishEvent(failedEvent);
+        }
+    }
+
+    private List<WaitingOutboxEvent> loadEventsByStatus(OutboxStatus status) {
+        return waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(
+                status,
+                PageRequest.of(0, waitingKafkaPublisherProperties.batchSize())
+        );
     }
 
     // 단건 Outbox 이벤트 발행

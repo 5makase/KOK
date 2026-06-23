@@ -71,6 +71,23 @@ class WaitingDomainTest {
     }
 
     @Test
+    @DisplayName("실패한 아웃박스 이벤트는 재시도 대기 상태로 되돌릴 수 있다")
+    void outboxRetryAfterFailure() {
+        WaitingOutboxEvent event = WaitingOutboxEvent.builder()
+                .waiting(waiting())
+                .eventType(WaitingEventType.WAITING_REGISTERED)
+                .payload("{}")
+                .build();
+
+        event.fail("kafka down");
+        event.retry();
+
+        assertThat(event.getStatus()).isEqualTo(com.omakase.kok.waiting.domain.enums.OutboxStatus.PENDING);
+        assertThat(event.getRetryCount()).isEqualTo(1);
+        assertThat(event.getFailedReason()).isNull();
+    }
+
+    @Test
     @DisplayName("웨이팅 설정 수정값은 null을 유지하고 숫자 값만 양수를 검증한다")
     void waitingSettingUpdateValidation() {
         WaitingSetting setting = WaitingSetting.create(UUID.randomUUID(), true, 10, 5, true, 10);

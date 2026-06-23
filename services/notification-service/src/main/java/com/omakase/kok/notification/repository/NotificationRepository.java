@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,6 +19,8 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     long countByUserIdAndIsReadFalseAndDeletedAtIsNull(UUID userId);
 
     Optional<Notification> findByNotificationIdAndDeletedAtIsNull(UUID notificationId);
+
+    List<Notification> findAllByNotificationIdInAndDeletedAtIsNull(List<UUID> notificationIds);
 
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.userId = :userId AND n.isRead = false AND n.deletedAt IS NULL")

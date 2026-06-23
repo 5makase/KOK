@@ -14,7 +14,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -41,16 +43,23 @@ public class RetryScheduler {
 
         log.info("[RetryScheduler] 재시도 대상 {}건", targets.size());
 
-        for (SlackSendLog slackSendLog : targets) {
-            Optional<Notification> notificationOpt = notificationRepository
-                    .findByNotificationIdAndDeletedAtIsNull(slackSendLog.getNotificationId());
+        List<UUID> notificationIds = targets.stream()
+                .map(SlackSendLog::getNotificationId)
+                .toList();
 
-            if (notificationOpt.isEmpty()) {
+        Map<UUID, Notification> notificationMap = notificationRepository
+                .findAllByNotificationIdInAndDeletedAtIsNull(notificationIds)
+                .stream()
+                .collect(Collectors.toMap(Notification::getNotificationId, n -> n));
+
+        for (SlackSendLog slackSendLog : targets) {
+            Notification notification = notificationMap.get(slackSendLog.getNotificationId());
+
+            if (notification == null) {
                 log.warn("[RetryScheduler] 알림 없음. notificationId={}", slackSendLog.getNotificationId());
                 continue;
             }
 
-            Notification notification = notificationOpt.get();
             slackSendService.send(notification.getUserId(), notification.getMessage(), slackSendLog);
         }
     }

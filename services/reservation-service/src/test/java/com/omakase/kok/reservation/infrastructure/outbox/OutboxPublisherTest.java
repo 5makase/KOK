@@ -193,6 +193,32 @@ class OutboxPublisherTest {
         }
 
         @Test
+        @DisplayName("payload.storeId가 빈 문자열이면 이벤트가 FAILED로 처리된다")
+        void fail_blankStoreIdInEnvelope() throws Exception {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("storeId", " ");
+            Map<String, Object> envelope = new LinkedHashMap<>();
+            envelope.put("eventId", UUID.randomUUID().toString());
+            envelope.put("eventType", "RESERVATION_CONFIRMED");
+            envelope.put("payload", payload);
+            String blankStoreIdPayload = objectMapper.writeValueAsString(envelope);
+
+            ReservationOutboxEvent event = buildPendingEvent(blankStoreIdPayload);
+            UUID eventId = event.getOutboxEventId();
+
+            givenLockAcquired();
+            when(outboxEventRepository.findByStatus(eq(OutboxEventStatus.PENDING), any(PageRequest.class)))
+                    .thenReturn(List.of(event));
+            givenTransactionExecutes();
+            when(outboxEventRepository.findById(eventId)).thenReturn(Optional.of(event));
+
+            outboxPublisher.publishPendingEvents();
+
+            assertThat(event.getStatus()).isEqualTo(OutboxEventStatus.FAILED);
+            verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        }
+
+        @Test
         @DisplayName("이미 PUBLISHED 상태인 이벤트는 재발행하지 않는다")
         void skip_alreadyPublished() throws Exception {
             UUID storeId = UUID.randomUUID();

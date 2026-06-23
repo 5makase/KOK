@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -42,6 +44,8 @@ class SlotServiceTest {
     @Mock private RedissonClient redissonClient;
     @Mock private RAtomicLong atomicLong;
 
+    private static final LocalDate SLOT_DATE = LocalDate.of(2026, 7, 1);
+
     private SlotService slotService;
 
     @BeforeEach
@@ -52,7 +56,7 @@ class SlotServiceTest {
     private CreateSlotRequest buildCreateRequest(UUID storeId, boolean depositRequired, Long depositAmount) {
         CreateSlotRequest req = new CreateSlotRequest();
         ReflectionTestUtils.setField(req, "storeId", storeId);
-        ReflectionTestUtils.setField(req, "slotDate", LocalDate.now().plusDays(7));
+        ReflectionTestUtils.setField(req, "slotDate", SLOT_DATE);
         ReflectionTestUtils.setField(req, "slotTime", LocalTime.of(18, 0));
         ReflectionTestUtils.setField(req, "maxCapacity", 4);
         ReflectionTestUtils.setField(req, "depositRequired", depositRequired);
@@ -63,7 +67,7 @@ class SlotServiceTest {
     private ReservationSlot buildSlot(UUID storeId) {
         ReservationSlot slot = ReservationSlot.builder()
                 .storeId(storeId)
-                .slotDate(LocalDate.now().plusDays(7))
+                .slotDate(SLOT_DATE)
                 .slotTime(LocalTime.of(18, 0))
                 .maxCapacity(4)
                 .depositRequired(false)
@@ -83,12 +87,16 @@ class SlotServiceTest {
             UUID storeId = UUID.randomUUID();
             CreateSlotRequest req = buildCreateRequest(storeId, false, null);
 
+            ArgumentCaptor<String> redisKeyCaptor = ArgumentCaptor.forClass(String.class);
+            UUID[] savedSlotId = new UUID[1];
+
             when(slotRepository.save(any(ReservationSlot.class))).thenAnswer(inv -> {
                 ReservationSlot s = inv.getArgument(0);
-                ReflectionTestUtils.setField(s, "slotId", UUID.randomUUID());
+                savedSlotId[0] = UUID.randomUUID();
+                ReflectionTestUtils.setField(s, "slotId", savedSlotId[0]);
                 return s;
             });
-            when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
+            when(redissonClient.getAtomicLong(redisKeyCaptor.capture())).thenReturn(atomicLong);
 
             try (MockedStatic<TransactionSynchronizationManager> mocked =
                          mockStatic(TransactionSynchronizationManager.class)) {
@@ -103,6 +111,7 @@ class SlotServiceTest {
 
                 assertThat(response).isNotNull();
                 verify(atomicLong).set(4);
+                assertThat(redisKeyCaptor.getValue()).contains(savedSlotId[0].toString());
             }
         }
 
@@ -159,13 +168,12 @@ class SlotServiceTest {
         @DisplayName("날짜 포함 조회 시 해당 날짜의 슬롯만 반환한다")
         void success_withDate() {
             UUID storeId = UUID.randomUUID();
-            LocalDate date = LocalDate.now().plusDays(7);
             ReservationSlot s1 = buildSlot(storeId);
 
-            when(slotRepository.findByStoreIdAndSlotDateAndDeletedAtIsNull(storeId, date))
+            when(slotRepository.findByStoreIdAndSlotDateAndDeletedAtIsNull(storeId, SLOT_DATE))
                     .thenReturn(List.of(s1));
 
-            List<SlotResponse> result = slotService.getSlots(storeId, date);
+            List<SlotResponse> result = slotService.getSlots(storeId, SLOT_DATE);
 
             assertThat(result).hasSize(1);
         }

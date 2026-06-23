@@ -29,6 +29,7 @@ public class StoreRatingService {
     private final StoreRankingRepository storeRankingRepository;
     private final StoreListCacheRepository storeListCacheRepository;
 
+    // @Transactional: store.getCategory()가 LAZY이므로 트랜잭션 범위 필수
     @Transactional(readOnly = true)
     public List<StoreRankingResult> getRanking(int size) {
         int safeSize = Math.min(Math.max(size, 1), 50);
@@ -61,12 +62,12 @@ public class StoreRatingService {
 
         // DB 커밋 후 Redis 갱신 - 커밋 실패 시 Redis 불일치 방지
         // store.updateRating() 내부에서 반올림된 값을 Redis에도 동일하게 반영
-        scheduleRankingUpdateAfterCommit(storeId, store.getAverageRating(), store.getReviewCount());
+        registerRankingUpdateOnCommit(storeId, store.getAverageRating(), store.getReviewCount());
     }
 
     // reviewCount == 0 이면 랭킹에서 제거, 그 외엔 점수 갱신
     // store:list:* 는 TTL(5분) 만료에 위임
-    private void scheduleRankingUpdateAfterCommit(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
+    private void registerRankingUpdateOnCommit(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             applyRankingUpdate(storeId, averageRating, reviewCount);
             return;

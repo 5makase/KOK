@@ -35,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -391,14 +392,21 @@ public class ReservationService {
     private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
         UUID outboxEventId = UUID.randomUUID();
         try {
-            Map<String, Object> payloadMap = new LinkedHashMap<>();
-            payloadMap.put("eventId", outboxEventId.toString());
-            payloadMap.put("eventType", eventType.name());
-            payloadMap.put("reservationId", reservation.getReservationId().toString());
-            payloadMap.put("userId", reservation.getUserId().toString());
-            payloadMap.put("storeId", reservation.getStoreId().toString());
-            payloadMap.put("visitedAt", reservation.getVisitedAt());
-            String payload = objectMapper.writeValueAsString(payloadMap);
+            Map<String, Object> payloadData = new LinkedHashMap<>();
+            payloadData.put("reservationId", reservation.getReservationId().toString());
+            payloadData.put("userId", reservation.getUserId().toString());
+            payloadData.put("storeId", reservation.getStoreId().toString());
+            payloadData.put("visitedAt", reservation.getVisitedAt());
+
+            Map<String, Object> envelope = new LinkedHashMap<>();
+            envelope.put("eventId", outboxEventId.toString());
+            envelope.put("eventType", eventType.name());
+            envelope.put("schemaVersion", 1);
+            envelope.put("occurredAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")));
+            envelope.put("producer", "reservation-service");
+            envelope.put("payload", payloadData);
+
+            String payload = objectMapper.writeValueAsString(envelope);
             return ReservationOutboxEvent.builder()
                     .outboxEventId(outboxEventId)
                     .reservationId(reservation.getReservationId())

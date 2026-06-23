@@ -6,7 +6,8 @@ import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.waiting.domain.entity.WaitingSetting;
 import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
-import com.omakase.kok.waiting.infrastructure.client.StoreFeignClient;
+import com.omakase.kok.waiting.infrastructure.client.StoreSummaryReader;
+import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
@@ -18,6 +19,8 @@ import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -28,7 +31,7 @@ import java.util.UUID;
 public class WaitingSettingService {
     private final WaitingSettingRepository waitingSettingRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
-    private final StoreFeignClient storeFeignClient;
+    private final StoreSummaryReader storeSummaryReader;
 
     // 웨이팅 세팅 조회
     public WaitingSettingResponse getWaitingSetting(UUID storeId) {
@@ -53,7 +56,7 @@ public class WaitingSettingService {
                 request.getAllowUserCancel(),
                 request.getAverageWaitingMinutes()
         )));
-        cacheStoreWaitingValues(setting);
+        scheduleStoreWaitingValuesCacheAfterCommit(setting);
         return WaitingSettingInitializeResponse.of(setting, settingCreated);
     }
 
@@ -76,7 +79,7 @@ public class WaitingSettingService {
                 request.getAllowUserCancel(),
                 request.getAverageWaitingMinutes()
         );
-        cacheStoreWaitingValues(setting);
+        scheduleStoreWaitingValuesCacheAfterCommit(setting);
 
         return WaitingSettingResponse.of(setting);
     }
@@ -111,12 +114,25 @@ public class WaitingSettingService {
         );
     }
 
+    private void scheduleStoreWaitingValuesCacheAfterCommit(WaitingSetting setting) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            cacheStoreWaitingValues(setting);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                cacheStoreWaitingValues(setting);
+            }
+        });
+    }
+
     private void validateStoreOwnerAccess(UUID userId, String role, UUID storeId) {
         if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
             return;
         }
-        UUID ownerId = storeFeignClient.getStoreSummary(storeId).getData().getOwnerId();
-        if (!userId.equals(ownerId)) {
+        StoreSummaryResponse storeSummary = storeSummaryReader.getStoreSummary(storeId);
+        if (!userId.equals(storeSummary.getOwnerId())) {
             throw new BaseException(CommonErrorCode.ACCESS_DENIED);
         }
     }

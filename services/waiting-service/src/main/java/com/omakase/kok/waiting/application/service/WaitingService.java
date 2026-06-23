@@ -15,7 +15,7 @@ import com.omakase.kok.waiting.domain.repository.WaitingOutboxEventRepository;
 import com.omakase.kok.waiting.domain.repository.WaitingRepository;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
-import com.omakase.kok.waiting.infrastructure.client.StoreFeignClient;
+import com.omakase.kok.waiting.infrastructure.client.StoreSummaryReader;
 import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
 import com.omakase.kok.waiting.infrastructure.messaging.WaitingEventFactory;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
@@ -65,7 +65,7 @@ public class WaitingService {
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
     private final WaitingSettingService waitingSettingService;
-    private final StoreFeignClient storeFeignClient;
+    private final StoreSummaryReader storeSummaryReader;
     private final WaitingEventFactory waitingEventFactory;
     private final ObjectMapper objectMapper;
     private final RedissonClient redissonClient;
@@ -301,7 +301,7 @@ public class WaitingService {
 
     // 가게 내부 API 호출
     private StoreSummaryResponse getStoreSummary(UUID storeId) {
-        return storeFeignClient.getStoreSummary(storeId).getData();
+        return storeSummaryReader.getStoreSummary(storeId);
     }
 
     /**

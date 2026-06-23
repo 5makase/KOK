@@ -338,7 +338,7 @@ class StoreHoursServiceTest {
         StoreHours wed = StoreHours.createDayOff(store, DayOfWeek.WEDNESDAY);
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
-        when(storeHoursRepository.findAllHours(store)).thenReturn(List.of(mon, wed));
+        when(storeHoursRepository.findAllHours(store)).thenReturn(List.of(wed, mon));
 
         List<StoreHoursResult> results = storeHoursService.getStoreHours(storeId);
 

@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -87,7 +88,7 @@ class StoreRankingRedisRepositoryTest {
         List<UUID> ranking = repository.getTopRanking(0);
 
         assertThat(ranking).isEmpty();
-        // opsForZSet()는 setUp에서 stubbing되어 있으나 reverseRange는 호출되지 않아야 함
+        verify(redisTemplate, never()).opsForZSet();
     }
 
     @Test

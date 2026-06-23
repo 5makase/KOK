@@ -201,7 +201,7 @@ class StoreImageServiceTest {
         StoreImage img2 = StoreImage.create(store, "url2", 2);
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
-        when(storeImageRepository.findAllImages(storeId)).thenReturn(List.of(img1, img2));
+        when(storeImageRepository.findAllImages(storeId)).thenReturn(List.of(img2, img1));
 
         List<StoreImageResult> results = storeImageService.getImages(storeId);
 

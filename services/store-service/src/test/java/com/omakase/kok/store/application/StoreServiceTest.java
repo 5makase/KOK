@@ -337,6 +337,7 @@ class StoreServiceTest {
     @Test
     @DisplayName("MASTER는 삭제된 매장도 조회 가능")
     void getStore_master_can_read_deleted_store() {
+        store.delete(ownerId);
         when(storeRepository.findById(storeId)).thenReturn(Optional.of(store));
         when(storeHoursRepository.findTodayHours(eq(storeId), any(DayOfWeek.class)))
                 .thenReturn(Optional.empty());

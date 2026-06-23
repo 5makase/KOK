@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 
@@ -28,17 +29,16 @@ public class SlackClient {
         this.botToken = botToken;
     }
 
-    /**
-     * 이메일로 Slack Member ID를 조회한다.
-     * users.lookupByEmail API 사용 (users:read.email 스코프 필요).
-     */
     @SuppressWarnings("unchecked")
     public String lookupByEmail(String email) {
         HttpEntity<Void> request = new HttpEntity<>(createAuthHeaders());
 
+        String url = UriComponentsBuilder.fromUriString(USERS_LOOKUP_BY_EMAIL_URL)
+                .queryParam("email", email)
+                .toUriString();
+
         ResponseEntity<Map> response = restTemplate.exchange(
-                USERS_LOOKUP_BY_EMAIL_URL + "?email=" + email,
-                HttpMethod.GET, request, Map.class
+                url, HttpMethod.GET, request, Map.class
         );
 
         Map<String, Object> body = response.getBody();
@@ -50,10 +50,6 @@ public class SlackClient {
         return (String) user.get("id");
     }
 
-    /**
-     * Slack User ID로 DM을 발송한다.
-     * conversations.open → chat.postMessage 순으로 호출한다.
-     */
     public void sendDirectMessage(String slackUserId, String message) {
         String channelId = openDirectMessageChannel(slackUserId);
         postMessage(channelId, message);

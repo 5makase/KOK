@@ -3,6 +3,7 @@ package com.omakase.kok.store.presentation;
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
+import com.omakase.kok.store.application.StoreRatingService;
 import com.omakase.kok.store.application.StoreService;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
@@ -14,6 +15,7 @@ import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.presentation.dto.request.ChangeStoreStatusRequest;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreRequest;
+import com.omakase.kok.store.presentation.dto.response.StoreRankingResponse;
 import com.omakase.kok.store.presentation.dto.response.StoreResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -39,6 +42,7 @@ import java.util.UUID;
 public class StoreController {
 
     private final StoreService storeService;
+    private final StoreRatingService storeRatingService;
 
     // 매장 등록
     @PostMapping
@@ -113,6 +117,15 @@ public class StoreController {
             @RequestHeader(value = AuthConstants.ROLE, required = false) String role
     ) {
         return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.getStore(storeId, role))));
+    }
+
+    // 인기 매장 랭킹 조회 - Redis Sorted Set 기반, 권한 불필요
+    @GetMapping("/ranking")
+    public ResponseEntity<ApiResponse<StoreRankingResponse>> getRanking(
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        int clampedSize = Math.min(size, 50);
+        return ResponseEntity.ok(ApiResponse.success(StoreRankingResponse.from(storeRatingService.getRanking(clampedSize))));
     }
 
     // 매장 목록 검색 - 역할별 동작 차이는 Service에서 처리

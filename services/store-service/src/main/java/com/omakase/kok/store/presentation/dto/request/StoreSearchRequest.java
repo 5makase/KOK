@@ -5,13 +5,16 @@ import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Positive;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
 @Getter
+@Setter
 public class StoreSearchRequest {
 
     private UUID categoryId;
@@ -29,5 +32,6 @@ public class StoreSearchRequest {
     @DecimalMin("-180.0") @DecimalMax("180.0")
     private BigDecimal longitude;
 
+    @Positive
     private Double radiusKm;
 }

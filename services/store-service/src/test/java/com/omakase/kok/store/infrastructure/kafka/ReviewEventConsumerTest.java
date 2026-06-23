@@ -20,6 +20,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -63,9 +65,9 @@ class ReviewEventConsumerTest {
         reviewEventConsumer.consume(validMessage);
 
         verify(storeRatingService).updateRating(
-                any(UUID.class),
-                any(BigDecimal.class),
-                any(Integer.class)
+                eq(storeId),
+                argThat(v -> v.compareTo(new BigDecimal("4.3")) == 0),
+                eq(10)
         );
     }
 
@@ -124,6 +126,16 @@ class ReviewEventConsumerTest {
                 """.formatted(UUID.randomUUID(), UUID.randomUUID());
 
         reviewEventConsumer.consume(missingFieldMessage);
+
+        verify(storeRatingService, never()).updateRating(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("reviewCount 음수 - updateRating() 미호출")
+    void consume_negative_review_count_skips() {
+        String negativeCountMessage = validMessage.replace("\"reviewCount\": 10", "\"reviewCount\": -1");
+
+        reviewEventConsumer.consume(negativeCountMessage);
 
         verify(storeRatingService, never()).updateRating(any(), any(), any());
     }

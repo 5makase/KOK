@@ -1,11 +1,16 @@
 package com.omakase.kok.reservation.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
+import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.EventType;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
@@ -13,8 +18,12 @@ import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepos
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.infrastructure.client.dto.CreatePaymentRequest;
+import com.omakase.kok.reservation.infrastructure.client.dto.PaymentResponse;
+import com.omakase.kok.reservation.infrastructure.client.dto.RefundRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -24,11 +33,16 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -43,6 +57,7 @@ public class ReservationService {
     private final RedissonClient redissonClient;
     private final PaymentFeignClient paymentFeignClient;
     private final PlatformTransactionManager transactionManager;
+    private final ObjectMapper objectMapper;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ReservationResponse createReservation(CreateReservationRequest request, UUID userId) {
@@ -113,6 +128,20 @@ public class ReservationService {
                         slot.getDepositAmount(),
                         request.getPaymentMethod()
                 ));
+            } catch (FeignException e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                    reservation.cancel("SYSTEM", "결제 처리 실패");
+                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
+                    return null;
+                });
+                if (e.status() >= 400 && e.status() < 500) {
+                    log.warn("결제 서비스 클라이언트 오류 - status: {}, reservationId: {}", e.status(), reservationId);
+                } else {
+                    log.error("결제 서비스 서버 오류 - status: {}, reservationId: {}", e.status(), reservationId, e);
+                }
+                throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             } catch (Exception e) {
                 capacityKey.addAndGet(request.getReservationSize());
                 new TransactionTemplate(transactionManager).execute(status -> {
@@ -121,6 +150,7 @@ public class ReservationService {
                     outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
                     return null;
                 });
+                log.error("결제 처리 중 예외 발생 - reservationId: {}", reservationId, e);
                 throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
             }
 
@@ -185,6 +215,167 @@ public class ReservationService {
         return ReservationResponse.from(reservation);
     }
 
+    @Transactional
+    public ReservationResponse visitReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.visit();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_VISITED));
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional
+    public ReservationResponse noShowReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.noShow();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_NO_SHOW));
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse cancelReservation(UUID reservationId, UUID userId, CancelReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        if (!reservation.isCancellable()) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+        }
+
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        // 실제 결제 금액 조회 (환불 기준은 슬롯 설정이 아닌 실제 결제 금액)
+        PaymentResponse payment = null;
+        if (slot.isDepositRequired()) {
+            payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
+        }
+        final PaymentResponse finalPayment = payment;
+
+        // DB 커밋 전 재검증으로 동시 취소 요청 방어
+        String cancelReason = request != null ? request.getCancelReason() : null;
+        ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
+            Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+            if (!r.isCancellable()) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+            }
+            r.cancel("USER", cancelReason);
+            outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+            return ReservationResponse.from(r);
+        });
+
+        // DB 커밋 이후 환불 처리 (DB가 취소 상태의 원천)
+        if (slot.isDepositRequired() && finalPayment != null) {
+            long refundAmount = calculateUserRefundAmount(slot.getSlotDate(), finalPayment.getAmount());
+            if (refundAmount > 0) {
+                try {
+                    paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(refundAmount));
+                } catch (Exception e) {
+                    log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
+                }
+            }
+        }
+
+        // Redis 잔여 인원 복구 실패 시 로그 기록 (슬롯 용량 불일치 방지)
+        try {
+            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                    .addAndGet(reservation.getReservationSize());
+        } catch (Exception e) {
+            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+        }
+
+        return response;
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse cancelByStore(UUID storeId, UUID reservationId, CancelReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (!reservation.isCancellable()) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+        }
+
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        // 실제 결제 금액 조회 (점주 취소 시 전액 환불 기준)
+        PaymentResponse payment = null;
+        if (slot.isDepositRequired()) {
+            payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
+        }
+        final PaymentResponse finalPayment = payment;
+
+        // DB 커밋 전 재검증으로 동시 취소 요청 방어
+        String cancelReason = request != null ? request.getCancelReason() : null;
+        ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
+            Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+            if (!r.isCancellable()) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+            }
+            r.cancel("OWNER", cancelReason);
+            outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+            return ReservationResponse.from(r);
+        });
+
+        // DB 커밋 이후 전액 환불 처리
+        if (slot.isDepositRequired() && finalPayment != null) {
+            try {
+                paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(finalPayment.getAmount()));
+            } catch (Exception e) {
+                log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
+            }
+        }
+
+        // Redis 잔여 인원 복구 실패 시 로그 기록
+        try {
+            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                    .addAndGet(reservation.getReservationSize());
+        } catch (Exception e) {
+            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+        }
+
+        return response;
+    }
+
+    private long calculateUserRefundAmount(LocalDate slotDate, Long depositAmount) {
+        long daysUntilVisit = ChronoUnit.DAYS.between(LocalDate.now(), slotDate);
+        if (daysUntilVisit >= 3) {
+            return depositAmount;
+        } else if (daysUntilVisit >= 1) {
+            return depositAmount / 2;
+        }
+        return 0;
+    }
+
     private Reservation buildReservation(CreateReservationRequest request, UUID userId, UUID storeId) {
         return Reservation.builder()
                 .slotId(request.getSlotId())
@@ -198,15 +389,24 @@ public class ReservationService {
     }
 
     private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
-        String payload = String.format(
-                "{\"reservationId\":\"%s\",\"storeId\":\"%s\",\"userId\":\"%s\",\"status\":\"%s\",\"occurredAt\":\"%s\"}",
-                reservation.getReservationId(), reservation.getStoreId(),
-                reservation.getUserId(), reservation.getStatus(), LocalDateTime.now()
-        );
-        return ReservationOutboxEvent.builder()
-                .reservationId(reservation.getReservationId())
-                .eventType(eventType)
-                .payload(payload)
-                .build();
+        UUID outboxEventId = UUID.randomUUID();
+        try {
+            Map<String, Object> payloadMap = new LinkedHashMap<>();
+            payloadMap.put("eventId", outboxEventId.toString());
+            payloadMap.put("eventType", eventType.name());
+            payloadMap.put("reservationId", reservation.getReservationId().toString());
+            payloadMap.put("userId", reservation.getUserId().toString());
+            payloadMap.put("storeId", reservation.getStoreId().toString());
+            payloadMap.put("visitedAt", reservation.getVisitedAt());
+            String payload = objectMapper.writeValueAsString(payloadMap);
+            return ReservationOutboxEvent.builder()
+                    .outboxEventId(outboxEventId)
+                    .reservationId(reservation.getReservationId())
+                    .eventType(eventType)
+                    .payload(payload)
+                    .build();
+        } catch (JsonProcessingException e) {
+            throw new BaseException(ReservationErrorCode.PAYLOAD_SERIALIZATION_FAILED);
+        }
     }
 }

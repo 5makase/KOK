@@ -1,6 +1,7 @@
 package com.omakase.kok.reservation.presentation.controller;
 
 import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.application.service.ReservationService;
 import lombok.RequiredArgsConstructor;
@@ -30,5 +31,27 @@ public class StoreReservationController {
             @PathVariable UUID storeId,
             @PathVariable UUID reservationId) {
         return ResponseEntity.ok(ApiResponse.success(reservationService.getStoreReservation(storeId, reservationId)));
+    }
+
+    @PatchMapping("/{reservationId}/cancel")
+    public ResponseEntity<ApiResponse<ReservationResponse>> cancelByStore(
+            @PathVariable UUID storeId,
+            @PathVariable UUID reservationId,
+            @RequestBody(required = false) CancelReservationRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.cancelByStore(storeId, reservationId, request)));
+    }
+
+    @PatchMapping("/{reservationId}/visit")
+    public ResponseEntity<ApiResponse<ReservationResponse>> visitReservation(
+            @PathVariable UUID storeId,
+            @PathVariable UUID reservationId) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.visitReservation(storeId, reservationId)));
+    }
+
+    @PatchMapping("/{reservationId}/no-show")
+    public ResponseEntity<ApiResponse<ReservationResponse>> noShowReservation(
+            @PathVariable UUID storeId,
+            @PathVariable UUID reservationId) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.noShowReservation(storeId, reservationId)));
     }
 }

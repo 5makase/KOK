@@ -20,6 +20,18 @@ public class ReviewController {
     private final ReviewService reviewService;
 
     /**
+     * 리뷰 삭제
+     * @param reviewId
+     * @param userId
+     * @return
+     */
+    @PatchMapping("/{reviewId}")
+    public ResponseEntity<ApiResponse<Void>> deleteReview(@PathVariable UUID reviewId, @RequestHeader("X-User-Id")UUID userId) {
+        reviewService.deleteReview(reviewId, userId);
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    /**
      * 리뷰 생성
      * @param requestDto
      * @return

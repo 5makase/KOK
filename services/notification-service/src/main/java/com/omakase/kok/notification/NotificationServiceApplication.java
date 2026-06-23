@@ -9,7 +9,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication(scanBasePackages = "com.omakase.kok")
 @EnableFeignClients(basePackages = "com.omakase.kok")
 @EnableScheduling
-@EnableJpaAuditing
 public class NotificationServiceApplication {
 
 	public static void main(String[] args) {

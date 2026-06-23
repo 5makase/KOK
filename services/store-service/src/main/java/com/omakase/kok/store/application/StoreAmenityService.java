@@ -1,8 +1,7 @@
 package com.omakase.kok.store.application;
 
-import com.omakase.kok.common.auth.AuthConstants;
-import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
 import com.omakase.kok.store.domain.entity.Store;
@@ -29,11 +28,12 @@ public class StoreAmenityService {
 
     private final StoreAmenityRepository storeAmenityRepository;
     private final StoreFinder storeFinder;
+    private final StoreOwnerValidator storeOwnerValidator;
 
     @Transactional
-    public StoreAmenityResult.Bulk syncAmenities(AddStoreAmenityCommand command) {
+    public StoreAmenityResult.Bulk syncAmenities(AddStoreAmenityCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        validateOwner(store, command.getRequesterId());
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.AMENITY_ACCESS_DENIED);
 
         Set<AmenityType> requested = Set.copyOf(command.getAmenityTypes());
 
@@ -82,9 +82,7 @@ public class StoreAmenityService {
     @Transactional
     public void deleteAmenity(UUID storeId, UUID amenityId, UUID requesterId, String role) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            validateOwner(store, requesterId);
-        }
+        storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.AMENITY_ACCESS_DENIED);
         StoreAmenity amenity = findAmenity(storeId, amenityId);
         // soft delete 포함 조회 후 명시적 체크 - 이미 삭제된 경우
         if (amenity.isDeleted()) {
@@ -106,9 +104,4 @@ public class StoreAmenityService {
                 .orElseThrow(() -> new BaseException(StoreErrorCode.AMENITY_NOT_FOUND));
     }
 
-    private void validateOwner(Store store, UUID requesterId) {
-        if (!store.isOwnedBy(requesterId)) {
-            throw new BaseException(StoreErrorCode.AMENITY_ACCESS_DENIED);
-        }
-    }
 }

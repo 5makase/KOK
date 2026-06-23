@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.application.command.AddStoreImageCommand;
 import com.omakase.kok.store.application.command.AddStoreImageCommand.ImageEntry;
 import com.omakase.kok.store.application.command.UpdateStoreImageCommand;
@@ -27,11 +28,12 @@ public class StoreImageService {
 
     private final StoreImageRepository storeImageRepository;
     private final StoreFinder storeFinder;
+    private final StoreOwnerValidator storeOwnerValidator;
 
     @Transactional
-    public List<StoreImageResult> addImages(AddStoreImageCommand command) {
+    public List<StoreImageResult> addImages(AddStoreImageCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        validateOwner(store, command.getRequesterId());
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
         validateNoDuplicateOrders(command.getImages());
 
         // 요청 슬롯 한 번에 조회 (soft delete 포함)
@@ -49,9 +51,9 @@ public class StoreImageService {
     }
 
     @Transactional
-    public StoreImageResult updateImage(UpdateStoreImageCommand command) {
+    public StoreImageResult updateImage(UpdateStoreImageCommand command, String role) {
         StoreImage image = findImage(command.getStoreId(), command.getImageId());
-        validateOwner(image.getStore(), command.getRequesterId());
+        storeOwnerValidator.validate(image.getStore(), command.getRequesterId(), role, StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
 
         // displayOrder 변경 시 목표 슬롯에 활성 이미지가 있으면 soft delete (슬롯 교체)
         if (!Objects.equals(command.getDisplayOrder(), image.getDisplayOrder())) {
@@ -66,9 +68,9 @@ public class StoreImageService {
     }
 
     @Transactional
-    public void deleteImage(UUID storeId, UUID imageId, UUID requesterId) {
+    public void deleteImage(UUID storeId, UUID imageId, UUID requesterId, String role) {
         StoreImage image = findImage(storeId, imageId);
-        validateOwner(image.getStore(), requesterId);
+        storeOwnerValidator.validate(image.getStore(), requesterId, role, StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
         image.delete(requesterId);
     }
 
@@ -121,9 +123,4 @@ public class StoreImageService {
         return image;
     }
 
-    private void validateOwner(Store store, UUID requesterId) {
-        if (!store.isOwnedBy(requesterId)) {
-            throw new BaseException(StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
-        }
-    }
 }

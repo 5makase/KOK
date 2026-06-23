@@ -1,6 +1,7 @@
 package com.omakase.kok.store.presentation;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
 import com.omakase.kok.store.application.StoreRatingService;
@@ -48,8 +49,10 @@ public class StoreController {
     @PostMapping
     public ResponseEntity<ApiResponse<StoreResponse>> createStore(
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody CreateStoreRequest request
     ) {
+        RoleAuthorizationUtils.requireRole(role, AuthConstants.OWNER);
         Address address = new Address(
                 request.getAddressSido(), request.getAddressSigungu(),
                 request.getAddressDong(), request.getAddressDetail(),
@@ -72,8 +75,10 @@ public class StoreController {
     public ResponseEntity<ApiResponse<StoreResponse>> updateStore(
             @PathVariable UUID storeId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody UpdateStoreRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         // addressSido가 없으면 주소 변경 없음 - null 전달 시 Store.update()에서 기존 값 유지
         Address address = request.getAddressSido() != null
                 ? new Address(request.getAddressSido(), request.getAddressSigungu(),
@@ -90,7 +95,7 @@ public class StoreController {
                 .description(request.getDescription())
                 .maxCapacity(request.getMaxCapacity())
                 .build();
-        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.updateStore(command))));
+        return ResponseEntity.ok(ApiResponse.success(StoreResponse.from(storeService.updateStore(command, role))));
     }
 
     // 매장 상태 변경
@@ -98,9 +103,10 @@ public class StoreController {
     public ResponseEntity<ApiResponse<StoreResponse>> changeStatus(
             @PathVariable UUID storeId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
-            @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody ChangeStoreStatusRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         ChangeStoreStatusCommand command = ChangeStoreStatusCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)

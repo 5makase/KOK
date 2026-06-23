@@ -1,6 +1,7 @@
 package com.omakase.kok.store.presentation;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreImageService;
 import com.omakase.kok.store.application.command.AddStoreImageCommand;
@@ -36,8 +37,10 @@ public class StoreImageController {
     public ResponseEntity<ApiResponse<List<StoreImageResponse>>> addImages(
             @PathVariable UUID storeId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody AddStoreImageRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         AddStoreImageCommand command = AddStoreImageCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)
@@ -48,7 +51,7 @@ public class StoreImageController {
                                 .build())
                         .toList())
                 .build();
-        List<StoreImageResponse> response = storeImageService.addImages(command).stream()
+        List<StoreImageResponse> response = storeImageService.addImages(command, role).stream()
                 .map(StoreImageResponse::from).toList();
         return ResponseEntity.status(201).body(ApiResponse.created(response));
     }
@@ -59,8 +62,10 @@ public class StoreImageController {
             @PathVariable UUID storeId,
             @PathVariable UUID imageId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody UpdateStoreImageRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
                 .storeId(storeId)
                 .imageId(imageId)
@@ -68,7 +73,7 @@ public class StoreImageController {
                 .imageUrl(request.getImageUrl())
                 .displayOrder(request.getDisplayOrder())
                 .build();
-        return ResponseEntity.ok(ApiResponse.success(StoreImageResponse.from(storeImageService.updateImage(command))));
+        return ResponseEntity.ok(ApiResponse.success(StoreImageResponse.from(storeImageService.updateImage(command, role))));
     }
 
     // 이미지 삭제 (Soft Delete)
@@ -76,9 +81,11 @@ public class StoreImageController {
     public ResponseEntity<ApiResponse<Void>> deleteImage(
             @PathVariable UUID storeId,
             @PathVariable UUID imageId,
-            @RequestHeader(AuthConstants.USER_ID) UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role
     ) {
-        storeImageService.deleteImage(storeId, imageId, userId);
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
+        storeImageService.deleteImage(storeId, imageId, userId, role);
         return ResponseEntity.ok(ApiResponse.deleted());
     }
 

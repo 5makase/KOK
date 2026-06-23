@@ -1,8 +1,7 @@
 package com.omakase.kok.store.application;
 
-import com.omakase.kok.common.auth.AuthConstants;
-import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.application.command.CreateMenuCommand;
 import com.omakase.kok.store.application.command.UpdateMenuCommand;
 import com.omakase.kok.store.application.result.MenuResult;
@@ -25,13 +24,12 @@ public class MenuService {
 
     private final MenuRepository menuRepository;
     private final StoreFinder storeFinder;
+    private final StoreOwnerValidator storeOwnerValidator;
 
     @Transactional
     public MenuResult createMenu(CreateMenuCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            validateOwner(store, command.getRequesterId());
-        }
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.MENU_ACCESS_DENIED);
         validateDisplayOrder(store, command.getDisplayOrder());
         Menu menu = Menu.create(store, command.getName(), command.getPrice(),
                 command.getDescription(), command.getThumbnailUrl(), command.getDisplayOrder());
@@ -41,9 +39,7 @@ public class MenuService {
     @Transactional
     public MenuResult updateMenu(UpdateMenuCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            validateOwner(store, command.getRequesterId());
-        }
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.MENU_ACCESS_DENIED);
         Menu menu = findActiveMenuOrThrow(command.getMenuId(), store);
         // PATCH 부분 수정 - 빈 문자열로 이름 덮어쓰기 방지
         if (command.getName() != null && command.getName().isBlank()) {
@@ -61,9 +57,7 @@ public class MenuService {
     @Transactional
     public MenuResult deleteMenu(UUID storeId, UUID menuId, UUID requesterId, String role) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            validateOwner(store, requesterId);
-        }
+        storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.MENU_ACCESS_DENIED);
         // deletedAt IS NULL 조회 -> 이미 삭제된 메뉴는 MENU_NOT_FOUND(404)로 처리
         Menu menu = findActiveMenuOrThrow(menuId, store);
         menu.delete(requesterId);
@@ -80,9 +74,7 @@ public class MenuService {
     @Transactional
     public MenuResult toggleSoldOut(UUID storeId, UUID menuId, UUID requesterId, String role) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            validateOwner(store, requesterId);
-        }
+        storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.MENU_ACCESS_DENIED);
         Menu menu = findActiveMenuOrThrow(menuId, store);
         // 현재 상태 판단
         if (menu.isSoldOut()) {
@@ -96,12 +88,6 @@ public class MenuService {
     private Menu findActiveMenuOrThrow(UUID menuId, Store store) {
         return menuRepository.findMenu(menuId, store)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.MENU_NOT_FOUND));
-    }
-
-    private void validateOwner(Store store, UUID requesterId) {
-        if (!store.isOwnedBy(requesterId)) {
-            throw new BaseException(StoreErrorCode.MENU_ACCESS_DENIED);
-        }
     }
 
     private void validateDisplayOrder(Store store, int displayOrder) {

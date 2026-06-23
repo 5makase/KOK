@@ -1,4 +1,4 @@
-package com.kok.payment.domain.enums;
+package com.omakase.kok.payment.domain.enums;
 
 public enum PaymentStatus {
     PENDING,

@@ -1,7 +1,9 @@
-package com.kok.payment.domain.entity;
+package com.omakase.kok.payment.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
-import com.kok.payment.domain.enums.PaymentStatus;
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.payment.domain.enums.PaymentStatus;
+import com.omakase.kok.payment.domain.exception.PaymentErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -56,20 +58,17 @@ public class Payment extends BaseEntity {
 
     public void pay() {
         if (this.status != PaymentStatus.PENDING) {
-            throw new IllegalStateException("PENDING 상태에서만 결제 처리할 수 있습니다. 현재 상태: " + this.status);
+            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
         }
         this.status = PaymentStatus.PAID;
     }
 
     public void refund(Long refundAmount) {
         if (this.status != PaymentStatus.PAID) {
-            throw new IllegalStateException("PAID 상태에서만 환불 처리할 수 있습니다. 현재 상태: " + this.status);
+            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
         }
-        if (refundAmount == null || refundAmount <= 0) {
-            throw new IllegalArgumentException("환불 금액은 0보다 커야 합니다.");
-        }
-        if (refundAmount > this.amount) {
-            throw new IllegalArgumentException("환불 금액이 결제 금액을 초과할 수 없습니다.");
+        if (refundAmount == null || refundAmount <= 0 || refundAmount > this.amount) {
+            throw new BaseException(PaymentErrorCode.INVALID_REFUND_AMOUNT);
         }
         this.refundAmount = refundAmount;
         this.status = refundAmount.equals(this.amount)
@@ -79,14 +78,14 @@ public class Payment extends BaseEntity {
 
     public void expire() {
         if (this.status != PaymentStatus.PENDING) {
-            throw new IllegalStateException("PENDING 상태에서만 만료 처리할 수 있습니다. 현재 상태: " + this.status);
+            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
         }
         this.status = PaymentStatus.EXPIRED;
     }
 
     public void cancel() {
         if (this.status != PaymentStatus.PENDING) {
-            throw new IllegalStateException("PENDING 상태에서만 취소 처리할 수 있습니다. 현재 상태: " + this.status);
+            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
         }
         this.status = PaymentStatus.CANCELLED;
     }

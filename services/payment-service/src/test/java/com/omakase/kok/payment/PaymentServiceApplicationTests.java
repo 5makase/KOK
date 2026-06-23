@@ -1,4 +1,4 @@
-package com.kok.payment;
+package com.omakase.kok.payment;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

@@ -1,6 +1,6 @@
-package com.kok.payment.domain.repository;
+package com.omakase.kok.payment.domain.repository;
 
-import com.kok.payment.domain.entity.Payment;
+import com.omakase.kok.payment.domain.entity.Payment;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

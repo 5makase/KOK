@@ -1,11 +1,11 @@
-package com.kok.payment.application.service;
+package com.omakase.kok.payment.application.service;
 
 import com.omakase.kok.common.exception.BaseException;
-import com.kok.payment.application.dto.CreatePaymentRequest;
-import com.kok.payment.application.dto.PaymentResponse;
-import com.kok.payment.domain.entity.Payment;
-import com.kok.payment.domain.exception.PaymentErrorCode;
-import com.kok.payment.domain.repository.PaymentRepository;
+import com.omakase.kok.payment.application.dto.CreatePaymentRequest;
+import com.omakase.kok.payment.application.dto.PaymentResponse;
+import com.omakase.kok.payment.domain.entity.Payment;
+import com.omakase.kok.payment.domain.exception.PaymentErrorCode;
+import com.omakase.kok.payment.domain.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,11 +30,7 @@ public class PaymentService {
                 .paymentMethod(request.getPaymentMethod())
                 .build();
 
-        try {
-            payment.pay();
-        } catch (IllegalStateException e) {
-            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
-        }
+        payment.pay();
         paymentRepository.save(payment);
 
         return PaymentResponse.from(payment);
@@ -45,11 +41,7 @@ public class PaymentService {
         Payment payment = paymentRepository.findByPaymentIdAndDeletedAtIsNull(paymentId)
                 .orElseThrow(() -> new BaseException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
-        try {
-            payment.refund(refundAmount);
-        } catch (IllegalStateException e) {
-            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
-        }
+        payment.refund(refundAmount);
 
         return PaymentResponse.from(payment);
     }
@@ -59,11 +51,7 @@ public class PaymentService {
         Payment payment = paymentRepository.findByPaymentIdAndDeletedAtIsNull(paymentId)
                 .orElseThrow(() -> new BaseException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
-        try {
-            payment.expire();
-        } catch (IllegalStateException e) {
-            throw new BaseException(PaymentErrorCode.INVALID_PAYMENT_STATUS);
-        }
+        payment.expire();
     }
 
     public PaymentResponse getPayment(UUID reservationId) {

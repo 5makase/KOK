@@ -24,26 +24,28 @@ public class ReviewOutboxPublisher {
     private final KafkaTemplate<String, String> kafkaTemplate;
 
     /**
-     * 5초마다 PENDING 이벤트를 Kafka로 발행
+     * 5초에 한번씩 이 메서드를 실행.
      */
     @Scheduled(fixedDelay = 5000)
     @Transactional
     public void publishPendingEvents() {
-        List<ReviewOutboxEvent> pendingEvents =
-                outboxRepository.findTop100ByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING);
+        //Outbux상태가 PENDING인 Outbox 이벤트들을 조회
+        List<ReviewOutboxEvent> pendingEvents = outboxRepository.findTop100ByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING);
 
+        // 없으면 종료하고,
         if (pendingEvents.isEmpty()) {
             return;
         }
 
+        //있으면 전체 루프를 돌려
         for (ReviewOutboxEvent event : pendingEvents) {
             try {
-                //send()는 비동기 -> get()으로 브로커를 기다림
+                // 토픽주소, 파티션키, paylaod 값을 카프카에 올림. 5초 이내로 제대로 올라갔는지 확인도 함.
                 kafkaTemplate.send(TOPIC, event.getStoreId().toString(), event.getPayload()).get(5, TimeUnit.SECONDS);
                                                                                             /*get() :브로커가 메세지를 받았는지 확인하는 메서드.
                                                                                             - 5초 안으로 브로커가 메세지를 받았는지 확인이 된다면, markPublished를 실행
                                                                                             - 5초 안으로 못 받았으면 예외를 발생시킴.*/
-                //확인된 후에만 PUBLISHED
+                //제대로 올라갔는지 확인이 되면, OutBox의 상태를 PUBLISHED로 변경 .
                 event.markPublished();
                 log.info("리뷰 이벤트 발행 완료. type={}, reviewId={}",
                         event.getEventType(), event.getReviewId());

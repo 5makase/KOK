@@ -1,15 +1,15 @@
-package com.omakase.kok.user.presentation.user.controller;
+package com.omakase.kok.user.presentation.auth.controller;
 
 import com.omakase.kok.common.dto.ApiResponse;
-import com.omakase.kok.user.application.user.service.AuthService;
+import com.omakase.kok.user.application.auth.AuthService;
+import com.omakase.kok.user.presentation.auth.dto.request.TokenRefreshRequest;
+import com.omakase.kok.user.presentation.auth.dto.response.TokenResponse;
 import com.omakase.kok.user.presentation.user.dto.request.LoginRequest;
 import com.omakase.kok.user.presentation.user.dto.response.LoginResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import com.omakase.kok.common.dto.ApiResponse;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -23,5 +23,13 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(authService.login(request)));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<TokenResponse.Refresh>> refresh(
+            @Valid @RequestBody TokenRefreshRequest request
+    ) {
+        TokenResponse.Refresh response = authService.refresh(request);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

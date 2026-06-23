@@ -28,7 +28,6 @@ import com.omakase.kok.waiting.presentation.dto.response.StoreWaitingResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -56,7 +55,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -90,21 +88,6 @@ class WaitingServiceTest {
 
     @InjectMocks
     private WaitingService waitingService;
-
-    @BeforeEach
-    void setUp() throws Exception {
-        lenient().when(waitingEventFactory.createRegisteredEnvelope(any(UUID.class), any(Waiting.class), any(Long.class)))
-                .thenReturn(new Object());
-        lenient().when(waitingEventFactory.createCalledEnvelope(any(UUID.class), any(Waiting.class), any(Integer.class)))
-                .thenReturn(new Object());
-        lenient().when(waitingEventFactory.createEnteredEnvelope(any(UUID.class), any(Waiting.class)))
-                .thenReturn(new Object());
-        lenient().when(waitingEventFactory.createCancelledEnvelope(any(UUID.class), any(Waiting.class)))
-                .thenReturn(new Object());
-        lenient().when(waitingEventFactory.createNoShowEnvelope(any(UUID.class), any(Waiting.class)))
-                .thenReturn(new Object());
-        lenient().when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-    }
 
     @Test
     @DisplayName("웨이팅을 등록하면 Redis 순번 기준으로 웨이팅을 저장하고 응답한다")
@@ -445,6 +428,8 @@ class WaitingServiceTest {
         given(waitingQueueRedisStore.findFirst(storeId)).willReturn(Optional.of(waitingId));
         given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
         given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
 
         WaitingCallResponse response = waitingService.callNextWaiting(userId, "OWNER", storeId);
 

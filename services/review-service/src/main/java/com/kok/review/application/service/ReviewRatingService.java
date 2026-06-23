@@ -22,8 +22,26 @@ public class ReviewRatingService {
     private final ReviewOutboxEventRepository reviewOutboxEventRepository;
     private final ObjectMapper objectMapper;
 
+    public void applyUpdated(UUID reviewId, UUID storeId, BigDecimal oldRating, BigDecimal newRating) {
+        // 집계 조회 (수정이면 이미 존재해야 정상)
+        ReviewRatingSummary summary = reviewRatingSummaryRepository.findById(storeId)
+                .orElseThrow(() -> new IllegalStateException("집계 정보가 없습니다. storeId=" + storeId));
+
+        // 기존 별점 빼고 새 별점 더함
+        summary.replaceRating(toScaledInt(oldRating), toScaledInt(newRating));
+        reviewRatingSummaryRepository.save(summary);
+
+        // 갱신된 최신 평균/개수를 payload에 담음
+        ReviewEventPayload payload = ReviewEventPayload.created(   // rating 포함 형태 재사용
+                reviewId, storeId, newRating,
+                summary.getAverageRating(), summary.getReviewCount());
+
+        saveOutbox(reviewId,"REVIEW_UPDATED", payload);
+    }
+
     /**
      * 리뷰 생성 -> A 가게의 평점에 증가. -> Kafka 이벤트 만듦.
+     *
      * @param reviewId
      * @param storeId
      * @param rating
@@ -45,6 +63,7 @@ public class ReviewRatingService {
 
     /**
      * 리뷰 삭제 시, 그 리뷰는 총 평점에서 제외 -> 카프카 이벤트 발행
+     *
      * @param reviewId
      * @param storeId
      * @param rating
@@ -66,22 +85,28 @@ public class ReviewRatingService {
         //kafka 이벤트 생성
         saveOutbox(reviewId, "REVIEW_DELETED", payload);
     }
+
     //A가게의 총 평점을 가져온다. - 많이 없을 경우 새롭게 0.00의 평점을 만들어 가져온다.
     private ReviewRatingSummary getOrCreateSummary(UUID storeId) {
         return reviewRatingSummaryRepository.findById(storeId)
                 .orElseGet(() -> ReviewRatingSummary.init(storeId));
     }
 
-    // 카프카 이벤트 생성.
+    /**
+     * OutBox 테이블에 저장.
+     * @param reviewId
+     * @param eventType REVIEW_CREATED, REVIEW_UPDATED, REVIEW_DELETED
+     * @param payload
+     */
     private void saveOutbox(UUID reviewId, String eventType, ReviewEventPayload payload) {
-        //eventType(REVIEW_CREATED, REVIEW_DELETED)과 payload로 카프카로 보낼 데이터 만듦.
+        /*eventType과 payload로 ReviewEventEnvelope를 생성.*/
         ReviewEventEnvelope envelope = ReviewEventEnvelope.of(eventType, payload);
-        //보낼 데이터를 JSON 형태로 변환
+        /*만든 ReviewEventEnvelope을 json으로 변환.*/
         String json = serialize(envelope);
-        //OutBox에 저장.
-        reviewOutboxEventRepository.save(
-                ReviewOutboxEvent.create(reviewId, eventType, json));
+        /*Outbox 테이블에 저장.*/
+        reviewOutboxEventRepository.save(ReviewOutboxEvent.create(reviewId, eventType, json, payload.storeId()));
     }
+
     //JSON으로 변환해주는..
     private String serialize(ReviewEventEnvelope envelope) {
         try {

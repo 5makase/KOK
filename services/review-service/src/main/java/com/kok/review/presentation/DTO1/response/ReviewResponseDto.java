@@ -1,4 +1,4 @@
-package com.kok.review.presentation.dto;
+package com.kok.review.presentation.DTO1.response;
 
 import com.kok.review.domain.entity.Review;
 import lombok.AllArgsConstructor;

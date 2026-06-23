@@ -93,6 +93,7 @@ public class ReviewRatingSummary {
         return BigDecimal.valueOf(ratingSum)
                 .divide(BigDecimal.valueOf(10L * reviewCount), 2, RoundingMode.HALF_UP);
     }
+
     // 개별 별점을 1~5점으로 반올림해서, 그 점수 개수를 1 올리거나(추가) 내림(삭제)
     private void adjustBucket(int scaledRating, int delta) {
         int bucket = Math.round(scaledRating / 10.0f);
@@ -103,6 +104,15 @@ public class ReviewRatingSummary {
             case 4 -> count4 = Math.max(0, count4 + delta);
             case 5 -> count5 = Math.max(0, count5 + delta);
             default -> { /* 범위 밖이면 무시 */ }
+        }
+    }
+    //기존 별점을 빼고, 새 별점을 추가.
+    public void replaceRating(int oldScaled, int newScaled) {
+        this.ratingSum = this.ratingSum - oldScaled + newScaled;
+        adjustBucket(oldScaled,-1);
+        adjustBucket(newScaled, 1);
+        if(this.ratingSum < 0 ){
+            this.ratingSum = 0;
         }
     }
 

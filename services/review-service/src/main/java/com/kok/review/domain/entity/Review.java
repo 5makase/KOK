@@ -1,6 +1,7 @@
 package com.kok.review.domain.entity;
 
-import com.kok.review.presentation.dto.ReviewRequestDto;
+import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
+import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
 import com.omakase.kok.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -69,5 +70,10 @@ public class Review extends BaseEntity {
                 .rating(dto.getRating())
                 .content(dto.getContent())
                 .build();
+    }
+    public Review update(ReviewUpdateRequestDto dto) {
+        this.rating = dto.getRating();
+        this.content = dto.getContent();
+        return this;
     }
 }

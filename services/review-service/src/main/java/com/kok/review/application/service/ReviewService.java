@@ -6,8 +6,11 @@ import com.kok.review.domain.entity.ReviewImage;
 import com.kok.review.domain.repository.ReviewImageRepository;
 import com.kok.review.domain.repository.ReviewRepository;
 import com.kok.review.infrastructure.persistence.ReviewEligibilityRepository;
-import com.kok.review.presentation.dto.ReviewRequestDto;
-import com.kok.review.presentation.dto.ReviewResponseDto;
+import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
+import com.kok.review.presentation.DTO1.response.ReviewDeletedResponseDto;
+import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
+import com.kok.review.presentation.DTO1.response.ReviewResponseDto;
+import com.kok.review.presentation.DTO1.response.ReviewUpdateResponseDto;
 import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,6 +19,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +32,62 @@ public class ReviewService {
     private final ReviewEligibilityRepository reviewEligibilityRepository;
     private final ReviewImageRepository reviewImageRepository;
     private final ReviewRatingService reviewRatingService;
+    /**
+     * 리뷰 수정
+     * @param reviewId
+     * @param userId
+     * @param dto
+     * @return
+     */
+    @Retryable(
+            retryFor = {OptimisticLockException.class, DataIntegrityViolationException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50)
+    )
+    @Transactional
+    public ReviewUpdateResponseDto updateReview(UUID reviewId, UUID userId,
+                                                ReviewUpdateRequestDto dto, String userRole) {
+        // 리뷰 존재 확인
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new IllegalArgumentException("리뷰 없음."));
+
+        // 권한 확인
+        if (!userRole.equals("USER")) {
+            throw new IllegalArgumentException("사용자 권한 아님.");
+        }
+        // 작성자 본인 확인
+        if (!review.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("본인 아님.");
+        }
+        // 평점 재집계용: 덮어쓰기 전에 기존 별점 확보
+        BigDecimal oldRating = review.getRating();
+
+        // 리뷰 본문/별점 수정
+        review.update(dto);
+
+        //이미지가 있을 때만 아래 로직 수행
+        if(dto.getImageUrls() != null) {
+            // 이미지 전체 교체: 기존 전부 soft delete → 새로 저장
+            List<ReviewImage> oldImages = reviewImageRepository.findByReviewReviewId(reviewId);
+            oldImages.forEach(image -> image.delete(userId));
+
+            List<String> newUrls = dto.getImageUrls();
+            List<ReviewImage> newImages = new ArrayList<>();
+            for (int i = 0; i < newUrls.size(); i++) {
+                newImages.add(ReviewImage.of(review, newUrls.get(i), i));
+            }
+            reviewImageRepository.saveAll(newImages);
+        }
+
+
+        // 평점 재집계 + REVIEW_UPDATED 이벤트 (별점이 실제로 바뀐 경우에만)
+        if (dto.getRating().compareTo(oldRating) != 0) {
+            reviewRatingService.applyUpdated(
+                    review.getReviewId(), review.getStoreId(), oldRating, dto.getRating());
+        }
+
+        return ReviewUpdateResponseDto.from(review);
+    }
 
     /**
      * 리뷰 생성
@@ -35,7 +95,8 @@ public class ReviewService {
      * 전 과정이 하나의 트랜잭션. 낙관적 락/중복 키 충돌 시 트랜잭션 전체를 최대 3회 재시도.
      */
     @Retryable(
-            retryFor = { OptimisticLockException.class, DataIntegrityViolationException.class },
+            retryFor = { OptimisticLockException.class,/*같은 매장에 동시 리뷰가 들어와 집계를 동시 수정할 때 발생.(낙관적락)*/
+                    DataIntegrityViolationException.class/*집계 행이 없는 매장에 첫 리뷰가 동시에 들어와 같은 PK로 Insert가 겹칠 때 발생.*/ },
             maxAttempts = 3,
             backoff = @Backoff(delay = 50))
     @Transactional
@@ -93,10 +154,9 @@ public class ReviewService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 50))
     @Transactional
-    public void deleteReview(UUID reviewId, UUID userId) {
+    public ReviewDeletedResponseDto deleteReview(UUID reviewId, UUID userId) {
         // 리뷰 조회 (@SQLRestriction 으로 이미 삭제된 리뷰는 조회되지 않음 → 재삭제 자동 방지)
-        Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않은 리뷰"));
+        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("존재하지 않은 리뷰"));
 
         // 작성자 본인 확인
         if (!review.getUserId().equals(userId)) {
@@ -111,7 +171,8 @@ public class ReviewService {
         review.delete(userId);
 
         // 집계 제외 + REVIEW_DELETED Outbox 이벤트 저장 (같은 트랜잭션)
-        reviewRatingService.applyDeleted(
-                review.getReviewId(), review.getStoreId(), review.getRating());
+        reviewRatingService.applyDeleted(review.getReviewId(), review.getStoreId(), review.getRating());
+
+        return ReviewDeletedResponseDto.from(review);
     }
 }

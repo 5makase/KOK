@@ -39,7 +39,10 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
             CachedPage cached = objectMapper.readValue(json, CachedPage.class);
             return Optional.of(cached.toPage(pageable));
         } catch (JsonProcessingException e) {
-            log.warn("매장 목록 캐시 역직렬화 실패 — 캐시 미스로 처리. key={}", cacheKey, e);
+            log.warn("매장 목록 캐시 역직렬화 실패 - 캐시 미스로 처리. key={}", cacheKey, e);
+            return Optional.empty();
+        } catch (Exception e) {
+            log.warn("매장 목록 캐시 조회 실패 - DB 조회로 fallback. key={}", cacheKey, e);
             return Optional.empty();
         }
     }
@@ -50,7 +53,9 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
             String json = objectMapper.writeValueAsString(CachedPage.from(page));
             redisTemplate.opsForValue().set(cacheKey, json, TTL);
         } catch (JsonProcessingException e) {
-            log.warn("매장 목록 캐시 직렬화 실패 — 캐싱 생략. key={}", cacheKey, e);
+            log.warn("매장 목록 캐시 직렬화 실패 - 캐싱 생략. key={}", cacheKey, e);
+        } catch (Exception e) {
+            log.warn("매장 목록 캐시 저장 실패 - 캐싱 생략. key={}", cacheKey, e);
         }
     }
 

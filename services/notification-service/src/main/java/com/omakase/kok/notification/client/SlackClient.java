@@ -18,6 +18,7 @@ public class SlackClient {
 
     private static final String CONVERSATIONS_OPEN_URL = "https://slack.com/api/conversations.open";
     private static final String CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
+    private static final String USERS_LOOKUP_BY_EMAIL_URL = "https://slack.com/api/users.lookupByEmail";
 
     private final RestTemplate restTemplate;
     private final String botToken;
@@ -25,6 +26,28 @@ public class SlackClient {
     public SlackClient(RestTemplate restTemplate, @Value("${slack.bot-token}") String botToken) {
         this.restTemplate = restTemplate;
         this.botToken = botToken;
+    }
+
+    /**
+     * 이메일로 Slack Member ID를 조회한다.
+     * users.lookupByEmail API 사용 (users:read.email 스코프 필요).
+     */
+    @SuppressWarnings("unchecked")
+    public String lookupByEmail(String email) {
+        HttpEntity<Void> request = new HttpEntity<>(createAuthHeaders());
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                USERS_LOOKUP_BY_EMAIL_URL + "?email=" + email,
+                HttpMethod.GET, request, Map.class
+        );
+
+        Map<String, Object> body = response.getBody();
+        if (body == null || !Boolean.TRUE.equals(body.get("ok"))) {
+            throw new RuntimeException("users.lookupByEmail 실패: error=" + (body != null ? body.get("error") : "null"));
+        }
+
+        Map<String, Object> user = (Map<String, Object>) body.get("user");
+        return (String) user.get("id");
     }
 
     /**

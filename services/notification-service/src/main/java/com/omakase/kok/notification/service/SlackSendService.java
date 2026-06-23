@@ -55,12 +55,21 @@ public class SlackSendService {
         }
 
         if (user == null || user.getSlackId() == null || user.getSlackId().isBlank()) {
-            log.info("[SlackSendService] Slack ID 미등록. userId={}", userId);
+            log.info("[SlackSendService] Slack 이메일 미등록. userId={}", userId);
             slackSendLog.markAsSkipped();
             slackSendLogRepository.save(slackSendLog);
             return null;
         }
 
-        return user.getSlackId();
+        try {
+            return slackClient.lookupByEmail(user.getSlackId());
+        } catch (Exception e) {
+            // users_not_found: Slack 워크스페이스에 해당 이메일의 계정이 없는 경우
+            log.info("[SlackSendService] Slack 이메일 조회 실패. userId={}, slackEmail={}, error={}",
+                    userId, user.getSlackId(), e.getMessage());
+            slackSendLog.markAsSkipped();
+            slackSendLogRepository.save(slackSendLog);
+            return null;
+        }
     }
 }

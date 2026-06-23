@@ -8,9 +8,8 @@ import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
 import com.omakase.kok.store.application.result.StoreResult;
-import com.omakase.kok.store.domain.enums.AmenityType;
-import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
+import com.omakase.kok.store.presentation.dto.request.StoreSearchRequest;
 import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.presentation.dto.request.ChangeStoreStatusRequest;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreRequest;
@@ -23,17 +22,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -124,29 +121,20 @@ public class StoreController {
     public ResponseEntity<ApiResponse<PageResponse<StoreResponse>>> searchStores(
             @RequestHeader(value = AuthConstants.USER_ID, required = false) UUID userId,
             @RequestHeader(value = AuthConstants.ROLE, required = false) String role,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) String sido,
-            @RequestParam(required = false) String sigungu,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) List<AmenityType> amenities,
-            @RequestParam(required = false) StoreStatus status,
-            @RequestParam(required = false) StoreSearchCondition.SortType sort,
-            @RequestParam(required = false) BigDecimal latitude,
-            @RequestParam(required = false) BigDecimal longitude,
-            @RequestParam(required = false) Double radiusKm,
+            @Valid @ModelAttribute StoreSearchRequest request,
             @PageableDefault(size = 20) Pageable pageable
     ) {
         StoreSearchCondition condition = StoreSearchCondition.builder()
-                .categoryId(categoryId)
-                .sido(sido)
-                .sigungu(sigungu)
-                .keyword(keyword)
-                .amenities(amenities)
-                .status(status)
-                .sort(sort)
-                .latitude(latitude)
-                .longitude(longitude)
-                .radiusKm(radiusKm)
+                .categoryId(request.getCategoryId())
+                .sido(request.getSido())
+                .sigungu(request.getSigungu())
+                .keyword(request.getKeyword())
+                .amenities(request.getAmenities())
+                .status(request.getStatus())
+                .sort(request.getSort())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .radiusKm(request.getRadiusKm())
                 .build();
 
         Page<StoreResult> page = storeService.searchStores(condition, userId, role, pageable);

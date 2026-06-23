@@ -13,12 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * 알림 저장 트랜잭션 담당.
- *
- * NotificationEventService에서 직접 @Transactional 메서드를 호출하면
- * Spring AOP self-invocation으로 트랜잭션이 적용되지 않으므로 별도 빈으로 분리한다.
- */
 @Service
 @RequiredArgsConstructor
 public class NotificationSaveService {

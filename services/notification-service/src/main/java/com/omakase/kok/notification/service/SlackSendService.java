@@ -21,10 +21,6 @@ public class SlackSendService {
     private final UserServiceClient userServiceClient;
     private final SlackClient slackClient;
 
-    /**
-     * Slack DM 발송 공통 로직.
-     * 최초 발송(NotificationEventService)과 재시도(RetryScheduler) 모두에서 사용한다.
-     */
     public void send(UUID userId, String message, SlackSendLog slackSendLog) {
         String slackId = resolveSlackId(userId, slackSendLog);
         if (slackId == null) {

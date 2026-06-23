@@ -21,10 +21,6 @@ public class RedisIdempotencyService {
     @Value("${notification.idempotency.ttl-days:7}")
     private long ttlDays;
 
-    /**
-     * eventId 기반 중복 체크 (팀 표준 준수).
-     * 동일 Kafka 메시지 재전송 시 조기 탈출.
-     */
     public boolean tryAcquireByEventId(UUID eventId) {
         String key = EVENT_KEY_PREFIX + eventId;
         return Boolean.TRUE.equals(
@@ -32,11 +28,6 @@ public class RedisIdempotencyService {
         );
     }
 
-    /**
-     * 비즈니스 레벨 중복 체크.
-     * producer가 다른 eventId로 같은 이벤트를 중복 발행하는 경우까지 방어.
-     * setIfAbsent (SET NX) 로 원자적으로 체크와 선점을 동시에 수행한다.
-     */
     public boolean tryAcquire(UUID referenceId, NotificationType notificationType, UUID userId) {
         String key = BUSINESS_KEY_PREFIX + referenceId + ":" + notificationType + ":" + userId;
         return Boolean.TRUE.equals(

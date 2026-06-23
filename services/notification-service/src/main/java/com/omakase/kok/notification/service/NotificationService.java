@@ -67,9 +67,6 @@ public class NotificationService {
         notification.delete(userId);
     }
 
-    /**
-     * userId 불일치도 404로 처리 — 타인의 알림 존재 여부를 노출하지 않는다.
-     */
     private Notification findOwnedNotification(UUID userId, UUID notificationId) {
         Notification notification = notificationRepository
                 .findByNotificationIdAndDeletedAtIsNull(notificationId)

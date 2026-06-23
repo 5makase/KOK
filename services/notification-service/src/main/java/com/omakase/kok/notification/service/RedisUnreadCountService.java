@@ -28,7 +28,6 @@ public class RedisUnreadCountService {
     public void decrement(UUID userId) {
         String key = buildKey(userId);
         Long result = redisTemplate.opsForValue().decrement(key);
-        // 동시성 이슈 등으로 음수가 되면 키를 제거하고 다음 조회 시 DB에서 재구성
         if (result != null && result < 0) {
             redisTemplate.delete(key);
             log.warn("[RedisUnreadCountService] 미읽음 카운트 음수 감지, 캐시 제거. userId={}", userId);
@@ -39,9 +38,6 @@ public class RedisUnreadCountService {
         redisTemplate.opsForValue().set(buildKey(userId), String.valueOf(count), TTL);
     }
 
-    /**
-     * 캐시 미스 시 empty 반환 → 호출자가 DB 조회 후 set() 호출
-     */
     public OptionalLong get(UUID userId) {
         String value = redisTemplate.opsForValue().get(buildKey(userId));
         if (value == null) {

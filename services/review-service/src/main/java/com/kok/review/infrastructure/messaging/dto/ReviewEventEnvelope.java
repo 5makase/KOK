@@ -1,5 +1,6 @@
 package com.kok.review.infrastructure.messaging.dto;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -8,7 +9,7 @@ public record ReviewEventEnvelope(
         UUID eventId,
         String eventType,
         int schemaVersion,
-        LocalDateTime occurredAt,
+        Instant occurredAt,
         String producer,
         ReviewEventPayload payload
 ) {
@@ -17,8 +18,8 @@ public record ReviewEventEnvelope(
         return new ReviewEventEnvelope(
                 UUID.randomUUID(),
                 eventType,
-                1,                       // schemaVersion
-                LocalDateTime.now(),
+                1,
+                Instant.now(),       // LocalDateTime.now() → Instant.now()
                 "review-service",
                 payload
         );

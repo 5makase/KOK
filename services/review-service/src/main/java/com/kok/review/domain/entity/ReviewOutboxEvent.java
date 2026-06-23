@@ -22,6 +22,9 @@ public class ReviewOutboxEvent {
     @Column(name = "review_id", nullable = false)
     private UUID reviewId;
 
+    @Column(name = "store_id",nullable = false)
+    private UUID storeId;
+
     @Column(name = "event_type", nullable = false, length = 50)
     private String eventType;          // REVIEW_CREATED / REVIEW_DELETED
 

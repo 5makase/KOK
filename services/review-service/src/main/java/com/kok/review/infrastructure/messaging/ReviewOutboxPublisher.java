@@ -35,10 +35,11 @@ public class ReviewOutboxPublisher {
 
         for (ReviewOutboxEvent event : pendingEvents) {
             try {
-                // Partition Key = storeId → 동일 매장 이벤트 순서 보장 (스펙 1번)
-                // payload(JSON) 안의 storeId를 키로 쓰려면 파싱이 필요하나,
-                // 간단히 reviewId 기준 또는 payload에서 추출. 여기선 envelope를 그대로 발행.
-                kafkaTemplate.send(TOPIC, extractStoreId(event), event.getPayload());
+                //send()는 비동기 -> get()으로 브로커를 기다림
+                kafkaTemplate.send(TOPIC, event.getStoreId().toString(), event.getPayload()).get();/*get() :브로커가 메세지를 받았는지 확인하는 메서드.
+                                                                                                - 받으면 markPublished 실행
+                                                                                                - 못받았으면 예외 발생.*/
+                //확인된 후에만 PUBLISHED
                 event.markPublished();
                 log.info("리뷰 이벤트 발행 완료. type={}, reviewId={}",
                         event.getEventType(), event.getReviewId());
@@ -50,9 +51,4 @@ public class ReviewOutboxPublisher {
         }
     }
 
-    /** payload JSON에서 storeId를 추출해 파티션 키로 사용 */
-    private String extractStoreId(ReviewOutboxEvent event) {
-        // payload 안 storeId를 키로 쓰기 위한 추출. 구현 방식은 아래 설명 참고.
-        return event.getReviewId().toString(); // 임시: 아래 주의사항 참고
-    }
 }

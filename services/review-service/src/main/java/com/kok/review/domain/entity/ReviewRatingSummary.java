@@ -95,14 +95,14 @@ public class ReviewRatingSummary {
     }
     // 개별 별점을 1~5점으로 반올림해서, 그 점수 개수를 1 올리거나(추가) 내림(삭제)
     private void adjustBucket(int scaledRating, int delta) {
-        int bucket = Math.round(scaledRating / 10.0f);  // 45 → 4.5 → 5, 25 → 2.5 → 3
+        int bucket = Math.round(scaledRating / 10.0f);
         switch (bucket) {
-            case 1 -> count1 += delta;
-            case 2 -> count2 += delta;
-            case 3 -> count3 += delta;
-            case 4 -> count4 += delta;
-            case 5 -> count5 += delta;
-            default -> { /* 범위 밖이면 무시 (방어) */ }
+            case 1 -> count1 = Math.max(0, count1 + delta);
+            case 2 -> count2 = Math.max(0, count2 + delta);
+            case 3 -> count3 = Math.max(0, count3 + delta);
+            case 4 -> count4 = Math.max(0, count4 + delta);
+            case 5 -> count5 = Math.max(0, count5 + delta);
+            default -> { /* 범위 밖이면 무시 */ }
         }
     }
 

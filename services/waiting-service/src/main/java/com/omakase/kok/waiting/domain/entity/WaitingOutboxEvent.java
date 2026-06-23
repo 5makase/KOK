@@ -95,8 +95,12 @@ public class WaitingOutboxEvent {
         if (this.status != OutboxStatus.PENDING) {
             throw new WaitingException(WaitingErrorCode.WAITING_OUTBOX_STATUS_NOT_ALLOWED);
         }
-        this.status = OutboxStatus.FAILED;
         this.retryCount += 1;
+        if (this.retryCount >= 2) {
+            this.status = OutboxStatus.DEAD_LETTER;
+        } else {
+            this.status = OutboxStatus.FAILED;
+        }
         this.failedReason = failedReason;
     }
 

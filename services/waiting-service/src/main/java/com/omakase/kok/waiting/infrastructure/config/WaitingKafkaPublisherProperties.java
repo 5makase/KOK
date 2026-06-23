@@ -11,6 +11,9 @@ public record WaitingKafkaPublisherProperties(
         long fixedDelayMs,
 
         @Min(1)
+        long failedFixedDelayMs,
+
+        @Min(1)
         long sendTimeoutMs,
 
         @Min(1)

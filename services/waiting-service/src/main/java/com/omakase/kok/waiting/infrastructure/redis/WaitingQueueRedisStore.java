@@ -71,24 +71,24 @@ public class WaitingQueueRedisStore {
             return removed
             """, Long.class);
 
-    // 오늘 날짜
-    private String today() {
-        return LocalDate.now().format(DATE_FORMATTER);
+    private String formatDate(LocalDate date) {
+        return date.format(DATE_FORMATTER);
     }
 
     // 대기열 키
-    private String queueKey(UUID storeId) {
-        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_QUEUE_KEY_MIDDLE + today();
+    private String queueKey(UUID storeId, LocalDate date) {
+        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_QUEUE_KEY_MIDDLE + formatDate(date);
     }
 
     // 웨이팅 번호 키
-    private String sequenceKey(UUID storeId) {
-        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_SEQUENCE_KEY_MIDDLE + today();
+    private String sequenceKey(UUID storeId, LocalDate date) {
+        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_SEQUENCE_KEY_MIDDLE + formatDate(date);
     }
 
     // 사용자별 진행 중 웨이팅 키
-    private String activeUserKey(UUID storeId, UUID userId) {
-        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE + userId + WAITING_ACTIVE_USER_KEY_SUFFIX;
+    private String activeUserKey(UUID storeId, UUID userId, LocalDate date) {
+        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE
+                + userId + ":" + formatDate(date) + WAITING_ACTIVE_USER_KEY_SUFFIX;
     }
 
     // 매장 캐시 키
@@ -97,8 +97,14 @@ public class WaitingQueueRedisStore {
     }
 
     // 웨이팅 등록
-    public Optional<WaitingRegistration> register(UUID storeId, UUID userId, UUID waitingId, Integer maxWaitingCount) {
-        List<Long> result = executeRegisterScript(storeId, userId, waitingId, maxWaitingCount);
+    public Optional<WaitingRegistration> register(
+            UUID storeId,
+            UUID userId,
+            UUID waitingId,
+            Integer maxWaitingCount,
+            LocalDate waitingDate
+    ) {
+        List<Long> result = executeRegisterScript(storeId, userId, waitingId, maxWaitingCount, waitingDate);
         if (result.size() < 2) {
             throw new WaitingException(WaitingErrorCode.WAITING_REGISTER_FAILED);
         }
@@ -117,8 +123,8 @@ public class WaitingQueueRedisStore {
     }
 
     // 현재 순번 조회
-    public Long getRank(UUID storeId, UUID waitingId) {
-        Long rank = redisTemplate.opsForZSet().rank(queueKey(storeId), waitingId.toString());
+    public Long getRank(UUID storeId, UUID waitingId, LocalDate waitingDate) {
+        Long rank = redisTemplate.opsForZSet().rank(queueKey(storeId, waitingDate), waitingId.toString());
         if (rank == null) {
             return null;
         }
@@ -126,17 +132,17 @@ public class WaitingQueueRedisStore {
     }
 
     // 대기열/사용자 중복 방지 키 제거
-    public void remove(UUID storeId, UUID userId, UUID waitingId) {
+    public void remove(UUID storeId, UUID userId, UUID waitingId, LocalDate waitingDate) {
         redisTemplate.execute(
                 REMOVE_WAITING_SCRIPT,
-                List.of(queueKey(storeId), activeUserKey(storeId, userId)),
+                List.of(queueKey(storeId, waitingDate), activeUserKey(storeId, userId, waitingDate)),
                 waitingId.toString()
         );
     }
 
     // 다음 호출 대상 조회
     public Optional<UUID> findFirst(UUID storeId) {
-        Set<String> waitingIds = redisTemplate.opsForZSet().range(queueKey(storeId), 0, 0);
+        Set<String> waitingIds = redisTemplate.opsForZSet().range(queueKey(storeId, LocalDate.now()), 0, 0);
         if (waitingIds == null || waitingIds.isEmpty()) {
             return Optional.empty();
         }
@@ -151,7 +157,7 @@ public class WaitingQueueRedisStore {
         if (threshold <= 0 || threshold > 50) {
             return List.of();
         }
-        Set<String> waitingIds = redisTemplate.opsForZSet().range(queueKey(storeId), 0, threshold - 1L);
+        Set<String> waitingIds = redisTemplate.opsForZSet().range(queueKey(storeId, LocalDate.now()), 0, threshold - 1L);
         if (waitingIds == null || waitingIds.isEmpty()) {
             return List.of();
         }
@@ -162,7 +168,7 @@ public class WaitingQueueRedisStore {
 
     // 현재 대기 팀 수 조회
     public Long count(UUID storeId) {
-        Long count = redisTemplate.opsForZSet().zCard(queueKey(storeId));
+        Long count = redisTemplate.opsForZSet().zCard(queueKey(storeId, LocalDate.now()));
         if (count == null) {
             return 0L;
         }
@@ -230,10 +236,20 @@ public class WaitingQueueRedisStore {
 
     // 웨이팅 등록 스크립트 실행
     @SuppressWarnings("unchecked")
-    private List<Long> executeRegisterScript(UUID storeId, UUID userId, UUID waitingId, Integer maxWaitingCount) {
+    private List<Long> executeRegisterScript(
+            UUID storeId,
+            UUID userId,
+            UUID waitingId,
+            Integer maxWaitingCount,
+            LocalDate waitingDate
+    ) {
         return (List<Long>) redisTemplate.execute(
                 REGISTER_WAITING_SCRIPT,
-                List.of(queueKey(storeId), sequenceKey(storeId), activeUserKey(storeId, userId)),
+                List.of(
+                        queueKey(storeId, waitingDate),
+                        sequenceKey(storeId, waitingDate),
+                        activeUserKey(storeId, userId, waitingDate)
+                ),
                 waitingId.toString(),
                 maxWaitingCount.toString(),
                 String.valueOf(WAITING_KEY_TTL.toSeconds())

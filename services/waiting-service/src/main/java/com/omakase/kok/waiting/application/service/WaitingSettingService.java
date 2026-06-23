@@ -1,17 +1,26 @@
 package com.omakase.kok.waiting.application.service;
 
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.waiting.domain.entity.WaitingSetting;
 import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
+import com.omakase.kok.waiting.infrastructure.client.StoreSummaryReader;
+import com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse;
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
 import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingUpdateRequest;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +31,7 @@ import java.util.UUID;
 public class WaitingSettingService {
     private final WaitingSettingRepository waitingSettingRepository;
     private final WaitingQueueRedisStore waitingQueueRedisStore;
+    private final StoreSummaryReader storeSummaryReader;
 
     // 웨이팅 세팅 조회
     public WaitingSettingResponse getWaitingSetting(UUID storeId) {
@@ -46,8 +56,32 @@ public class WaitingSettingService {
                 request.getAllowUserCancel(),
                 request.getAverageWaitingMinutes()
         )));
-        cacheStoreWaitingValues(setting);
+        scheduleStoreWaitingValuesCacheAfterCommit(setting);
         return WaitingSettingInitializeResponse.of(setting, settingCreated);
+    }
+
+    // 웨이팅 세팅 수정
+    @Transactional
+    public WaitingSettingResponse updateWaitingSetting(
+            UUID userId,
+            String role,
+            UUID storeId,
+            WaitingSettingUpdateRequest request
+    ) {
+        validateStoreOwnerAccess(userId, role, storeId);
+        WaitingSetting setting = waitingSettingRepository.findByStoreId(storeId)
+                .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_SETTING_NOT_FOUND));
+
+        setting.update(
+                request.getWaitingEnabled(),
+                request.getMaxWaitingCount(),
+                request.getCallTimeoutMinutes(),
+                request.getAllowUserCancel(),
+                request.getAverageWaitingMinutes()
+        );
+        scheduleStoreWaitingValuesCacheAfterCommit(setting);
+
+        return WaitingSettingResponse.of(setting);
     }
 
     // 매장 웨이팅 기준값 조회 - cache-aside 패턴
@@ -78,6 +112,29 @@ public class WaitingSettingService {
                 setting.getAllowUserCancel(),
                 setting.getAverageWaitingMinutes()
         );
+    }
+
+    private void scheduleStoreWaitingValuesCacheAfterCommit(WaitingSetting setting) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            cacheStoreWaitingValues(setting);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                cacheStoreWaitingValues(setting);
+            }
+        });
+    }
+
+    private void validateStoreOwnerAccess(UUID userId, String role, UUID storeId) {
+        if (RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
+            return;
+        }
+        StoreSummaryResponse storeSummary = storeSummaryReader.getStoreSummary(storeId);
+        if (!userId.equals(storeSummary.getOwnerId())) {
+            throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+        }
     }
 
 }

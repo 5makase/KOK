@@ -1,6 +1,6 @@
-package com.kok.payment.application.dto;
+package com.omakase.kok.payment.application.dto;
 
-import com.kok.payment.domain.entity.Payment;
+import com.omakase.kok.payment.domain.entity.Payment;
 import lombok.Builder;
 import lombok.Getter;
 

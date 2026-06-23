@@ -1,4 +1,4 @@
-package com.kok.payment.application.dto;
+package com.omakase.kok.payment.application.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

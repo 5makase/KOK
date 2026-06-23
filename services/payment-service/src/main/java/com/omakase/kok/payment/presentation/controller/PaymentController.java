@@ -1,10 +1,10 @@
-package com.kok.payment.presentation.controller;
+package com.omakase.kok.payment.presentation.controller;
 
 import com.omakase.kok.common.dto.ApiResponse;
-import com.kok.payment.application.dto.CreatePaymentRequest;
-import com.kok.payment.application.dto.PaymentResponse;
-import com.kok.payment.application.dto.RefundRequest;
-import com.kok.payment.application.service.PaymentService;
+import com.omakase.kok.payment.application.dto.CreatePaymentRequest;
+import com.omakase.kok.payment.application.dto.PaymentResponse;
+import com.omakase.kok.payment.application.dto.RefundRequest;
+import com.omakase.kok.payment.application.service.PaymentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

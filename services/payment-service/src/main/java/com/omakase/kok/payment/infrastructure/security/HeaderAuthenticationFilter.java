@@ -1,4 +1,4 @@
-package com.kok.payment.infrastructure.security;
+package com.omakase.kok.payment.infrastructure.security;
 
 import com.omakase.kok.common.auth.AuthConstants;
 import jakarta.servlet.FilterChain;

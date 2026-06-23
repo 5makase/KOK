@@ -1,6 +1,6 @@
-package com.kok.payment.infrastructure.config;
+package com.omakase.kok.payment.infrastructure.config;
 
-import com.kok.payment.infrastructure.security.HeaderAuthenticationFilter;
+import com.omakase.kok.payment.infrastructure.security.HeaderAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;

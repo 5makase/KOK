@@ -68,6 +68,14 @@ services:
     networks:
       - kok-network
 
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: kok-zipkin
+    ports:
+      - "${ZIPKIN_PORT}:9411"
+    networks:
+      - kok-network
+
 networks:
   kok-network:
     driver: bridge

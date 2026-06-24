@@ -144,6 +144,61 @@ class StoreQueryRepositoryIntegrationTest {
         assertThat(result.getContent()).noneMatch(s -> s.getName().equals("삭제된가게"));
     }
 
+    // 카테고리 필터 (inCategories)
+
+    @Test
+    @DisplayName("categoryIds null → 카테고리 필터 없음, 전체 조회")
+    void search_null_categoryIds_returns_all() {
+        StoreCategory other = StoreCategory.create("중식", 2, null);
+        em.persist(other);
+
+        persist(openStore("일식가게", "서울", "강남구", GANGNAM_LAT, GANGNAM_LNG));
+        Store otherStore = Store.create(ownerId, other, "중식가게", null,
+                new Address("서울", "강남구", null, null, GANGNAM_LAT, GANGNAM_LNG), null, 50);
+        otherStore.changeStatus(StoreStatus.OPEN, ownerId);
+        persist(otherStore);
+
+        Page<Store> result = repository.search(
+                StoreSearchCondition.builder().build(),
+                PageRequest.of(0, 10));
+
+        assertThat(result.getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("categoryIds 빈 리스트 → Expressions.FALSE → 결과 없음")
+    void search_empty_categoryIds_returns_nothing() {
+        persist(openStore("일식가게", "서울", "강남구", GANGNAM_LAT, GANGNAM_LNG));
+
+        Page<Store> result = repository.search(
+                StoreSearchCondition.builder().categoryIds(List.of()).build(),
+                PageRequest.of(0, 10));
+
+        assertThat(result.getTotalElements()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("categoryIds 특정 ID → 해당 카테고리 매장만 조회")
+    void search_filters_by_categoryIds() {
+        StoreCategory other = StoreCategory.create("중식", 2, null);
+        em.persist(other);
+
+        persist(openStore("일식가게", "서울", "강남구", GANGNAM_LAT, GANGNAM_LNG));
+        Store otherStore = Store.create(ownerId, other, "중식가게", null,
+                new Address("서울", "강남구", null, null, GANGNAM_LAT, GANGNAM_LNG), null, 50);
+        otherStore.changeStatus(StoreStatus.OPEN, ownerId);
+        persist(otherStore);
+
+        Page<Store> result = repository.search(
+                StoreSearchCondition.builder()
+                        .categoryIds(List.of(category.getCategoryId()))
+                        .build(),
+                PageRequest.of(0, 10));
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getName()).isEqualTo("일식가게");
+    }
+
     // 편의시설 필터
 
     @Test

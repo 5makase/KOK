@@ -35,7 +35,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.lang.reflect.Field;
 import java.time.DayOfWeek;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -418,5 +420,107 @@ class StoreServiceTest {
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
+    }
+
+    // resolveCategoryIds (searchStores 경유 테스트)
+
+    @Test
+    @DisplayName("categoryId null이면 categoryIds 미주입 - 전체 조회")
+    void resolveCategoryIds_null_categoryId_skips_filter() {
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 10);
+        when(storeListCacheRepository.get(any(), any())).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        storeService.searchStores(condition, null, null, "USER", pageable);
+
+        verify(storeRepository).search(
+                argThat(c -> c.getCategoryIds() == null),
+                any()
+        );
+        verify(storeCategoryRepository, never()).findCategory(any());
+    }
+
+    @Test
+    @DisplayName("소분류 categoryId → categoryIds=[categoryId] 단일 목록 주입")
+    void resolveCategoryIds_subCategory_injects_single_id() {
+        UUID subId = UUID.randomUUID();
+        StoreCategory root = StoreCategory.create("한식", 1, null);
+        StoreCategory sub = StoreCategory.create("국밥", 1, root);
+
+        when(storeCategoryRepository.findCategory(subId)).thenReturn(Optional.of(sub));
+        when(storeListCacheRepository.get(any(), any())).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        storeService.searchStores(StoreSearchCondition.builder().build(), subId, null, "USER", PageRequest.of(0, 10));
+
+        // 소분류는 UUID를 알 수 없으므로 categoryIds가 단일 원소 리스트인지만 확인
+        verify(storeRepository).search(
+                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().size() == 1),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("대분류 categoryId → 활성 소분류 ID 목록으로 확장")
+    void resolveCategoryIds_parentCategory_expands_to_active_children() throws Exception {
+        UUID parentId = UUID.randomUUID();
+        StoreCategory root = StoreCategory.create("한식", 1, null);
+        StoreCategory child1 = StoreCategory.create("국밥", 1, root);
+        StoreCategory child2 = StoreCategory.create("찌개", 2, root);
+        setChildren(root, List.of(child1, child2));
+
+        when(storeCategoryRepository.findCategory(parentId)).thenReturn(Optional.of(root));
+        when(storeListCacheRepository.get(any(), any())).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        storeService.searchStores(StoreSearchCondition.builder().build(), parentId, null, "USER", PageRequest.of(0, 10));
+
+        verify(storeRepository).search(
+                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().size() == 2),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("대분류의 모든 소분류가 soft delete → categoryIds 빈 리스트 주입 → 결과 없음")
+    void resolveCategoryIds_allChildrenDeleted_injects_empty_list() throws Exception {
+        UUID parentId = UUID.randomUUID();
+        StoreCategory root = StoreCategory.create("한식", 1, null);
+        StoreCategory deletedChild = StoreCategory.create("폐지된국밥", 1, root);
+        deletedChild.delete(UUID.randomUUID()); // soft delete
+        setChildren(root, List.of(deletedChild));
+
+        when(storeCategoryRepository.findCategory(parentId)).thenReturn(Optional.of(root));
+        when(storeListCacheRepository.get(any(), any())).thenReturn(Optional.empty());
+        when(storeRepository.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+
+        storeService.searchStores(StoreSearchCondition.builder().build(), parentId, null, "USER", PageRequest.of(0, 10));
+
+        // 빈 리스트 → inCategories()에서 Expressions.FALSE → 결과 없음
+        verify(storeRepository).search(
+                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().isEmpty()),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 categoryId → CATEGORY_NOT_FOUND 예외")
+    void resolveCategoryIds_notFound_throws() {
+        UUID unknownId = UUID.randomUUID();
+        when(storeCategoryRepository.findCategory(unknownId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                storeService.searchStores(StoreSearchCondition.builder().build(), unknownId, null, "USER", PageRequest.of(0, 10)))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.CATEGORY_NOT_FOUND);
+    }
+
+    // StoreCategory.children은 JPA 관리 컬렉션(setter 없음) → reflection으로 주입
+    private void setChildren(StoreCategory parent, List<StoreCategory> children) throws Exception {
+        Field field = StoreCategory.class.getDeclaredField("children");
+        field.setAccessible(true);
+        field.set(parent, new ArrayList<>(children));
     }
 }

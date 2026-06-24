@@ -26,14 +26,43 @@ import java.util.UUID;
 public class ReviewController {
     private final ReviewService reviewService;
 
+    /**
+     * 내 리뷰 조회
+     * @param sort
+     * @param photoOnly
+     * @param page
+     * @param size
+     * @return
+     */
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<PageResponse<ReviewGetResponseDto>>> getMyReviews(@RequestHeader("X-User-Id") UUID userId,
+                                                                                      @RequestParam(defaultValue = "LATEST") ReviewSortType sort,
+                                                                                      @RequestParam(defaultValue = "false") boolean photoOnly,
+                                                                                      @RequestParam(defaultValue = "0") int page,
+                                                                                      @RequestParam(defaultValue = "10") int size){
+        int safeSize = Math.min(size, 50);   //size ~ 최대 50개 까지
+        Pageable pageable = PageRequest.of(page, safeSize);
+        Page<ReviewGetResponseDto> result = reviewService.getMyReviews(userId, sort, photoOnly, pageable);
+        return ResponseEntity.ok(
+                ApiResponse.success(PageResponse.from(result)));
+    }
+
+    /**
+     * 리뷰 목록 조회
+     * @param storeId
+     * @param sort
+     * @param photoOnly
+     * @param page
+     * @param size
+     * @return
+     */
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<ReviewGetResponseDto>>> getReviews(@RequestParam UUID storeId,
                                                                                       @RequestParam(defaultValue = "LATEST") ReviewSortType sort,
                                                                                       @RequestParam(defaultValue = "false") boolean photoOnly,
                                                                                       @RequestParam(defaultValue = "0") int page,
                                                                                       @RequestParam(defaultValue = "10") int size){
-
-        int safeSize = Math.min(size, 50);   // 스펙: 최대 50
+        int safeSize = Math.min(size, 50);   //size ~ 최대 50개 까지
         Pageable pageable = PageRequest.of(page, safeSize);
 
         Page<ReviewGetResponseDto> result = reviewService.getReviews(storeId, sort, photoOnly, pageable);

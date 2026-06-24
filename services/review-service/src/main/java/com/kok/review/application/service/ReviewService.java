@@ -47,18 +47,32 @@ public class ReviewService {
     private final StoreClient storeClient;
 
     @Transactional(readOnly = true)
+    public Page<ReviewGetResponseDto> getMyReviews(UUID userId, ReviewSortType sort,
+                                                   boolean photoOnly, Pageable pageable ){
+        //내가 작성 리뷰 목록 조회
+        Page<Review> reviews = reviewRepository.searchMyReviews(userId, sort, photoOnly, pageable);
+
+        //Review -> ReviewGetResponseDto로 전환
+        return reviews.map(review -> {
+            List<String> imageUrls = reviewImageRepository.findByReviewReviewId(review.getReviewId())
+                    .stream().map(ReviewImage::getImageUrl).collect(Collectors.toList());
+            return ReviewGetResponseDto.from2(review,imageUrls);
+        });
+    }
+
+    @Transactional(readOnly = true)
     public Page<ReviewGetResponseDto> getReviews(UUID storeId, ReviewSortType sort,
                                                  boolean photoOnly, Pageable pageable) {
-        // QueryDSL로 정렬·필터·페이징 조회
+        //A가게의 리뷰 목록 조회 - 페이징 적용
         Page<Review> reviews = reviewRepository.searchReviews(storeId, sort, photoOnly, pageable);
 
-        // 각 리뷰를 DTO로 변환 (외부 데이터 없이 from2 사용)
-        return reviews.map(review -> {
+        //각 리뷰를 ReviewGetResponseDto로 변환
+        return reviews.map(review -> { //Page.map()을 이용 -> ReviewGetResponseDto로 변환
             List<String> imageUrls = reviewImageRepository.findByReviewReviewId(review.getReviewId())
                     .stream()
                     .map(ReviewImage::getImageUrl)
-                    .toList();
-            return ReviewGetResponseDto.from2(review, imageUrls);
+                    .toList();//ReviewImage에서 imageUrls들을 뽑음
+            return ReviewGetResponseDto.from2(review, imageUrls); //review와 imageurls로 ReviewGetResponseDto를 생성
         });
     }
 

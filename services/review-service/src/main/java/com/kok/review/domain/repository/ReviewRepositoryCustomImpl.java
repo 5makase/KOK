@@ -22,6 +22,39 @@ public class ReviewRepositoryCustomImpl implements ReviewRepositoryCustom {
     private final JPAQueryFactory queryFactory;
 
     /**
+     * 나의 리뷰목록 조회
+     * @param userId
+     * @param sort
+     * @param photoOnly
+     * @param pageable
+     * @return
+     */
+    @Override
+    public Page<Review> searchMyReviews(UUID userId, ReviewSortType sort, boolean photoOnly, Pageable pageable) {
+        List<Review> content = queryFactory.
+                selectFrom(review)
+                .where(
+                        review.userId.eq(userId),
+                        photoOnlyCondition(photoOnly)
+                )
+                .orderBy(toOrderSpecifier(sort))
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
+                .fetch();
+        Long total = queryFactory
+                .select(review.count())
+                .from(review)
+                .where(
+                        review.userId.eq(userId),
+                        photoOnlyCondition(photoOnly)
+                )
+                .fetchOne();
+
+        return new PageImpl<>(content, pageable, total == null ? 0 : total);
+    }
+
+
+    /**
      * 필터 적용 + 페이징 처리된 리뷰 목록 조회
      * @param storeId   매장 ID
      * @param sort      정렬 조건
@@ -55,6 +88,8 @@ public class ReviewRepositoryCustomImpl implements ReviewRepositoryCustom {
         //페이징 규칙 적용해서, 반환.
         return new PageImpl<>(content, pageable, total == null ? 0 : total);
     }
+
+
 
     private BooleanExpression photoOnlyCondition(boolean photoOnly) {
         //false인 경우, null 반환 = 조건 무시됨.

@@ -9,4 +9,5 @@ import java.util.UUID;
 
 public interface ReviewRepositoryCustom {
     Page<Review> searchReviews(UUID storeId, ReviewSortType sort, boolean photoOnly, Pageable pageable);
+    Page<Review>searchMyReviews(UUID userId,  ReviewSortType sort, boolean photoOnly, Pageable pageable);
 }

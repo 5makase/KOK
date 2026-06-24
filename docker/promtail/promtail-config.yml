@@ -46,6 +46,6 @@ scrape_configs:
       - docker: {}
       # Spring 로그 레벨 추출
       - regex:
-          expression: '^.*\s(?P<level>TRACE|DEBUG|INFO|WARN|ERROR)\s+.*$'
+          expression: '^\S+\s+\S+\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR)\s+.*$'
       - labels:
           level:

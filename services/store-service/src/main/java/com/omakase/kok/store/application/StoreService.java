@@ -176,7 +176,10 @@ public class StoreService {
                 .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
         List<UUID> categoryIds = category.isSubCategory()
                 ? List.of(categoryId)
-                : category.getChildren().stream().map(StoreCategory::getCategoryId).toList();
+                : category.getChildren().stream()
+                        .filter(child -> !child.isDeleted())
+                        .map(StoreCategory::getCategoryId)
+                        .toList();
         return condition.toBuilder().categoryIds(categoryIds).build();
     }
 

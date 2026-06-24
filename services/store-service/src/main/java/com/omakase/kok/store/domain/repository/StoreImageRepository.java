@@ -12,8 +12,9 @@ public interface StoreImageRepository {
 
     List<StoreImage> saveAll(List<StoreImage> images);
 
-    // 매장 소속 활성 이미지 단건 조회 - storeId + imageId 복합 조건으로 교차 접근 차단
-    Optional<StoreImage> findImage(UUID storeId, UUID imageId);
+    // 이미지 식별자 기반 단건 조회 (soft delete 포함) - storeId + imageId 복합 조건으로 교차 접근 차단
+    // 수정/삭제 전 상태 확인 목적으로 사용하며, 삭제 여부 판단은 호출 측에서 처리
+    Optional<StoreImage> findImageById(UUID storeId, UUID imageId);
 
     // displayOrder로 조회 - soft delete 포함 (restore 패턴 및 슬롯 충돌 확인용)
     Optional<StoreImage> findImageByDisplayOrder(UUID storeId, int displayOrder);

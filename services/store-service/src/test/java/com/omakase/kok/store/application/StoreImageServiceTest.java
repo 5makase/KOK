@@ -145,7 +145,8 @@ class StoreImageServiceTest {
         StoreImage image = StoreImage.create(store, "url1", 1);
         setImageId(image, imageId);
 
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(image));
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(image));
 
         assertThatCode(() -> storeImageService.deleteImage(storeId, imageId, ownerId, AuthConstants.OWNER))
                 .doesNotThrowAnyException();
@@ -157,7 +158,8 @@ class StoreImageServiceTest {
     @DisplayName("존재하지 않는 이미지 삭제 시 404")
     void deleteImage_not_found_throws() {
         UUID imageId = UUID.randomUUID();
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.empty());
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
@@ -172,7 +174,8 @@ class StoreImageServiceTest {
         StoreImage deleted = StoreImage.create(store, "url1", 1);
         deleted.delete(ownerId);
 
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(deleted));
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(deleted));
 
         assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
@@ -188,7 +191,8 @@ class StoreImageServiceTest {
         StoreImage image = StoreImage.create(store, "url1", 1);
         setImageId(image, imageId);
 
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(image));
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(image));
 
         assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, otherId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
@@ -226,7 +230,8 @@ class StoreImageServiceTest {
         setImageId(target, imageId); // JPA 없이 실행되므로 @GeneratedValue 미작동 → 수동 주입
         setImageId(occupying, UUID.randomUUID());
 
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(target));
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(target));
         when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(occupying));
         when(storeImageRepository.evictImageSlot(any())).thenReturn(occupying);
 
@@ -254,7 +259,8 @@ class StoreImageServiceTest {
         alreadyDeleted.delete(ownerId); // 이미 삭제된 상태
         LocalDateTime deletedAtBefore = alreadyDeleted.getDeletedAt(); // delete() 재호출 여부 검증용
 
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(target));
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(target));
         when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(alreadyDeleted));
 
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
@@ -279,7 +285,8 @@ class StoreImageServiceTest {
         StoreImage deleted = StoreImage.create(store, "url1", 1);
         deleted.delete(ownerId);
 
-        when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(deleted));
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(deleted));
 
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
                 .storeId(storeId)

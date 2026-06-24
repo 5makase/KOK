@@ -6,6 +6,7 @@ import com.omakase.kok.user.domain.user.enums.ApprovalStatus;
 import com.omakase.kok.user.domain.user.repository.OwnerApprovalRepository;
 import com.omakase.kok.user.domain.user.repository.UserRepository;
 import com.omakase.kok.user.global.exception.UserErrorCode;
+import com.omakase.kok.user.presentation.user.dto.response.OwnerApprovalResponse;
 import com.omakase.kok.user.presentation.user.dto.response.UserDetailResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,4 +37,11 @@ public class UserQueryService {
         return UserDetailResponse.from(user);
     }
 
+    // OWNER 승인 대기 목록 조회 (MASTER 전용)
+    public List<OwnerApprovalResponse> getPendingApprovals() {
+        return ownerApprovalRepository.findByStatus(ApprovalStatus.PENDING)
+                .stream()
+                .map(OwnerApprovalResponse::from)
+                .toList();
+    }
 }

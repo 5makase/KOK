@@ -63,7 +63,7 @@ public class StoreQueryRepository {
                                             StoreSearchCondition condition) {
         return new BooleanExpression[]{
                 store.deletedAt.isNull(),
-                eqCategory(store, condition.getCategoryId()),
+                inCategories(store, condition.getCategoryIds()),
                 eqSido(store, condition.getSido()),
                 eqSigungu(store, condition.getSigungu()),
                 containsKeyword(store, condition.getKeyword()),
@@ -74,8 +74,9 @@ public class StoreQueryRepository {
         };
     }
 
-    private BooleanExpression eqCategory(QStore store, UUID categoryId) {
-        return categoryId != null ? store.category.categoryId.eq(categoryId) : null;
+    private BooleanExpression inCategories(QStore store, List<UUID> categoryIds) {
+        return (categoryIds != null && !categoryIds.isEmpty())
+                ? store.category.categoryId.in(categoryIds) : null;
     }
 
     private BooleanExpression eqSido(QStore store, String sido) {

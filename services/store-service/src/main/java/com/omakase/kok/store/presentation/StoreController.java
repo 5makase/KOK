@@ -144,7 +144,6 @@ public class StoreController {
             @PageableDefault(size = 20) Pageable pageable
     ) {
         StoreSearchCondition condition = StoreSearchCondition.builder()
-                .categoryId(request.getCategoryId())
                 .sido(request.getSido())
                 .sigungu(request.getSigungu())
                 .keyword(request.getKeyword())
@@ -156,7 +155,7 @@ public class StoreController {
                 .radiusKm(request.getRadiusKm())
                 .build();
 
-        Page<StoreResult> page = storeService.searchStores(condition, userId, role, pageable);
+        Page<StoreResult> page = storeService.searchStores(condition, request.getCategoryId(), userId, role, pageable);
         return ResponseEntity.ok(ApiResponse.success(PageResponse.from(page.map(StoreResponse::from))));
     }
 }

@@ -16,7 +16,8 @@ import java.util.UUID;
 @Builder(toBuilder = true)
 public class StoreSearchCondition {
 
-    private UUID categoryId;
+    // 대분류 ID가 주어지면 StoreService.resolveCategoryIds()가 소분류 ID 목록으로 확장해 주입한다
+    private List<UUID> categoryIds;
     private String sido;
     private String sigungu;
     private String keyword;

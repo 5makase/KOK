@@ -93,7 +93,7 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
                         .reduce((a, b) -> a + "_" + b)
                         .orElse("ALL");
         return LIST_KEY_PREFIX +
-                orAll(condition.getCategoryId()) + ":" +
+                orAll(condition.getCategoryIds()) + ":" +
                 orAll(condition.getSido()) + ":" +
                 orAll(condition.getSigungu()) + ":" +
                 orAll(condition.getKeyword()) + ":" +

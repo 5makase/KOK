@@ -258,7 +258,7 @@ class StoreServiceTest {
 
         when(storeRepository.search(any(), eq(pageable))).thenReturn(emptyPage);
 
-        storeService.searchStores(condition, ownerId, "OWNER", pageable);
+        storeService.searchStores(condition, null, ownerId, "OWNER", pageable);
 
         verify(storeListCacheRepository, never()).get(any(), any());
         verify(storeListCacheRepository, never()).set(any(), any(), any());
@@ -274,7 +274,7 @@ class StoreServiceTest {
 
         when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.of(cachedPage));
 
-        Page<StoreResult> result = storeService.searchStores(condition, null, "USER", pageable);
+        Page<StoreResult> result = storeService.searchStores(condition, null, null, "USER", pageable);
 
         assertThat(result).isEqualTo(cachedPage);
         verify(storeRepository, never()).search(any(), any());
@@ -291,7 +291,7 @@ class StoreServiceTest {
         when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.empty());
         when(storeRepository.search(any(), eq(pageable))).thenReturn(dbPage);
 
-        storeService.searchStores(condition, null, "USER", pageable);
+        storeService.searchStores(condition, null, null, "USER", pageable);
 
         verify(storeRepository).search(any(), eq(pageable));
         verify(storeListCacheRepository).set(any(), eq(pageable), any());
@@ -308,7 +308,7 @@ class StoreServiceTest {
         when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.empty());
         when(storeRepository.search(any(), eq(pageable))).thenReturn(emptyPage);
 
-        storeService.searchStores(condition, UUID.randomUUID(), AuthConstants.MASTER, pageable);
+        storeService.searchStores(condition, null, UUID.randomUUID(), AuthConstants.MASTER, pageable);
 
         // MASTER는 OPEN 강제 없이 PREPARING 그대로 전달
         verify(storeRepository).search(
@@ -327,7 +327,7 @@ class StoreServiceTest {
         when(storeListCacheRepository.get(any(), eq(pageable))).thenReturn(Optional.empty());
         when(storeRepository.search(any(), eq(pageable))).thenReturn(emptyPage);
 
-        storeService.searchStores(condition, null, "USER", pageable);
+        storeService.searchStores(condition, null, null, "USER", pageable);
 
         // resolveCondition이 status=OPEN으로 설정했는지 검증
         verify(storeRepository).search(
@@ -402,7 +402,7 @@ class StoreServiceTest {
         StoreSearchCondition condition = StoreSearchCondition.builder().build();
         PageRequest pageable = PageRequest.of(0, 10);
 
-        assertThatThrownBy(() -> storeService.searchStores(condition, null, AuthConstants.OWNER, pageable))
+        assertThatThrownBy(() -> storeService.searchStores(condition, null, null, AuthConstants.OWNER, pageable))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(CommonErrorCode.ACCESS_DENIED);

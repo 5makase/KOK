@@ -21,11 +21,12 @@ public class UpdateSlotRequest {
     private Boolean depositRequired;
     private Long depositAmount;
 
-    @AssertTrue(message = "예약금이 필요한 슬롯은 depositAmount가 0보다 커야 합니다.")
+    @AssertTrue(message = "예약금 설정이 올바르지 않습니다. depositRequired=true이면 depositAmount > 0, false이면 depositAmount는 null이어야 합니다.")
     public boolean isDepositAmountValid() {
-        if (depositRequired == null || !depositRequired) {
-            return true;
+        if (depositRequired == null) return true;
+        if (depositRequired) {
+            return depositAmount != null && depositAmount > 0;
         }
-        return depositAmount != null && depositAmount > 0;
+        return depositAmount == null;
     }
 }

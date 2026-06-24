@@ -104,6 +104,6 @@ public class ReservationSlot extends BaseEntity {
             this.depositRequired = depositRequired;
             if (!depositRequired) this.depositAmount = null;
         }
-        if (depositAmount != null) this.depositAmount = depositAmount;
+        if (depositAmount != null && this.depositRequired) this.depositAmount = depositAmount;
     }
 }

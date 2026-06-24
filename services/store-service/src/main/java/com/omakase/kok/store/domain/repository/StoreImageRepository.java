@@ -16,8 +16,8 @@ public interface StoreImageRepository {
     // 수정/삭제 전 상태 확인 목적으로 사용하며, 삭제 여부 판단은 호출 측에서 처리
     Optional<StoreImage> findImageById(UUID storeId, UUID imageId);
 
-    // displayOrder로 조회 - soft delete 포함 (restore 패턴 및 슬롯 충돌 확인용)
-    Optional<StoreImage> findImageByDisplayOrder(UUID storeId, int displayOrder);
+    // 활성 슬롯만 조회 - 슬롯 충돌 확인용 (soft delete 행 여러 개 공존 시 NonUniqueResultException 방지)
+    Optional<StoreImage> findActiveImageByDisplayOrder(UUID storeId, int displayOrder);
 
     // 요청 슬롯 목록 한 번에 조회 - soft delete 포함 (bulk upsert용)
     List<StoreImage> findAllByDisplayOrders(UUID storeId, List<Integer> displayOrders);

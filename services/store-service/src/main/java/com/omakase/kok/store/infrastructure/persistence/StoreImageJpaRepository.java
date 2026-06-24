@@ -12,8 +12,8 @@ public interface StoreImageJpaRepository extends JpaRepository<StoreImage, UUID>
     // storeId + imageId 복합 조건 - 다중 매장 점주의 교차 접근 차단 (soft delete 포함)
     Optional<StoreImage> findByStoreStoreIdAndImageId(UUID storeId, UUID imageId);
 
-    // displayOrder로 조회 - soft delete 포함 (restore 패턴 및 슬롯 충돌 확인용)
-    Optional<StoreImage> findByStoreStoreIdAndDisplayOrder(UUID storeId, int displayOrder);
+    // 활성 슬롯만 조회 - 슬롯 충돌 확인용 (같은 displayOrder에 soft delete 행이 여러 개일 수 있어 활성 행만 조회)
+    Optional<StoreImage> findByStoreStoreIdAndDisplayOrderAndDeletedAtIsNull(UUID storeId, int displayOrder);
 
     // 요청 슬롯 목록 한 번에 조회 - soft delete 포함 (bulk upsert용)
     List<StoreImage> findAllByStoreStoreIdAndDisplayOrderIn(UUID storeId, List<Integer> displayOrders);

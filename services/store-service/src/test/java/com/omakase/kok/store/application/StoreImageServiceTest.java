@@ -24,7 +24,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -231,7 +230,7 @@ class StoreImageServiceTest {
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(target));
-        when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(occupying));
+        when(storeImageRepository.findActiveImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(occupying));
         doNothing().when(storeImageRepository).releaseImageSlot(any());
 
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
@@ -248,19 +247,16 @@ class StoreImageServiceTest {
     }
 
     @Test
-    @DisplayName("목표 슬롯에 이미 삭제된 이미지가 있으면 delete() 재호출 안 함")
-    void updateImage_skips_already_deleted_slot_image() throws Exception {
+    @DisplayName("목표 슬롯에 soft delete된 이미지만 있으면 eviction 없이 이동 성공")
+    void updateImage_moves_to_slot_with_only_deleted_image() throws Exception {
         UUID imageId = UUID.randomUUID();
         StoreImage target = StoreImage.create(store, "url1", 1);
-        StoreImage alreadyDeleted = StoreImage.create(store, "url2", 2);
         setImageId(target, imageId);
-        setImageId(alreadyDeleted, UUID.randomUUID());
-        alreadyDeleted.delete(ownerId); // 이미 삭제된 상태
-        LocalDateTime deletedAtBefore = alreadyDeleted.getDeletedAt(); // delete() 재호출 여부 검증용
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(target));
-        when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(alreadyDeleted));
+        // active-only 조회이므로 soft delete된 행만 있는 슬롯은 empty 반환 → eviction 없이 이동
+        when(storeImageRepository.findActiveImageByDisplayOrder(storeId, 2)).thenReturn(Optional.empty());
 
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
                 .storeId(storeId)
@@ -270,11 +266,10 @@ class StoreImageServiceTest {
                 .displayOrder(2)
                 .build();
 
-        storeImageService.updateImage(command, AuthConstants.OWNER);
+        StoreImageResult result = storeImageService.updateImage(command, AuthConstants.OWNER);
 
-        assertThat(alreadyDeleted.isDeleted()).isTrue();
-        assertThat(alreadyDeleted.getDeletedBy()).isEqualTo(ownerId);
-        assertThat(alreadyDeleted.getDeletedAt()).isEqualTo(deletedAtBefore); // deletedAt 불변 = delete() 재호출 없음
+        assertThat(result.getDisplayOrder()).isEqualTo(2);
+        assertThat(result.getImageUrl()).isEqualTo("url1-updated");
     }
 
     @Test

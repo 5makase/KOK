@@ -31,8 +31,8 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
     }
 
     @Override
-    public Optional<StoreImage> findImageByDisplayOrder(UUID storeId, int displayOrder) {
-        return storeImageJpaRepository.findByStoreStoreIdAndDisplayOrder(storeId, displayOrder);
+    public Optional<StoreImage> findActiveImageByDisplayOrder(UUID storeId, int displayOrder) {
+        return storeImageJpaRepository.findByStoreStoreIdAndDisplayOrderAndDeletedAtIsNull(storeId, displayOrder);
     }
 
     @Override

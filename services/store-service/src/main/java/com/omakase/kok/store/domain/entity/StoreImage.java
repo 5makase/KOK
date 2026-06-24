@@ -52,8 +52,11 @@ public class StoreImage extends BaseEntity {
         this.displayOrder = displayOrder;
     }
 
-    // soft delete된 이미지 재활성화 - display_order를 유지한 채 deleted_at만 제거
-    // partial index(deleted_at IS NULL)가 활성 슬롯 유일성을 보장하므로 insert 없이 재사용 가능
+    /**
+     * soft delete된 이미지 재활성화 - display_order를 유지한 채 deleted_at만 제거
+     * DB의 partial index(deleted_at IS NULL)가 활성 슬롯 유일성을 보장
+     * 주의: 인덱스가 생성되지 않은 환경에서는 슬롯 중복 방지가 적용되지 않음
+     */
     public void restore() {
         clearDeleted();
     }

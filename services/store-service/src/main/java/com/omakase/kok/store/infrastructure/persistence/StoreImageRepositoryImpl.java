@@ -42,6 +42,7 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
 
     @Override
     public StoreImage evictImageSlot(StoreImage image) {
+        // saveAndFlush로 즉시 반영 - 같은 트랜잭션 내 후속 슬롯 점유 전에 partial index에서 제외
         return storeImageJpaRepository.saveAndFlush(image);
     }
 

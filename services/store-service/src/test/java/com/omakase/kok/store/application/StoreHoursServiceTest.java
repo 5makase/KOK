@@ -159,6 +159,26 @@ class StoreHoursServiceTest {
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
     }
 
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 영업시간 등록 가능")
+    void createBulk_master_skips_owner_check() {
+        UUID masterId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHoursByDay(any(), any())).thenReturn(Optional.empty());
+        StoreHours saved = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        when(storeHoursRepository.save(any())).thenReturn(saved);
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(masterId)
+                .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
+                .build();
+
+        List<StoreHoursResult> results = storeHoursService.createBulkHours(command, AuthConstants.MASTER);
+
+        assertThat(results).hasSize(1);
+    }
+
     // updateHours
 
     @Test
@@ -251,6 +271,28 @@ class StoreHoursServiceTest {
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
     }
 
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 영업시간 수정 가능")
+    void updateHours_master_skips_owner_check() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
+        setHoursId(hours, hoursId);
+
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId).hoursId(hoursId).requesterId(masterId)
+                .isDayOff(false)
+                .openTime(LocalTime.of(9, 0))
+                .closeTime(LocalTime.of(21, 0))
+                .build();
+
+        StoreHoursResult result = storeHoursService.updateHours(command, AuthConstants.MASTER);
+
+        assertThat(result).isNotNull();
+    }
+
     // deleteHours
 
     @Test
@@ -318,6 +360,22 @@ class StoreHoursServiceTest {
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 영업시간 삭제 가능")
+    void deleteHours_master_skips_owner_check() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        storeHoursService.deleteHours(storeId, hoursId, masterId, AuthConstants.MASTER);
+
+        assertThat(hours.isDeleted()).isTrue();
     }
 
     @Test

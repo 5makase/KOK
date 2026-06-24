@@ -29,7 +29,6 @@ public class WaitingEventFactory {
                 waiting.getStoreId(),
                 waiting.getStoreName(),
                 waiting.getUserId(),
-                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),
                 currentRank
@@ -48,7 +47,6 @@ public class WaitingEventFactory {
                 waiting.getStoreId(),
                 waiting.getStoreName(),
                 waiting.getUserId(),
-                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 callTimeoutMinutes
         );
@@ -62,7 +60,6 @@ public class WaitingEventFactory {
                 waiting.getStoreId(),
                 waiting.getStoreName(),
                 waiting.getUserId(),
-                waiting.getVisitorName(),
                 waiting.getWaitingNumber()
         );
         return createEnvelope(eventId, WaitingEventType.WAITING_ENTERED, waiting.getEnteredAt(), payload);
@@ -75,7 +72,6 @@ public class WaitingEventFactory {
                 waiting.getStoreId(),
                 waiting.getStoreName(),
                 waiting.getUserId(),
-                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 waiting.getCancelReason()
         );
@@ -89,7 +85,6 @@ public class WaitingEventFactory {
                 waiting.getStoreId(),
                 waiting.getStoreName(),
                 waiting.getUserId(),
-                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 waiting.getNoShowReason()
         );

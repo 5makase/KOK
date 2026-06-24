@@ -97,8 +97,6 @@ public class WaitingService {
                 .storeId(storeId)
                 .storeName(storeSummary.getStoreName())
                 .userId(userId)
-                // TODO: User Service 내부 API 연동 후 방문자명 스냅샷 저장
-                .visitorName("UNKNOWN")
                 .waitingNumber(registration.waitingNumber())
                 .peopleCount(request.getPeopleCount())
                 .requestMessage(request.getRequestMessage())

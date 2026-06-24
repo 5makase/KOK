@@ -10,6 +10,7 @@ import com.kok.review.infrastructure.client.UserClient;
 import com.kok.review.infrastructure.client.dto.StoreResponse;
 import com.kok.review.infrastructure.client.dto.UserResponse;
 import com.kok.review.infrastructure.persistence.ReviewEligibilityRepository;
+import com.kok.review.presentation.DTO1.request.ReviewSortType;
 import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
 import com.kok.review.presentation.DTO1.response.ReviewDeletedResponseDto;
 import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
@@ -20,6 +21,8 @@ import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
@@ -42,6 +45,22 @@ public class ReviewService {
     private final ReviewRatingService reviewRatingService;
     private final UserClient userClient;
     private final StoreClient storeClient;
+
+    @Transactional(readOnly = true)
+    public Page<ReviewGetResponseDto> getReviews(UUID storeId, ReviewSortType sort,
+                                                 boolean photoOnly, Pageable pageable) {
+        // QueryDSL로 정렬·필터·페이징 조회
+        Page<Review> reviews = reviewRepository.searchReviews(storeId, sort, photoOnly, pageable);
+
+        // 각 리뷰를 DTO로 변환 (외부 데이터 없이 from2 사용)
+        return reviews.map(review -> {
+            List<String> imageUrls = reviewImageRepository.findByReviewReviewId(review.getReviewId())
+                    .stream()
+                    .map(ReviewImage::getImageUrl)
+                    .toList();
+            return ReviewGetResponseDto.from2(review, imageUrls);
+        });
+    }
 
     @Transactional(readOnly = true)
     public ReviewGetResponseDto getReview(UUID reviewId){

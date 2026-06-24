@@ -46,4 +46,19 @@ public class ReviewGetResponseDto {
                 .storeName(storeName)
                 .build();
     }
+
+    //목록 조회용 - 임시
+    public static ReviewGetResponseDto from2(Review review, List<String>imageUrls){
+        return ReviewGetResponseDto.builder()
+                .reviewId(review.getReviewId())
+                .storeId(review.getStoreId())
+                .userId(review.getUserId())
+                .likeCount(review.getLikeCount())
+                .content(review.getContent())
+                .imageUrls(imageUrls)
+                .rating(review.getRating())
+                .createdAt(review.getCreatedAt())
+                .updatedAt(review.getUpdatedAt())
+                .build();
+    }
 }

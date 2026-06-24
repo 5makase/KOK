@@ -68,6 +68,41 @@ services:
     networks:
       - kok-network
 
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: kok-zipkin
+    ports:
+      - "${ZIPKIN_PORT:-9411}:9411"
+    networks:
+      - kok-network
+
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: kok-loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./docker/loki/loki-config.yml:/etc/loki/local-config.yaml
+    networks:
+      - kok-network
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: kok-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+      - kok-grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+    networks:
+      - kok-network
+
 networks:
   kok-network:
     driver: bridge
@@ -75,3 +110,4 @@ networks:
 volumes:
   kok-postgres-data:
   kok-kafka-data:
+  kok-grafana-data:

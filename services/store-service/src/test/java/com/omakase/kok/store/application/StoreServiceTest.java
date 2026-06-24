@@ -454,9 +454,8 @@ class StoreServiceTest {
 
         storeService.searchStores(StoreSearchCondition.builder().build(), subId, null, "USER", PageRequest.of(0, 10));
 
-        // 소분류는 UUID를 알 수 없으므로 categoryIds가 단일 원소 리스트인지만 확인
         verify(storeRepository).search(
-                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().size() == 1),
+                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().equals(List.of(subId))),
                 any()
         );
     }

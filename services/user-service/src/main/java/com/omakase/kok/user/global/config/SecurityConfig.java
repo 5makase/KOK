@@ -61,7 +61,9 @@ public class SecurityConfig {
                                 "/api/v1/users/signup",
                                 "/api/v1/owners/signup",
                                 "/api/v1/auth/login",
-                                "/api/v1/auth/refresh"
+                                "/api/v1/auth/refresh",
+                                "/api/v1/users/me",
+                                "/actuator/health"
                         ).permitAll()
                         .anyRequest().permitAll() // TODO: 개발 완료 후 authenticated()로 변경
                 )

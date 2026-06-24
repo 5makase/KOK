@@ -9,6 +9,6 @@ import java.util.UUID;
 
 @FeignClient(name = "store-service")
 public interface StoreClient {
-    @GetMapping("/api/v1/stores/{storeId}")
+    @GetMapping("/api/v1/internal/stores/{storeId}")
     StoreResponse getStore(@PathVariable("storeId") UUID storeId);
 }

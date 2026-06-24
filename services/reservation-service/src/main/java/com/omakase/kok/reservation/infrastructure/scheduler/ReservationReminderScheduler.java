@@ -8,6 +8,7 @@ import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
 import com.omakase.kok.reservation.domain.enums.EventType;
 import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import lombok.RequiredArgsConstructor;
@@ -72,8 +73,9 @@ public class ReservationReminderScheduler {
         log.info("1일 전 리마인더 대상: {}건", targets.size());
 
         for (Reservation reservation : targets) {
-            sendIfNotSent(reservation, EventType.RESERVATION_REMINDER_1DAY,
-                    REMINDER_1DAY_PREFIX + reservation.getReservationId(), 25);
+            // scheduledAt을 키에 포함해 예약 시간 변경 후 이전 키가 새 리마인더를 억제하지 않도록 방지
+            String key = REMINDER_1DAY_PREFIX + reservation.getReservationId() + ":" + reservation.getScheduledAt();
+            sendIfNotSent(reservation, EventType.RESERVATION_REMINDER_1DAY, key, 25);
         }
     }
 
@@ -84,8 +86,8 @@ public class ReservationReminderScheduler {
         log.info("1시간 전 리마인더 대상: {}건", targets.size());
 
         for (Reservation reservation : targets) {
-            sendIfNotSent(reservation, EventType.RESERVATION_REMINDER_1HOUR,
-                    REMINDER_1HOUR_PREFIX + reservation.getReservationId(), 2);
+            String key = REMINDER_1HOUR_PREFIX + reservation.getReservationId() + ":" + reservation.getScheduledAt();
+            sendIfNotSent(reservation, EventType.RESERVATION_REMINDER_1HOUR, key, 2);
         }
     }
 
@@ -98,10 +100,22 @@ public class ReservationReminderScheduler {
         }
 
         try {
-            new TransactionTemplate(transactionManager).execute(status -> {
-                outboxEventRepository.save(buildOutboxEvent(reservation, eventType));
-                return null;
+            // TX 내에서 fresh row 재조회 후 CONFIRMED 상태 재검증
+            // → 조회와 저장 사이에 예약이 취소/변경된 경우 잘못된 리마인더 발행 방지
+            Boolean saved = new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation fresh = reservationRepository
+                        .findByReservationIdAndDeletedAtIsNull(reservation.getReservationId())
+                        .orElse(null);
+                if (fresh == null || fresh.getStatus() != ReservationStatus.CONFIRMED) {
+                    return false;
+                }
+                outboxEventRepository.save(buildOutboxEvent(fresh, eventType));
+                return true;
             });
+
+            if (!Boolean.TRUE.equals(saved)) {
+                bucket.delete();
+            }
         } catch (Exception e) {
             log.error("리마인더 Outbox 저장 실패 - reservationId: {}, type: {}",
                     reservation.getReservationId(), eventType, e);

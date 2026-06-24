@@ -10,6 +10,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -116,6 +117,9 @@ public class Reservation extends BaseEntity {
 
     public void change(int reservationSize) {
         if (this.status != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+        }
+        if (this.scheduledAt != null && !this.scheduledAt.toLocalDate().isAfter(LocalDate.now())) {
             throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
         }
         this.reservationSize = reservationSize;

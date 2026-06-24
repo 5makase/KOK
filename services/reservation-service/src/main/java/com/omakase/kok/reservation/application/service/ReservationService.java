@@ -402,34 +402,59 @@ public class ReservationService {
         }
 
         int newSize = request.getReservationSize();
-        int sizeDiff = newSize - reservation.getReservationSize();
 
-        if (sizeDiff == 0) {
-            return ReservationResponse.from(reservation);
-        }
-
-        RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId());
-        long remaining = capacityKey.addAndGet(-sizeDiff);
-        if (remaining < 0) {
-            capacityKey.addAndGet(sizeDiff);
-            throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
-        }
-
+        // 슬롯 락을 통해 동시 요청 간 Redis 잔여 인원 불일치 방지
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         try {
-            return new TransactionTemplate(transactionManager).execute(status -> {
-                Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
-                        .orElseThrow();
-                r.change(newSize);
-                outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
-                return ReservationResponse.from(r);
-            });
-        } catch (Exception e) {
-            try {
-                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId()).addAndGet(sizeDiff);
-            } catch (Exception redisEx) {
-                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), redisEx);
+            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
-            throw e;
+
+            // 락 내에서 fresh row 재조회 → 동시 변경 시 sizeDiff가 stale해지는 문제 방지
+            Reservation fresh = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                    .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+            // CONFIRMED 상태 및 당일 변경 금지 검증을 sizeDiff 계산보다 먼저 수행
+            if (fresh.getStatus() != ReservationStatus.CONFIRMED) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+            }
+
+            int sizeDiff = newSize - fresh.getReservationSize();
+
+            if (sizeDiff == 0) {
+                return ReservationResponse.from(fresh);
+            }
+
+            RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + fresh.getSlotId());
+            long remaining = capacityKey.addAndGet(-sizeDiff);
+            if (remaining < 0) {
+                capacityKey.addAndGet(sizeDiff);
+                throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+            }
+
+            try {
+                return new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                            .orElseThrow();
+                    r.change(newSize);
+                    outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
+                    return ReservationResponse.from(r);
+                });
+            } catch (Exception e) {
+                try {
+                    redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + fresh.getSlotId()).addAndGet(sizeDiff);
+                } catch (Exception redisEx) {
+                    log.error("Redis 잔여 인원 복구 실패 - slotId: {}", fresh.getSlotId(), redisEx);
+                }
+                throw e;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
     }
 

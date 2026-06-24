@@ -702,7 +702,6 @@ class WaitingServiceTest {
                 .storeId(storeId)
                 .storeName("테스트 매장")
                 .userId(userId)
-                .visitorName("테스터")
                 .waitingNumber(waitingNumber)
                 .peopleCount(2)
                 .requestMessage(requestMessage)

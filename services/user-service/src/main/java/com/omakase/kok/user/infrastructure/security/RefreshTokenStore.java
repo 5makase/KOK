@@ -13,4 +13,6 @@ public interface RefreshTokenStore {
     Optional<String> findByUserId(String userId);
 
     void deleteByUserId(String userId);
+
+    String digest(String token);
 }

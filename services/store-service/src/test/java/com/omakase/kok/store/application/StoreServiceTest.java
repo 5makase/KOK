@@ -2,6 +2,7 @@ package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
@@ -393,6 +394,18 @@ class StoreServiceTest {
         StoreSummaryResult result = storeService.getStoreSummary(storeId);
 
         assertThat(result).isNotNull();
+    }
+
+    @Test
+    @DisplayName("OWNER인데 X-User-Id 누락(null)이면 403 - 전체 매장 조회 차단")
+    void searchStores_owner_with_null_userId_throws() {
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 10);
+
+        assertThatThrownBy(() -> storeService.searchStores(condition, null, AuthConstants.OWNER, pageable))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(CommonErrorCode.ACCESS_DENIED);
     }
 
     @Test

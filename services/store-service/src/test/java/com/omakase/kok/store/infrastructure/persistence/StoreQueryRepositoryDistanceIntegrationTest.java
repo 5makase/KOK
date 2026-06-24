@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.username=postgres",
         "spring.datasource.password=postgres",
         "spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
+        "spring.jpa.hibernate.ddl-auto=create"
 })
 @Transactional
 class StoreQueryRepositoryDistanceIntegrationTest {

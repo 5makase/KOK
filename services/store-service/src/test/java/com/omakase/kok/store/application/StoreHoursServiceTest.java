@@ -188,6 +188,7 @@ class StoreHoursServiceTest {
         StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
@@ -211,6 +212,7 @@ class StoreHoursServiceTest {
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
@@ -233,6 +235,7 @@ class StoreHoursServiceTest {
         StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
@@ -257,6 +260,7 @@ class StoreHoursServiceTest {
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
@@ -279,6 +283,7 @@ class StoreHoursServiceTest {
         StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
@@ -303,6 +308,7 @@ class StoreHoursServiceTest {
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER);
@@ -320,6 +326,7 @@ class StoreHoursServiceTest {
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
@@ -337,6 +344,7 @@ class StoreHoursServiceTest {
         setHoursId(hours, hoursId);
         hours.delete(ownerId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
@@ -354,6 +362,7 @@ class StoreHoursServiceTest {
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, otherId, AuthConstants.OWNER))
@@ -371,6 +380,7 @@ class StoreHoursServiceTest {
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
 
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
         storeHoursService.deleteHours(storeId, hoursId, masterId, AuthConstants.MASTER);
@@ -382,6 +392,7 @@ class StoreHoursServiceTest {
     @DisplayName("존재하지 않는 영업시간 삭제 시 404")
     void deleteHours_not_found_throws() {
         UUID hoursId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))

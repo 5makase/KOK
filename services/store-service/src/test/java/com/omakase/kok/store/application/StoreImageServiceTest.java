@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -233,7 +234,7 @@ class StoreImageServiceTest {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(target));
         when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(occupying));
-        when(storeImageRepository.evictImageSlot(any())).thenReturn(occupying);
+        doNothing().when(storeImageRepository).releaseImageSlot(any());
 
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
                 .storeId(storeId)

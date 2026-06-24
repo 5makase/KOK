@@ -37,6 +37,10 @@ dependencies {
 	// Messaging
 	implementation 'org.springframework.kafka:spring-kafka'
 
+	// Monitoring
+	implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+	implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+
 	// Compile-time tools
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

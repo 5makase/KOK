@@ -27,14 +27,14 @@ public class PaymentController {
                 .body(ApiResponse.created(paymentService.createPayment(request)));
     }
 
-    @PostMapping("/{paymentId}/refund")
+    @PatchMapping("/{paymentId}/refund")
     public ResponseEntity<ApiResponse<PaymentResponse>> refund(
             @PathVariable("paymentId") UUID paymentId,
             @RequestBody @Valid RefundRequest request) {
         return ResponseEntity.ok(ApiResponse.success(paymentService.refund(paymentId, request.getRefundAmount())));
     }
 
-    @PostMapping("/{paymentId}/expire")
+    @PatchMapping("/{paymentId}/expire")
     public ResponseEntity<ApiResponse<Void>> expire(
             @PathVariable("paymentId") UUID paymentId) {
         paymentService.expire(paymentId);

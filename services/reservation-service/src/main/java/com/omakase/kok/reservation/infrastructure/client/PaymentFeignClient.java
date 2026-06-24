@@ -15,11 +15,11 @@ public interface PaymentFeignClient {
     @PostMapping
     ApiResponse<PaymentResponse> createPayment(@RequestBody CreatePaymentRequest request);
 
-    @PostMapping("/{paymentId}/refund")
+    @PatchMapping("/{paymentId}/refund")
     ApiResponse<PaymentResponse> refund(@PathVariable("paymentId") UUID paymentId,
                                         @RequestBody RefundRequest request);
 
-    @PostMapping("/{paymentId}/expire")
+    @PatchMapping("/{paymentId}/expire")
     ApiResponse<Void> expire(@PathVariable("paymentId") UUID paymentId);
 
     @GetMapping("/{reservationId}")

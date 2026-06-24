@@ -1,6 +1,8 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
@@ -35,6 +37,7 @@ class StoreAmenityServiceTest {
 
     @Mock StoreAmenityRepository storeAmenityRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     StoreAmenityService storeAmenityService;
@@ -68,7 +71,7 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of(AmenityType.WIFI))
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         // 응답에는 WIFI만 포함, PARKING은 제외
         assertThat(result.getAmenities()).hasSize(1);
@@ -94,7 +97,7 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of(AmenityType.PARKING))
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         assertThat(deleted.isDeleted()).isFalse(); // restore 확인
         assertThat(result.getAmenities()).hasSize(1);
@@ -114,7 +117,7 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of(AmenityType.WIFI, AmenityType.PARKING))
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         assertThat(result.getAmenities())
                 .extracting(StoreAmenityResult::getAmenityType)
@@ -138,7 +141,7 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of())
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         assertThat(wifi.isDeleted()).isTrue();
         assertThat(parking.isDeleted()).isTrue();

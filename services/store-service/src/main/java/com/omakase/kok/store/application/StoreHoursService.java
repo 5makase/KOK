@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
 import com.omakase.kok.store.application.command.UpdateStoreHoursCommand;
 import com.omakase.kok.store.application.result.StoreHoursResult;
@@ -25,11 +26,12 @@ public class StoreHoursService {
 
     private final StoreHoursRepository storeHoursRepository;
     private final StoreFinder storeFinder;
+    private final StoreOwnerValidator storeOwnerValidator;
 
     @Transactional
-    public List<StoreHoursResult> createBulkHours(CreateStoreHoursBulkCommand command) {
+    public List<StoreHoursResult> createBulkHours(CreateStoreHoursBulkCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        validateOwner(store, command.getRequesterId());
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
 
         List<StoreHours> saved = command.getHours().stream()
                 .map(entry -> {
@@ -65,9 +67,11 @@ public class StoreHoursService {
     }
 
     @Transactional
-    public StoreHoursResult updateHours(UpdateStoreHoursCommand command) {
+    public StoreHoursResult updateHours(UpdateStoreHoursCommand command, String role) {
+        // 매장 활성 상태 검증 - soft delete된 매장의 영업시간이 수정되는 것을 방지
+        Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         StoreHours hours = findHours(command.getStoreId(), command.getHoursId());
-        validateOwner(hours.getStore(), command.getRequesterId());
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
         validateHoursEntry(command.isDayOff(), command.getOpenTime(), command.getCloseTime());
 
         if (command.isDayOff()) {
@@ -81,9 +85,11 @@ public class StoreHoursService {
     }
 
     @Transactional
-    public void deleteHours(UUID storeId, UUID hoursId, UUID requesterId) {
+    public void deleteHours(UUID storeId, UUID hoursId, UUID requesterId, String role) {
+        // 매장 활성 상태 검증 - soft delete된 매장의 영업시간이 삭제되는 것을 방지
+        Store store = storeFinder.findActiveOrThrow(storeId);
         StoreHours hours = findHours(storeId, hoursId);
-        validateOwner(hours.getStore(), requesterId);
+        storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
 
         if (hours.isDeleted()) {
             throw new BaseException(StoreErrorCode.STORE_HOURS_ALREADY_DELETED);
@@ -107,12 +113,6 @@ public class StoreHoursService {
     private StoreHours findHours(UUID storeId, UUID hoursId) {
         return storeHoursRepository.findHours(storeId, hoursId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_HOURS_NOT_FOUND));
-    }
-
-    private void validateOwner(Store store, UUID requesterId) {
-        if (!store.isOwnedBy(requesterId)) {
-            throw new BaseException(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
-        }
     }
 
     // 영업일(isDayOff=false)인데 openTime 또는 closeTime이 없으면 유효하지 않은 입력

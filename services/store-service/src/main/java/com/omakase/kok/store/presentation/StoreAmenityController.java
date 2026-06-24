@@ -1,6 +1,7 @@
 package com.omakase.kok.store.presentation;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreAmenityService;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
@@ -33,14 +34,16 @@ public class StoreAmenityController {
     public ResponseEntity<ApiResponse<StoreAmenityResponse.Bulk>> syncAmenities(
             @PathVariable UUID storeId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody AddStoreAmenityRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         AddStoreAmenityCommand command = AddStoreAmenityCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)
                 .amenityTypes(request.getAmenityTypes())
                 .build();
-        return ResponseEntity.ok(ApiResponse.success(StoreAmenityResponse.Bulk.from(storeAmenityService.syncAmenities(command))));
+        return ResponseEntity.ok(ApiResponse.success(StoreAmenityResponse.Bulk.from(storeAmenityService.syncAmenities(command, role))));
     }
 
     // 편의시설 삭제 (Soft Delete)
@@ -51,6 +54,7 @@ public class StoreAmenityController {
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestHeader(AuthConstants.ROLE) String role
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         storeAmenityService.deleteAmenity(storeId, amenityId, userId, role);
         return ResponseEntity.ok(ApiResponse.deleted());
     }

@@ -1,17 +1,18 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
-import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
 import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import com.omakase.kok.store.domain.entity.Menu;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
-import com.omakase.kok.store.domain.entity.Menu;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
 import com.omakase.kok.store.domain.enums.StoreStatus;
@@ -20,10 +21,10 @@ import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
-import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -51,6 +52,7 @@ public class StoreService {
     private final MenuRepository menuRepository;
     private final StoreFinder storeFinder;
     private final StoreListCacheRepository storeListCacheRepository;
+    private final StoreOwnerValidator storeOwnerValidator;
 
     @Transactional
     public StoreResult createStore(CreateStoreCommand command) {
@@ -78,9 +80,9 @@ public class StoreService {
     }
 
     @Transactional
-    public StoreResult updateStore(UpdateStoreCommand command) {
+    public StoreResult updateStore(UpdateStoreCommand command, String role) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        validateOwner(store, command.getRequesterId());
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.STORE_ACCESS_DENIED);
 
         StoreCategory category;
         if (command.getCategoryId() != null) {
@@ -109,9 +111,7 @@ public class StoreService {
     @Transactional
     public void deleteStore(UUID storeId, UUID requesterId, String role) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        if (!RoleAuthorizationUtils.hasAnyRole(role, AuthConstants.MASTER)) {
-            validateOwner(store, requesterId);
-        }
+        storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.STORE_ACCESS_DENIED);
         store.delete(requesterId);
         evictListCacheAfterCommit();
     }
@@ -119,9 +119,7 @@ public class StoreService {
     @Transactional
     public StoreResult changeStatus(ChangeStoreStatusCommand command) {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        if (!RoleAuthorizationUtils.hasAnyRole(command.getRole(), AuthConstants.MASTER)) {
-            validateOwner(store, command.getRequesterId());
-        }
+        storeOwnerValidator.validate(store, command.getRequesterId(), command.getRole(), StoreErrorCode.STORE_ACCESS_DENIED);
 
         // OPEN 전환 시 영업시간 7일치 등록 여부 확인
         if (command.getStatus() == StoreStatus.OPEN
@@ -137,7 +135,7 @@ public class StoreService {
     // 매장 상세 조회 - 서브 데이터(todayHours/amenities/imagePreview/menuPreview) 포함
     // MASTER: soft delete된 매장도 조회 가능
     public StoreResult getStore(UUID storeId, String role) {
-        Store store = "MASTER".equals(role)
+        Store store = AuthConstants.MASTER.equals(role)
                 ? storeRepository.findById(storeId)
                         .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_NOT_FOUND))
                 : storeFinder.findActiveOrThrow(storeId);
@@ -158,7 +156,7 @@ public class StoreService {
         StoreSearchCondition resolved = resolveCondition(condition, userId, role);
 
         // OWNER는 본인 매장만 조회 - 캐시 효과 낮고 다른 OWNER 캐시와 격리 필요
-        if ("OWNER".equals(role)) {
+        if (AuthConstants.OWNER.equals(role)) {
             return storeRepository.search(resolved, pageable).map(StoreResult::from);
         }
 
@@ -171,12 +169,16 @@ public class StoreService {
 
     // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로
     private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
-        if ("OWNER".equals(role)) {
+        if (AuthConstants.OWNER.equals(role)) {
+            // userId null이면 ownerId 필터가 무효화되어 전체 매장이 조회되므로 반드시 차단
+            if (userId == null) {
+                throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+            }
             return condition.toBuilder()
                     .ownerId(userId)
                     .build();
         }
-        if ("MASTER".equals(role)) {
+        if (AuthConstants.MASTER.equals(role)) {
             return condition;
         }
         return condition.toBuilder()
@@ -204,9 +206,4 @@ public class StoreService {
         });
     }
 
-    private void validateOwner(Store store, UUID requesterId) {
-        if (!store.isOwnedBy(requesterId)) {
-            throw new BaseException(StoreErrorCode.STORE_ACCESS_DENIED);
-        }
-    }
 }

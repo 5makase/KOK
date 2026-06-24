@@ -2,6 +2,7 @@ package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
@@ -18,6 +19,8 @@ import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
@@ -58,6 +61,7 @@ class StoreServiceTest {
     @Mock MenuRepository menuRepository;
     @Mock StoreListCacheRepository storeListCacheRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     StoreService storeService;
@@ -220,7 +224,7 @@ class StoreServiceTest {
                 .storeId(storeId).requesterId(otherId)
                 .name("변경").build();
 
-        assertThatThrownBy(() -> storeService.updateStore(command))
+        assertThatThrownBy(() -> storeService.updateStore(command, AuthConstants.OWNER))
                 .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
                 .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
@@ -236,7 +240,7 @@ class StoreServiceTest {
                 .name("변경된 이름").categoryId(null)
                 .build();
 
-        StoreResult result = storeService.updateStore(command);
+        StoreResult result = storeService.updateStore(command, AuthConstants.OWNER);
 
         assertThat(result.getName()).isEqualTo("변경된 이름");
         assertThat(store.getCategory().getName()).isEqualTo("한식"); // 카테고리 유지
@@ -390,6 +394,18 @@ class StoreServiceTest {
         StoreSummaryResult result = storeService.getStoreSummary(storeId);
 
         assertThat(result).isNotNull();
+    }
+
+    @Test
+    @DisplayName("OWNER인데 X-User-Id 누락(null)이면 403 - 전체 매장 조회 차단")
+    void searchStores_owner_with_null_userId_throws() {
+        StoreSearchCondition condition = StoreSearchCondition.builder().build();
+        PageRequest pageable = PageRequest.of(0, 10);
+
+        assertThatThrownBy(() -> storeService.searchStores(condition, null, AuthConstants.OWNER, pageable))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(CommonErrorCode.ACCESS_DENIED);
     }
 
     @Test

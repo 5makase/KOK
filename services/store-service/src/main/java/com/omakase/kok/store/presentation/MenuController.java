@@ -1,6 +1,7 @@
 package com.omakase.kok.store.presentation;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.MenuService;
 import com.omakase.kok.store.application.command.CreateMenuCommand;
@@ -44,6 +45,7 @@ public class MenuController {
             @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody CreateMenuRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         CreateMenuCommand command = CreateMenuCommand.of(storeId, userId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(MenuCreateResponse.from(menuService.createMenu(command, role))));
@@ -58,6 +60,7 @@ public class MenuController {
             @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody UpdateMenuRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         UpdateMenuCommand command = UpdateMenuCommand.of(storeId, menuId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(MenuUpdateResponse.from(menuService.updateMenu(command, role))));
     }
@@ -70,6 +73,7 @@ public class MenuController {
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestHeader(AuthConstants.ROLE) String role
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         return ResponseEntity.ok(ApiResponse.success(MenuDeleteResponse.from(
                 menuService.deleteMenu(storeId, menuId, userId, role))));
     }
@@ -93,6 +97,7 @@ public class MenuController {
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestHeader(AuthConstants.ROLE) String role
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         return ResponseEntity.ok(ApiResponse.success(MenuSoldOutResponse.from(
                 menuService.toggleSoldOut(storeId, menuId, userId, role))));
     }

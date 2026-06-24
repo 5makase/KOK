@@ -35,6 +35,7 @@ public class SlotService {
     public SlotResponse createSlot(CreateSlotRequest request, UUID ownerId) {
         ReservationSlot slot = ReservationSlot.builder()
                 .storeId(request.getStoreId())
+                .storeName(request.getStoreName())
                 .slotDate(request.getSlotDate())
                 .slotTime(request.getSlotTime())
                 .maxCapacity(request.getMaxCapacity())

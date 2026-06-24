@@ -2,7 +2,9 @@ package com.omakase.kok.reservation.application.dto;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -16,6 +18,10 @@ public class CreateSlotRequest {
 
     @NotNull
     private UUID storeId;
+
+    @NotBlank
+    @Size(max = 100)
+    private String storeName;
 
     @NotNull
     private LocalDate slotDate;

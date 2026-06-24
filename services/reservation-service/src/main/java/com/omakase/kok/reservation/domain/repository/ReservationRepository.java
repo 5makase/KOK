@@ -20,4 +20,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
     List<Reservation> findBySlotIdAndStatusInAndDeletedAtIsNull(UUID slotId, List<ReservationStatus> statuses);
 
     List<Reservation> findByStatusAndCreatedAtBeforeAndDeletedAtIsNull(ReservationStatus status, LocalDateTime threshold);
+
+    List<Reservation> findByStatusAndScheduledAtBetweenAndDeletedAtIsNull(
+            ReservationStatus status, LocalDateTime from, LocalDateTime to);
 }

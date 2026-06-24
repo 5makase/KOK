@@ -186,14 +186,12 @@ class StoreImageServiceTest {
 
     @Test
     @DisplayName("OWNER가 타인 매장 이미지 삭제 시 403")
-    void deleteImage_owner_cannot_delete_others() throws Exception {
+    void deleteImage_owner_cannot_delete_others() {
         UUID imageId = UUID.randomUUID();
         UUID otherId = UUID.randomUUID();
-        StoreImage image = StoreImage.create(store, "url1", 1);
-        setImageId(image, imageId);
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
-        when(storeImageRepository.findImageById(storeId, imageId)).thenReturn(Optional.of(image));
+        // validate가 먼저 호출되므로 findImageById는 호출되지 않아야 함
 
         assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, otherId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
@@ -277,6 +275,29 @@ class StoreImageServiceTest {
         assertThat(alreadyDeleted.isDeleted()).isTrue();
         assertThat(alreadyDeleted.getDeletedBy()).isEqualTo(ownerId);
         assertThat(alreadyDeleted.getDeletedAt()).isEqualTo(deletedAtBefore); // deletedAt 불변 = delete() 재호출 없음
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 이미지 수정 시 403 - 이미지 조회 전에 차단")
+    void updateImage_owner_cannot_update_others() {
+        UUID imageId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        // validate가 먼저 호출되므로 findImageById는 호출되지 않아야 함
+
+        UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
+                .storeId(storeId)
+                .imageId(imageId)
+                .requesterId(otherId)
+                .imageUrl("url")
+                .displayOrder(1)
+                .build();
+
+        assertThatThrownBy(() -> storeImageService.updateImage(command, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
     }
 
     @Test

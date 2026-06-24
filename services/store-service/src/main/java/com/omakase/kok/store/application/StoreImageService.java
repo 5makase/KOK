@@ -56,8 +56,8 @@ public class StoreImageService {
     public StoreImageResult updateImage(UpdateStoreImageCommand command, String role) {
         // 매장 활성 상태 검증 - soft delete된 매장의 이미지가 수정되는 것을 방지
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
-        StoreImage image = findImage(command.getStoreId(), command.getImageId());
         storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
+        StoreImage image = findImage(command.getStoreId(), command.getImageId());
 
         // displayOrder 변경 시 목표 슬롯에 활성 이미지가 있으면 슬롯을 즉시 비운 뒤 현재 이미지를 이동
         if (!Objects.equals(command.getDisplayOrder(), image.getDisplayOrder())) {
@@ -78,8 +78,8 @@ public class StoreImageService {
     public void deleteImage(UUID storeId, UUID imageId, UUID requesterId, String role) {
         // 매장 활성 상태 검증 - soft delete된 매장의 이미지가 삭제되는 것을 방지
         Store store = storeFinder.findActiveOrThrow(storeId);
-        StoreImage image = findImage(storeId, imageId);
         storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
+        StoreImage image = findImage(storeId, imageId);
         image.delete(requesterId);
     }
 

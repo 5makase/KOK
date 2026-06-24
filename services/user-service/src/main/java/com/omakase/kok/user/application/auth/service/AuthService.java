@@ -43,7 +43,7 @@ public class AuthService {
 
         // 2. 비밀번호 검증
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new BaseException(UserErrorCode.INVALID_PASSWORD);
+            throw new BaseException(UserErrorCode.INVALID_LOGIN_INFO);
         }
 
         String userId = user.getUserId().toString();

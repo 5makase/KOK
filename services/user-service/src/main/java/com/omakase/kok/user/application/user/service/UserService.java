@@ -81,7 +81,7 @@ public class UserService {
 
     private void validateDuplicateUsername(String username) {
         if (userRepository.existsByUsername(username)) {
-            throw new BaseException(UserErrorCode.DUPLICATE_EMAIL);
+            throw new BaseException(UserErrorCode.DUPLICATE_USERNAME);
         }
     }
 

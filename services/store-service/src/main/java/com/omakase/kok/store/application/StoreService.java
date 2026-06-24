@@ -24,6 +24,7 @@ import com.omakase.kok.store.domain.repository.StoreImageRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -169,6 +170,10 @@ public class StoreService {
     // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로
     private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
         if (AuthConstants.OWNER.equals(role)) {
+            // userId null이면 ownerId 필터가 무효화되어 전체 매장이 조회되므로 반드시 차단
+            if (userId == null) {
+                throw new BaseException(CommonErrorCode.ACCESS_DENIED);
+            }
             return condition.toBuilder()
                     .ownerId(userId)
                     .build();

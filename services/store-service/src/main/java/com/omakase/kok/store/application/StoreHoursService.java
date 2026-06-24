@@ -68,8 +68,10 @@ public class StoreHoursService {
 
     @Transactional
     public StoreHoursResult updateHours(UpdateStoreHoursCommand command, String role) {
+        // 매장 활성 상태 검증 - soft delete된 매장의 영업시간이 수정되는 것을 방지
+        Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         StoreHours hours = findHours(command.getStoreId(), command.getHoursId());
-        storeOwnerValidator.validate(hours.getStore(), command.getRequesterId(), role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+        storeOwnerValidator.validate(store, command.getRequesterId(), role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
         validateHoursEntry(command.isDayOff(), command.getOpenTime(), command.getCloseTime());
 
         if (command.isDayOff()) {
@@ -84,8 +86,10 @@ public class StoreHoursService {
 
     @Transactional
     public void deleteHours(UUID storeId, UUID hoursId, UUID requesterId, String role) {
+        // 매장 활성 상태 검증 - soft delete된 매장의 영업시간이 삭제되는 것을 방지
+        Store store = storeFinder.findActiveOrThrow(storeId);
         StoreHours hours = findHours(storeId, hoursId);
-        storeOwnerValidator.validate(hours.getStore(), requesterId, role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+        storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
 
         if (hours.isDeleted()) {
             throw new BaseException(StoreErrorCode.STORE_HOURS_ALREADY_DELETED);

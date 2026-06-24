@@ -12,6 +12,7 @@ spring:
         - RemoveRequestHeader=X-User-Id
         - RemoveRequestHeader=X-Username
         - RemoveRequestHeader=X-Role
+        - RemoveRequestHeader=X-User-Role
 
       routes:
         - id: user-service
@@ -71,7 +72,7 @@ spring:
             - name: JwtAuthenticationFilter
 
 jwt:
-  secret: ${JWT_SECRET:your-very-secure-and-long-secret-key-at-least-256-bits}
+  secret: ${JWT_SECRET}
 
 eureka:
   client:

@@ -65,9 +65,10 @@ public class AuthService {
      *
      * 처리 흐름:
      * 1. Refresh Token 서명·형식·만료 검증 → INVALID_REFRESH_TOKEN (AUTH-001)
-     * 2. Redis 저장 여부 확인 → REFRESH_TOKEN_NOT_FOUND (AUTH-002)
-     * 3. Redis 저장 값과 일치 여부 확인 → REFRESH_TOKEN_MISMATCH (AUTH-003) + 강제 로그아웃
-     * 4. 새 Access Token 발급
+     * 2. 토큰 타입 검증 → access 토큰이 잘못 제출된 경우 Redis 조회/삭제 없이 즉시 거절
+     * 3. Redis 저장 여부 확인 → REFRESH_TOKEN_NOT_FOUND (AUTH-002)
+     * 4. Redis 저장 값과 일치 여부 확인 → REFRESH_TOKEN_MISMATCH (AUTH-003) + 강제 로그아웃
+     * 5. 새 Access Token 발급
      */
     public TokenResponse.Refresh refresh(TokenRefreshRequest request) {
         String refreshToken = request.refreshToken();
@@ -77,18 +78,23 @@ public class AuthService {
             throw new BaseException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        // 2. userId 추출 후 Redis 존재 여부 확인
+        // 2. 토큰 타입 검증
+        if (!jwtProvider.isRefreshToken(refreshToken)) {
+            throw new BaseException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        // 3. userId 추출 후 Redis 존재 여부 확인
         String userId = jwtProvider.extractUserId(refreshToken);
         String storedToken = refreshTokenStore.findByUserId(userId)
                 .orElseThrow(() -> new BaseException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
-        // 3. 저장된 토큰과 불일치 → 탈취 의심, Redis 토큰 즉시 삭제 (강제 로그아웃)
+        // 4. 저장된 토큰과 불일치 → 탈취 의심, Redis 토큰 즉시 삭제 (강제 로그아웃)
         if (!storedToken.equals(refreshToken)) {
             refreshTokenStore.deleteByUserId(userId);
             throw new BaseException(AuthErrorCode.REFRESH_TOKEN_MISMATCH);
         }
 
-        // 4. 새 Access Token 발급
+        // 5. 새 Access Token 발급
         String username = jwtProvider.extractUsername(refreshToken);
         String role = jwtProvider.extractRole(refreshToken);
         String newAccessToken = jwtProvider.generateAccessToken(userId, username, role);

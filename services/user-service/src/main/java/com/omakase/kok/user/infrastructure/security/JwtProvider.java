@@ -24,6 +24,11 @@ import java.util.Date;
 @Component
 public class JwtProvider {
 
+    // 코드래빗 리뷰 반영: 토큰 타입 별 구분
+    private static final String CLAIM_TOKEN_TYPE = "tokenType";
+    private static final String TOKEN_TYPE_ACCESS = "access";
+    private static final String TOKEN_TYPE_REFRESH = "refresh";
+
     @Value("${jwt.secret}")
     private String secret;
 
@@ -47,7 +52,7 @@ public class JwtProvider {
      * Payload: userId, username, role (정책 2.3)
      */
     public String generateAccessToken(String userId, String username, String role) {
-        return buildToken(userId, username, role, accessTokenExpiration);
+        return buildToken(userId, username, role, TOKEN_TYPE_ACCESS , accessTokenExpiration);
     }
 
     // ── Refresh Token ─────────────────────────────────────────────────────────
@@ -56,7 +61,7 @@ public class JwtProvider {
      * Refresh Token 생성
      */
     public String generateRefreshToken(String userId, String username, String role) {
-        return buildToken(userId, username, role, refreshTokenExpiration);
+        return buildToken(userId, username, role, TOKEN_TYPE_REFRESH , refreshTokenExpiration);
     }
 
     // ── 검증 ──────────────────────────────────────────────────────────────────
@@ -74,7 +79,7 @@ public class JwtProvider {
             log.debug("만료된 JWT 토큰입니다.");
         } catch (UnsupportedJwtException | MalformedJwtException e) {
             log.debug("지원하지 않거나 형식이 잘못된 JWT 토큰입니다.");
-        } catch (SecurityException e) {
+        } catch (JwtException e) {
             log.debug("JWT 서명 검증에 실패하였습니다.");
         } catch (IllegalArgumentException e) {
             log.debug("JWT 토큰이 비어있습니다.");
@@ -96,9 +101,17 @@ public class JwtProvider {
         return parseClaims(token).get("role", String.class);
     }
 
+    public String extractTokenType(String token) {
+        return parseClaims(token).get(CLAIM_TOKEN_TYPE, String.class);
+    }
+
+    public boolean isRefreshToken(String token) {
+        return TOKEN_TYPE_REFRESH.equals(extractTokenType(token));
+    }
+
     // ── 내부 ──────────────────────────────────────────────────────────────────
 
-    private String buildToken(String userId, String username, String role, long expirationMs) {
+    private String buildToken(String userId, String username, String role, String tokenType, long expirationMs) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
@@ -106,6 +119,7 @@ public class JwtProvider {
                 .subject(userId)
                 .claim("username", username)
                 .claim("role", role)
+                .claim(CLAIM_TOKEN_TYPE, tokenType)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(secretKey)

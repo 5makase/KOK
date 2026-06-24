@@ -26,8 +26,10 @@ import java.util.List;
  * 처리 흐름:
  * 1. Authorization 헤더에서 Bearer 토큰 추출
  * 2. JwtProvider로 토큰 유효성 검증
- * 3. SecurityContext에 인증 정보 등록
- * 4. 검증 실패 시 401 응답 반환
+ * 3. 검증 실패 시 즉시 401 반환 → SecurityContext 비워둔 채 다음 필터로 통과
+ * permitAll 경로는 그대로 통과, protected 경로는 인가 레이어(AuthenticationEntryPoint)에서 401 처리
+ * 4. SecurityContext에 인증 정보 등록
+ * 5. 검증 실패 시 401 응답 반환
  */
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -56,6 +58,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 토큰 유효성 검증 실패 → 401 반환
         if (!jwtProvider.validateToken(token)) {
             sendErrorResponse(response, UserErrorCode.INVALID_TOKEN);
+            return;
+        }
+
+        // 토큰 검증 실패 시 즉시 401 반환하지 않고 다음 필터로 통과
+        //         SecurityContext가 비어있으므로
+        //         - permitAll 경로 → 인증 없이 그대로 통과
+        //         - protected 경로 → 인가 레이어에서 AuthenticationEntryPoint가 401 반환
+        if (!jwtProvider.validateToken(token)) {
+            filterChain.doFilter(request, response);
             return;
         }
 

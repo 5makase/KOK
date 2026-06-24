@@ -43,7 +43,7 @@ public class InternalBlockFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        if (path.startsWith(INTERNAL_PATH_PREFIX)) {
+        if (path.equals(INTERNAL_PATH_PREFIX) || path.startsWith(INTERNAL_PATH_PREFIX + "/")) {
             log.warn("[Gateway] 내부 API 외부 접근 차단: {} {}",
                     exchange.getRequest().getMethod(), path);
             return writeErrorResponse(exchange, HttpStatus.FORBIDDEN, "[AUTH-006] 접근이 거부되었습니다.");

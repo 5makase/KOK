@@ -54,6 +54,7 @@ public class StoreAmenityController {
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
             @RequestHeader(AuthConstants.ROLE) String role
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         storeAmenityService.deleteAmenity(storeId, amenityId, userId, role);
         return ResponseEntity.ok(ApiResponse.deleted());
     }

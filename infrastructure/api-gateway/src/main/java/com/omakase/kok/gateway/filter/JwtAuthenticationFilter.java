@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * JWT 인증 필터
@@ -93,6 +94,18 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 String userId = jwtUtil.getUserId(claims);
                 String username = jwtUtil.getUsername(claims);
                 String role = jwtUtil.getRole(claims);
+
+                if (userId == null || username == null || role == null) {
+                    log.warn("[Gateway] 토큰 Claims 누락: {} {}", method, path);
+                    return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "[AUTH-005] 토큰 형식이 올바르지 않습니다.");
+                }
+
+                try {
+                    UUID.fromString(userId);
+                } catch (IllegalArgumentException e) {
+                    log.warn("[Gateway] userId UUID 형식 오류: {} {}", method, path);
+                    return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "[AUTH-005] 토큰 형식이 올바르지 않습니다.");
+                }
 
                 log.debug("[Gateway] 인증 성공 - userId: {}, role: {}, path: {} {}", userId, role, method, path);
 

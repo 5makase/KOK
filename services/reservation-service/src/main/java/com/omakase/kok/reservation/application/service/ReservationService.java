@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
@@ -99,7 +100,7 @@ public class ReservationService {
             if (!slot.isDepositRequired()) {
                 try {
                     return new TransactionTemplate(transactionManager).execute(status -> {
-                        Reservation reservation = buildReservation(request, userId, slot.getStoreId());
+                        Reservation reservation = buildReservation(request, userId, slot);
                         reservation.confirm();
                         reservationRepository.save(reservation);
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
@@ -114,7 +115,7 @@ public class ReservationService {
             UUID reservationId;
             try {
                 reservationId = new TransactionTemplate(transactionManager).execute(status -> {
-                    Reservation reservation = buildReservation(request, userId, slot.getStoreId());
+                    Reservation reservation = buildReservation(request, userId, slot);
                     reservationRepository.save(reservation);
                     return reservation.getReservationId();
                 });
@@ -377,11 +378,13 @@ public class ReservationService {
         return 0;
     }
 
-    private Reservation buildReservation(CreateReservationRequest request, UUID userId, UUID storeId) {
+    private Reservation buildReservation(CreateReservationRequest request, UUID userId, ReservationSlot slot) {
         return Reservation.builder()
                 .slotId(request.getSlotId())
                 .userId(userId)
-                .storeId(storeId)
+                .storeId(slot.getStoreId())
+                .storeName(slot.getStoreName())
+                .scheduledAt(LocalDateTime.of(slot.getSlotDate(), slot.getSlotTime()))
                 .bookerName(request.getBookerName())
                 .bookerPhone(request.getBookerPhone())
                 .reservationSize(request.getReservationSize())
@@ -389,14 +392,67 @@ public class ReservationService {
                 .build();
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse changeReservation(UUID reservationId, UUID userId, ChangeReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        int newSize = request.getReservationSize();
+        int sizeDiff = newSize - reservation.getReservationSize();
+
+        if (sizeDiff == 0) {
+            return ReservationResponse.from(reservation);
+        }
+
+        RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId());
+        long remaining = capacityKey.addAndGet(-sizeDiff);
+        if (remaining < 0) {
+            capacityKey.addAndGet(sizeDiff);
+            throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+        }
+
+        try {
+            return new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                        .orElseThrow();
+                r.change(newSize);
+                outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
+                return ReservationResponse.from(r);
+            });
+        } catch (Exception e) {
+            try {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId()).addAndGet(sizeDiff);
+            } catch (Exception redisEx) {
+                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), redisEx);
+            }
+            throw e;
+        }
+    }
+
     private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
         UUID outboxEventId = UUID.randomUUID();
         try {
+            LocalDateTime visitedAtValue = (eventType == EventType.RESERVATION_VISITED)
+                    ? reservation.getVisitedAt()
+                    : reservation.getScheduledAt();
+
             Map<String, Object> payloadData = new LinkedHashMap<>();
             payloadData.put("reservationId", reservation.getReservationId().toString());
             payloadData.put("userId", reservation.getUserId().toString());
             payloadData.put("storeId", reservation.getStoreId().toString());
-            payloadData.put("visitedAt", reservation.getVisitedAt());
+            payloadData.put("storeName", reservation.getStoreName());
+            payloadData.put("visitedAt", visitedAtValue);
+
+            if (eventType == EventType.RESERVATION_CONFIRMED || eventType == EventType.RESERVATION_CHANGED) {
+                payloadData.put("partySize", reservation.getReservationSize());
+            }
+            if (eventType == EventType.RESERVATION_CANCELLED) {
+                payloadData.put("cancelReason", reservation.getCancelReason());
+            }
 
             Map<String, Object> envelope = new LinkedHashMap<>();
             envelope.put("eventId", outboxEventId.toString());

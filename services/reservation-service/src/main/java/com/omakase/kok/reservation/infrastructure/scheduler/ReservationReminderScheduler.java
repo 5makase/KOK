@@ -10,11 +10,13 @@ import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
-import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RBucket;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+
+import java.time.Duration;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -26,47 +28,36 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class PendingExpirationScheduler {
+public class ReservationReminderScheduler {
 
-    private static final String SCHEDULER_LOCK_KEY = "reservation:scheduler:expire-pending";
-    private static final String SLOT_CAPACITY_KEY = "slot:capacity:";
+    private static final String SCHEDULER_LOCK_KEY = "reservation:scheduler:reminder";
+    private static final String REMINDER_1DAY_PREFIX = "reminder:1day:";
+    private static final String REMINDER_1HOUR_PREFIX = "reminder:1hour:";
 
     private final ReservationRepository reservationRepository;
     private final ReservationOutboxEventRepository outboxEventRepository;
-    private final PaymentFeignClient paymentFeignClient;
     private final RedissonClient redissonClient;
     private final PlatformTransactionManager transactionManager;
     private final ObjectMapper objectMapper;
 
-    @Scheduled(fixedRate = 30000)
-    public void expirePendingReservations() {
+    @Scheduled(fixedRate = 60000)
+    public void sendReminders() {
         RLock lock = redissonClient.getLock(SCHEDULER_LOCK_KEY);
         try {
-            if (!lock.tryLock(0, 30, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(0, 60, java.util.concurrent.TimeUnit.SECONDS)) {
                 return;
             }
 
-            LocalDateTime threshold = LocalDateTime.now().minusMinutes(5);
-            List<Reservation> targets = reservationRepository
-                    .findByStatusAndCreatedAtBeforeAndDeletedAtIsNull(ReservationStatus.PAYMENT_PENDING, threshold);
-
-            log.info("PENDING 만료 처리 대상: {}건", targets.size());
-
-            for (Reservation reservation : targets) {
-                try {
-                    processExpiredReservation(reservation);
-                } catch (Exception e) {
-                    log.error("PENDING 예약 만료 처리 실패 - reservationId: {}", reservation.getReservationId(), e);
-                }
-            }
+            LocalDateTime now = LocalDateTime.now();
+            send1DayReminders(now);
+            send1HourReminders(now);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("PENDING 만료 스케줄러 인터럽트 발생", e);
+            log.error("리마인더 스케줄러 인터럽트 발생", e);
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
@@ -74,40 +65,51 @@ public class PendingExpirationScheduler {
         }
     }
 
-    private void processExpiredReservation(Reservation reservation) {
-        // Payment 만료 처리 (실패해도 예약 취소는 진행)
-        try {
-            var payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
-            paymentFeignClient.expire(payment.getPaymentId());
-        } catch (Exception e) {
-            log.warn("Payment 만료 처리 실패 - reservationId: {}", reservation.getReservationId(), e);
-        }
+    private void send1DayReminders(LocalDateTime now) {
+        List<Reservation> targets = reservationRepository.findByStatusAndScheduledAtBetweenAndDeletedAtIsNull(
+                ReservationStatus.CONFIRMED, now.plusHours(23), now.plusHours(24));
 
-        // 예약 취소 + Outbox 이벤트 저장 (실제 취소 여부를 반환)
-        Boolean cancelled = new TransactionTemplate(transactionManager).execute(status -> {
-            Reservation r = reservationRepository
-                    .findByReservationIdAndDeletedAtIsNull(reservation.getReservationId())
-                    .orElseThrow();
-            if (r.getStatus() != ReservationStatus.PAYMENT_PENDING) {
-                return false;
-            }
-            r.cancel("SYSTEM", "결제 시간 초과");
-            outboxEventRepository.save(buildOutboxEvent(r));
-            return true;
-        });
+        log.info("1일 전 리마인더 대상: {}건", targets.size());
 
-        // 실제로 취소된 경우에만 Redis 잔여 인원 복구
-        if (Boolean.TRUE.equals(cancelled)) {
-            try {
-                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
-                        .addAndGet(reservation.getReservationSize());
-            } catch (Exception e) {
-                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
-            }
+        for (Reservation reservation : targets) {
+            sendIfNotSent(reservation, EventType.RESERVATION_REMINDER_1DAY,
+                    REMINDER_1DAY_PREFIX + reservation.getReservationId(), 25);
         }
     }
 
-    private ReservationOutboxEvent buildOutboxEvent(Reservation reservation) {
+    private void send1HourReminders(LocalDateTime now) {
+        List<Reservation> targets = reservationRepository.findByStatusAndScheduledAtBetweenAndDeletedAtIsNull(
+                ReservationStatus.CONFIRMED, now.plusMinutes(50), now.plusMinutes(60));
+
+        log.info("1시간 전 리마인더 대상: {}건", targets.size());
+
+        for (Reservation reservation : targets) {
+            sendIfNotSent(reservation, EventType.RESERVATION_REMINDER_1HOUR,
+                    REMINDER_1HOUR_PREFIX + reservation.getReservationId(), 2);
+        }
+    }
+
+    private void sendIfNotSent(Reservation reservation, EventType eventType, String redisKey, long ttlHours) {
+        RBucket<String> bucket = redissonClient.getBucket(redisKey);
+        if (!bucket.setIfAbsent("1", Duration.ofHours(ttlHours))) {
+            log.debug("리마인더 이미 발송됨 - reservationId: {}, type: {}",
+                    reservation.getReservationId(), eventType);
+            return;
+        }
+
+        try {
+            new TransactionTemplate(transactionManager).execute(status -> {
+                outboxEventRepository.save(buildOutboxEvent(reservation, eventType));
+                return null;
+            });
+        } catch (Exception e) {
+            log.error("리마인더 Outbox 저장 실패 - reservationId: {}, type: {}",
+                    reservation.getReservationId(), eventType, e);
+            bucket.delete();
+        }
+    }
+
+    private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
         UUID outboxEventId = UUID.randomUUID();
         try {
             Map<String, Object> payloadData = new LinkedHashMap<>();
@@ -116,11 +118,10 @@ public class PendingExpirationScheduler {
             payloadData.put("storeId", reservation.getStoreId().toString());
             payloadData.put("storeName", reservation.getStoreName());
             payloadData.put("visitedAt", reservation.getScheduledAt());
-            payloadData.put("cancelReason", reservation.getCancelReason());
 
             Map<String, Object> envelope = new LinkedHashMap<>();
             envelope.put("eventId", outboxEventId.toString());
-            envelope.put("eventType", EventType.RESERVATION_CANCELLED.name());
+            envelope.put("eventType", eventType.name());
             envelope.put("schemaVersion", 1);
             envelope.put("occurredAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")));
             envelope.put("producer", "reservation-service");
@@ -130,7 +131,7 @@ public class PendingExpirationScheduler {
             return ReservationOutboxEvent.builder()
                     .outboxEventId(outboxEventId)
                     .reservationId(reservation.getReservationId())
-                    .eventType(EventType.RESERVATION_CANCELLED)
+                    .eventType(eventType)
                     .payload(payload)
                     .build();
         } catch (JsonProcessingException e) {

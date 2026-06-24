@@ -5,14 +5,20 @@ import com.kok.review.domain.entity.ReviewEligibility;
 import com.kok.review.domain.entity.ReviewImage;
 import com.kok.review.domain.repository.ReviewImageRepository;
 import com.kok.review.domain.repository.ReviewRepository;
+import com.kok.review.infrastructure.client.StoreClient;
+import com.kok.review.infrastructure.client.UserClient;
+import com.kok.review.infrastructure.client.dto.StoreResponse;
+import com.kok.review.infrastructure.client.dto.UserResponse;
 import com.kok.review.infrastructure.persistence.ReviewEligibilityRepository;
 import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
 import com.kok.review.presentation.DTO1.response.ReviewDeletedResponseDto;
 import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
-import com.kok.review.presentation.DTO1.response.ReviewResponseDto;
+import com.kok.review.presentation.DTO1.response.ReviewCreateResponseDto;
+import com.kok.review.presentation.DTO1.response.ReviewGetResponseDto;
 import com.kok.review.presentation.DTO1.response.ReviewUpdateResponseDto;
 import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -23,15 +29,54 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReviewService {
 
     private final ReviewRepository reviewRepository;
     private final ReviewEligibilityRepository reviewEligibilityRepository;
     private final ReviewImageRepository reviewImageRepository;
     private final ReviewRatingService reviewRatingService;
+    private final UserClient userClient;
+    private final StoreClient storeClient;
+
+    @Transactional(readOnly = true)
+    public ReviewGetResponseDto getReview(UUID reviewId){
+        //reviewId로 Review를 조회한다.
+        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("조회되는 리뷰가 없음."));
+
+        //reviewId로 ReviewImage를 조회한다.
+        List<ReviewImage> reviewImageList =  reviewImageRepository.findByReviewReviewId(reviewId);
+
+        //imageurls로 변경한다.
+        List<String> imageUrls = reviewImageList.stream().map(ReviewImage::getImageUrl).collect(Collectors.toList());
+
+        //Review의 userId로 User를 조회한다. -> User의 name을 추출한다.
+        String userName = null;
+        try{
+            UserResponse user = userClient.getUser(review.getUserId());
+            userName = user.name();
+        }catch (Exception e){
+            log.warn("유저 정보 조회 실패. userId={}, reason={}", review.getUserId(), e.getMessage());
+            userName = "일반 사용자";
+        }
+
+        //Review의 storeId로 Store를 조회한다.- trycatch를 사용한다.
+        String storeName = null;
+        try{
+            StoreResponse store = storeClient.getStore(review.getStoreId());
+            storeName = store.name();
+        }catch (Exception e){
+            log.warn("매장 정보 조회 실패. storeId={}", review.getStoreId());
+            storeName = "일반 매장";
+        }
+        //ReviewGetResponseDto를 만든다.
+        return ReviewGetResponseDto.from(review, imageUrls,userName,storeName);
+    }
+
     /**
      * 리뷰 수정
      * @param reviewId
@@ -100,7 +145,7 @@ public class ReviewService {
             maxAttempts = 3,
             backoff = @Backoff(delay = 50))
     @Transactional
-    public ReviewResponseDto createReview(ReviewRequestDto dto, UUID userId) {
+    public ReviewCreateResponseDto createReview(ReviewRequestDto dto, UUID userId) {
         // 적재된 권한 조회
         ReviewEligibility reviewEligibility = reviewEligibilityRepository
                 .findById(dto.getReservationId())
@@ -142,7 +187,7 @@ public class ReviewService {
         reviewRatingService.applyCreated(
                 review.getReviewId(), review.getStoreId(), review.getRating());
 
-        return ReviewResponseDto.form(review);
+        return ReviewCreateResponseDto.form(review);
     }
 
     /**

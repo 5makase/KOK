@@ -3,6 +3,7 @@ package com.omakase.kok.reservation.application.service;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateSlotRequest;
 import com.omakase.kok.reservation.application.dto.SlotResponse;
+import com.omakase.kok.reservation.application.dto.UpdateSlotRequest;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
@@ -51,6 +52,41 @@ public class SlotService {
                 redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId).set(maxCapacity);
             }
         });
+
+        return SlotResponse.from(slot);
+    }
+
+    public SlotResponse getSlot(UUID slotId) {
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+        return SlotResponse.from(slot);
+    }
+
+    @Transactional
+    public SlotResponse updateSlot(UUID slotId, UpdateSlotRequest request, UUID ownerId) {
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        Integer newMaxCapacity = request.getMaxCapacity();
+        if (newMaxCapacity != null) {
+            int used = slot.getMaxCapacity() - slot.getRemainingCapacity();
+            if (newMaxCapacity < used) {
+                throw new BaseException(SlotErrorCode.SLOT_CAPACITY_BELOW_USED);
+            }
+        }
+
+        slot.update(request.getSlotDate(), request.getSlotTime(), newMaxCapacity,
+                request.getDepositRequired(), request.getDepositAmount());
+
+        if (newMaxCapacity != null) {
+            int updatedRemaining = slot.getRemainingCapacity();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId).set(updatedRemaining);
+                }
+            });
+        }
 
         return SlotResponse.from(slot);
     }

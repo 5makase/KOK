@@ -3,6 +3,7 @@ package com.omakase.kok.reservation.presentation.controller;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.reservation.application.dto.CreateSlotRequest;
 import com.omakase.kok.reservation.application.dto.SlotResponse;
+import com.omakase.kok.reservation.application.dto.UpdateSlotRequest;
 import com.omakase.kok.reservation.application.service.SlotService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,20 @@ public class SlotController {
             @RequestParam UUID storeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(ApiResponse.success(slotService.getSlots(storeId, date)));
+    }
+
+    @GetMapping("/{slotId}")
+    public ResponseEntity<ApiResponse<SlotResponse>> getSlot(
+            @PathVariable("slotId") UUID slotId) {
+        return ResponseEntity.ok(ApiResponse.success(slotService.getSlot(slotId)));
+    }
+
+    @PatchMapping("/{slotId}")
+    public ResponseEntity<ApiResponse<SlotResponse>> updateSlot(
+            @RequestHeader("X-User-Id") UUID ownerId,
+            @PathVariable("slotId") UUID slotId,
+            @RequestBody @Valid UpdateSlotRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(slotService.updateSlot(slotId, request, ownerId)));
     }
 
     @DeleteMapping("/{slotId}")

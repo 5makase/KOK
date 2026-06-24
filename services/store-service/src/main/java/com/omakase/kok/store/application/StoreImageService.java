@@ -66,7 +66,7 @@ public class StoreImageService {
                     .filter(existing -> !existing.isDeleted())
                     .ifPresent(existing -> {
                         existing.delete(command.getRequesterId());
-                        storeImageRepository.evictImageSlot(existing);
+                        storeImageRepository.releaseImageSlot(existing);
                     });
         }
 

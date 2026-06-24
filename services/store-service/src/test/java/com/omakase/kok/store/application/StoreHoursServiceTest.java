@@ -1,6 +1,9 @@
 package com.omakase.kok.store.application;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand.HoursEntry;
 import com.omakase.kok.store.application.command.UpdateStoreHoursCommand;
@@ -37,6 +40,7 @@ class StoreHoursServiceTest {
 
     @Mock StoreHoursRepository storeHoursRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     StoreHoursService storeHoursService;
@@ -69,7 +73,7 @@ class StoreHoursServiceTest {
                 .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
                 .build();
 
-        List<StoreHoursResult> results = storeHoursService.createBulkHours(command);
+        List<StoreHoursResult> results = storeHoursService.createBulkHours(command, AuthConstants.OWNER);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).isDayOff()).isFalse();
@@ -88,7 +92,7 @@ class StoreHoursServiceTest {
                 .hours(List.of(dayOffEntry(DayOfWeek.SUNDAY)))
                 .build();
 
-        List<StoreHoursResult> results = storeHoursService.createBulkHours(command);
+        List<StoreHoursResult> results = storeHoursService.createBulkHours(command, AuthConstants.OWNER);
 
         assertThat(results.get(0).isDayOff()).isTrue();
     }
@@ -110,7 +114,7 @@ class StoreHoursServiceTest {
                 .hours(List.of(invalidEntry))
                 .build();
 
-        assertThatThrownBy(() -> storeHoursService.createBulkHours(command))
+        assertThatThrownBy(() -> storeHoursService.createBulkHours(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.INVALID_STORE_HOURS);
@@ -132,7 +136,7 @@ class StoreHoursServiceTest {
                 .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
                 .build();
 
-        storeHoursService.createBulkHours(command);
+        storeHoursService.createBulkHours(command, AuthConstants.OWNER);
 
         assertThat(deleted.isDeleted()).isFalse(); // restore 확인
         assertThat(deleted.getOpenTime()).isEqualTo(LocalTime.of(9, 0));
@@ -149,7 +153,7 @@ class StoreHoursServiceTest {
                 .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
                 .build();
 
-        assertThatThrownBy(() -> storeHoursService.createBulkHours(command))
+        assertThatThrownBy(() -> storeHoursService.createBulkHours(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
@@ -173,7 +177,7 @@ class StoreHoursServiceTest {
                 .closeTime(LocalTime.of(21, 0))
                 .build();
 
-        StoreHoursResult result = storeHoursService.updateHours(command);
+        StoreHoursResult result = storeHoursService.updateHours(command, AuthConstants.OWNER);
 
         assertThat(result.isDayOff()).isFalse();
         assertThat(result.getOpenTime()).isEqualTo(LocalTime.of(9, 0));
@@ -195,7 +199,7 @@ class StoreHoursServiceTest {
                 .openTime(null).closeTime(null)
                 .build();
 
-        StoreHoursResult result = storeHoursService.updateHours(command);
+        StoreHoursResult result = storeHoursService.updateHours(command, AuthConstants.OWNER);
 
         assertThat(result.isDayOff()).isTrue();
         assertThat(result.getOpenTime()).isNull();
@@ -218,7 +222,7 @@ class StoreHoursServiceTest {
                 .closeTime(LocalTime.of(21, 0))
                 .build();
 
-        assertThatThrownBy(() -> storeHoursService.updateHours(command))
+        assertThatThrownBy(() -> storeHoursService.updateHours(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.INVALID_STORE_HOURS);
@@ -241,7 +245,7 @@ class StoreHoursServiceTest {
                 .openTime(LocalTime.of(10, 0)).closeTime(LocalTime.of(22, 0))
                 .build();
 
-        assertThatThrownBy(() -> storeHoursService.updateHours(command))
+        assertThatThrownBy(() -> storeHoursService.updateHours(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
@@ -259,7 +263,7 @@ class StoreHoursServiceTest {
 
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
-        storeHoursService.deleteHours(storeId, hoursId, ownerId);
+        storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER);
 
         assertThat(hours.isDeleted()).isTrue();
     }
@@ -276,7 +280,7 @@ class StoreHoursServiceTest {
 
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
-        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId))
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_CANNOT_DELETE_WHILE_OPEN);
@@ -293,7 +297,7 @@ class StoreHoursServiceTest {
 
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
-        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId))
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ALREADY_DELETED);
@@ -310,7 +314,7 @@ class StoreHoursServiceTest {
 
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
 
-        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, otherId))
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, otherId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
@@ -322,7 +326,7 @@ class StoreHoursServiceTest {
         UUID hoursId = UUID.randomUUID();
         when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId))
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_HOURS_NOT_FOUND);
@@ -338,7 +342,8 @@ class StoreHoursServiceTest {
         StoreHours wed = StoreHours.createDayOff(store, DayOfWeek.WEDNESDAY);
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
-        when(storeHoursRepository.findAllHours(store)).thenReturn(List.of(wed, mon));
+        // Repository가 요일(DayOfWeek) 오름차순 정렬 후 반환하는 것을 mock으로 표현
+        when(storeHoursRepository.findAllHours(store)).thenReturn(List.of(mon, wed));
 
         List<StoreHoursResult> results = storeHoursService.getStoreHours(storeId);
 

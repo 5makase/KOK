@@ -1,6 +1,9 @@
 package com.omakase.kok.store.application;
 
+import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.store.application.command.AddStoreImageCommand;
 import com.omakase.kok.store.application.command.AddStoreImageCommand.ImageEntry;
 import com.omakase.kok.store.application.command.UpdateStoreImageCommand;
@@ -38,6 +41,7 @@ class StoreImageServiceTest {
 
     @Mock StoreImageRepository storeImageRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     StoreImageService storeImageService;
@@ -69,7 +73,7 @@ class StoreImageServiceTest {
                 .images(List.of(ImageEntry.builder().imageUrl("url1").displayOrder(1).build()))
                 .build();
 
-        List<StoreImageResult> results = storeImageService.addImages(command);
+        List<StoreImageResult> results = storeImageService.addImages(command, AuthConstants.OWNER);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getDisplayOrder()).isEqualTo(1);
@@ -88,7 +92,7 @@ class StoreImageServiceTest {
                 ))
                 .build();
 
-        assertThatThrownBy(() -> storeImageService.addImages(command))
+        assertThatThrownBy(() -> storeImageService.addImages(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_IMAGE_DUPLICATE_DISPLAY_ORDER);
@@ -105,7 +109,7 @@ class StoreImageServiceTest {
                 .images(List.of(ImageEntry.builder().imageUrl("url1").displayOrder(1).build()))
                 .build();
 
-        assertThatThrownBy(() -> storeImageService.addImages(command))
+        assertThatThrownBy(() -> storeImageService.addImages(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
@@ -126,7 +130,7 @@ class StoreImageServiceTest {
                 .images(List.of(ImageEntry.builder().imageUrl("new-url").displayOrder(1).build()))
                 .build();
 
-        storeImageService.addImages(command);
+        storeImageService.addImages(command, AuthConstants.OWNER);
 
         assertThat(deleted.isDeleted()).isFalse();
         assertThat(deleted.getImageUrl()).isEqualTo("new-url");
@@ -143,7 +147,7 @@ class StoreImageServiceTest {
 
         when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(image));
 
-        assertThatCode(() -> storeImageService.deleteImage(storeId, imageId, ownerId))
+        assertThatCode(() -> storeImageService.deleteImage(storeId, imageId, ownerId, AuthConstants.OWNER))
                 .doesNotThrowAnyException();
         assertThat(image.isDeleted()).isTrue();
         assertThat(image.getDeletedBy()).isEqualTo(ownerId);
@@ -155,7 +159,7 @@ class StoreImageServiceTest {
         UUID imageId = UUID.randomUUID();
         when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId))
+        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_IMAGE_NOT_FOUND);
@@ -170,7 +174,7 @@ class StoreImageServiceTest {
 
         when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(deleted));
 
-        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId))
+        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, ownerId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_IMAGE_ALREADY_DELETED);
@@ -186,7 +190,7 @@ class StoreImageServiceTest {
 
         when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(image));
 
-        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, otherId))
+        assertThatThrownBy(() -> storeImageService.deleteImage(storeId, imageId, otherId, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
@@ -201,7 +205,8 @@ class StoreImageServiceTest {
         StoreImage img2 = StoreImage.create(store, "url2", 2);
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
-        when(storeImageRepository.findAllImages(storeId)).thenReturn(List.of(img2, img1));
+        // Repository가 displayOrder 오름차순 정렬 후 반환하는 것을 mock으로 표현
+        when(storeImageRepository.findAllImages(storeId)).thenReturn(List.of(img1, img2));
 
         List<StoreImageResult> results = storeImageService.getImages(storeId);
 
@@ -223,6 +228,7 @@ class StoreImageServiceTest {
 
         when(storeImageRepository.findImage(storeId, imageId)).thenReturn(Optional.of(target));
         when(storeImageRepository.findImageByDisplayOrder(storeId, 2)).thenReturn(Optional.of(occupying));
+        when(storeImageRepository.evictImageSlot(any())).thenReturn(occupying);
 
         UpdateStoreImageCommand command = UpdateStoreImageCommand.builder()
                 .storeId(storeId)
@@ -232,7 +238,7 @@ class StoreImageServiceTest {
                 .displayOrder(2) // 슬롯 2로 이동
                 .build();
 
-        storeImageService.updateImage(command);
+        storeImageService.updateImage(command, AuthConstants.OWNER);
 
         assertThat(occupying.isDeleted()).isTrue(); // 슬롯 2의 기존 이미지 soft delete
     }
@@ -259,7 +265,7 @@ class StoreImageServiceTest {
                 .displayOrder(2)
                 .build();
 
-        storeImageService.updateImage(command);
+        storeImageService.updateImage(command, AuthConstants.OWNER);
 
         assertThat(alreadyDeleted.isDeleted()).isTrue();
         assertThat(alreadyDeleted.getDeletedBy()).isEqualTo(ownerId);
@@ -283,7 +289,7 @@ class StoreImageServiceTest {
                 .displayOrder(1)
                 .build();
 
-        assertThatThrownBy(() -> storeImageService.updateImage(command))
+        assertThatThrownBy(() -> storeImageService.updateImage(command, AuthConstants.OWNER))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_IMAGE_ALREADY_DELETED);

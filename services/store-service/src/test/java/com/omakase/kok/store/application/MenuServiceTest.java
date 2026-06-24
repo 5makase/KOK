@@ -1,6 +1,8 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.CreateMenuCommand;
 import com.omakase.kok.store.application.command.UpdateMenuCommand;
@@ -34,6 +36,7 @@ class MenuServiceTest {
 
     @Mock MenuRepository menuRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     MenuService menuService;

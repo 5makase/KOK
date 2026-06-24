@@ -18,6 +18,8 @@ import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
@@ -58,6 +60,7 @@ class StoreServiceTest {
     @Mock MenuRepository menuRepository;
     @Mock StoreListCacheRepository storeListCacheRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     StoreService storeService;
@@ -220,7 +223,7 @@ class StoreServiceTest {
                 .storeId(storeId).requesterId(otherId)
                 .name("변경").build();
 
-        assertThatThrownBy(() -> storeService.updateStore(command))
+        assertThatThrownBy(() -> storeService.updateStore(command, AuthConstants.OWNER))
                 .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
                 .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
@@ -236,7 +239,7 @@ class StoreServiceTest {
                 .name("변경된 이름").categoryId(null)
                 .build();
 
-        StoreResult result = storeService.updateStore(command);
+        StoreResult result = storeService.updateStore(command, AuthConstants.OWNER);
 
         assertThat(result.getName()).isEqualTo("변경된 이름");
         assertThat(store.getCategory().getName()).isEqualTo("한식"); // 카테고리 유지

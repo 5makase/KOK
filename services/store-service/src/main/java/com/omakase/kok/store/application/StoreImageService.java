@@ -55,12 +55,15 @@ public class StoreImageService {
         StoreImage image = findImage(command.getStoreId(), command.getImageId());
         storeOwnerValidator.validate(image.getStore(), command.getRequesterId(), role, StoreErrorCode.STORE_IMAGE_ACCESS_DENIED);
 
-        // displayOrder 변경 시 목표 슬롯에 활성 이미지가 있으면 soft delete (슬롯 교체)
+        // displayOrder 변경 시 목표 슬롯에 활성 이미지가 있으면 슬롯을 즉시 비운 뒤 현재 이미지를 이동
         if (!Objects.equals(command.getDisplayOrder(), image.getDisplayOrder())) {
             storeImageRepository.findImageByDisplayOrder(command.getStoreId(), command.getDisplayOrder())
                     .filter(existing -> !existing.getImageId().equals(image.getImageId()))
                     .filter(existing -> !existing.isDeleted())
-                    .ifPresent(existing -> existing.delete(command.getRequesterId()));
+                    .ifPresent(existing -> {
+                        existing.delete(command.getRequesterId());
+                        storeImageRepository.evictImageSlot(existing);
+                    });
         }
 
         image.update(command.getImageUrl(), command.getDisplayOrder());

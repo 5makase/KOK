@@ -41,6 +41,11 @@ public class StoreImageRepositoryImpl implements StoreImageRepository {
     }
 
     @Override
+    public StoreImage evictImageSlot(StoreImage image) {
+        return storeImageJpaRepository.saveAndFlush(image);
+    }
+
+    @Override
     public List<StoreImage> findAllImages(UUID storeId) {
         return storeImageJpaRepository.findAllByStoreStoreIdAndDeletedAtIsNullOrderByDisplayOrderAsc(storeId);
     }

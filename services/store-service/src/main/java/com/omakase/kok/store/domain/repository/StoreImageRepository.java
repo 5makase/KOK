@@ -21,6 +21,9 @@ public interface StoreImageRepository {
     // 요청 슬롯 목록 한 번에 조회 - soft delete 포함 (bulk upsert용)
     List<StoreImage> findAllByDisplayOrders(UUID storeId, List<Integer> displayOrders);
 
+    // 슬롯 교체 전 기존 이미지를 즉시 비움 - 새 이미지가 해당 슬롯을 차지할 수 있게 partial index에서 제외
+    StoreImage evictImageSlot(StoreImage image);
+
     // 매장의 활성 이미지 목록 조회 (displayOrder 오름차순)
     List<StoreImage> findAllImages(UUID storeId);
 

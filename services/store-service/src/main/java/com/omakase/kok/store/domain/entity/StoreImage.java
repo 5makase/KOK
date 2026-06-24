@@ -10,7 +10,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,8 +17,7 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 @Entity
-@Table(name = "p_store_images",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"store_id", "display_order"}))
+@Table(name = "p_store_images")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class StoreImage extends BaseEntity {
@@ -54,7 +52,8 @@ public class StoreImage extends BaseEntity {
         this.displayOrder = displayOrder;
     }
 
-    // soft delete된 이미지 재활성화 (UniqueConstraint 충돌 방지)
+    // soft delete된 이미지 재활성화 - display_order를 유지한 채 deleted_at만 제거
+    // partial index(deleted_at IS NULL)가 활성 슬롯 유일성을 보장하므로 insert 없이 재사용 가능
     public void restore() {
         clearDeleted();
     }

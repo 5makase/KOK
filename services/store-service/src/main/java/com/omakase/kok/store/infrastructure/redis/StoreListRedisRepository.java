@@ -21,6 +21,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Repository
@@ -84,7 +86,14 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
     // 키 형식: store:list:{category}:{sido}:{sigungu}:{keyword}:{amenities}:{status}:{sort}:{page}:{size}
     // 조건 미지정 필드는 "ALL"로 대체해 키 충돌 방지
     // ownerId는 키에 포함하지 않음: OWNER 요청은 캐시 효과가 낮고 다른 OWNER 데이터와 격리 필요, StoreService에서 바이패스
+    // categoryIds, amenities는 요청 순서와 무관하게 동일 캐시 키를 보장하기 위해 정렬 후 결합
     private String buildKey(StoreSearchCondition condition, Pageable pageable) {
+        String categoryPart = (condition.getCategoryIds() == null || condition.getCategoryIds().isEmpty())
+                ? "ALL"
+                : condition.getCategoryIds().stream()
+                        .map(UUID::toString)
+                        .sorted()
+                        .collect(Collectors.joining("_"));
         String amenityPart = (condition.getAmenities() == null || condition.getAmenities().isEmpty())
                 ? "ALL"
                 : condition.getAmenities().stream()
@@ -93,7 +102,7 @@ public class StoreListRedisRepository implements StoreListCacheRepository {
                         .reduce((a, b) -> a + "_" + b)
                         .orElse("ALL");
         return LIST_KEY_PREFIX +
-                orAll(condition.getCategoryId()) + ":" +
+                categoryPart + ":" +
                 orAll(condition.getSido()) + ":" +
                 orAll(condition.getSigungu()) + ":" +
                 orAll(condition.getKeyword()) + ":" +

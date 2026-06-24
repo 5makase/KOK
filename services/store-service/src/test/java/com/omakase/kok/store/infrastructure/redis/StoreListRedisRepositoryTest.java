@@ -26,6 +26,7 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -160,6 +161,25 @@ class StoreListRedisRepositoryTest {
     }
 
     // buildKey
+
+    @Test
+    @DisplayName("캐시 키 - categoryIds 요청 순서 달라도 동일 키 생성 (정렬 보장)")
+    void buildKey_categoryIds_order_independent() {
+        UUID id1 = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID id2 = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        StoreSearchCondition c1 = StoreSearchCondition.builder()
+                .categoryIds(List.of(id1, id2)).build();
+        StoreSearchCondition c2 = StoreSearchCondition.builder()
+                .categoryIds(List.of(id2, id1)).build();
+
+        when(valueOperations.get(anyString())).thenReturn(null);
+        repository.get(c1, pageable);
+        repository.get(c2, pageable);
+
+        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+        verify(valueOperations, times(2)).get(captor.capture());
+        assertThat(captor.getAllValues().get(0)).isEqualTo(captor.getAllValues().get(1));
+    }
 
     @Test
     @DisplayName("캐시 키 - 편의시설 요청 순서 달라도 동일 키 생성 (정렬 보장)")

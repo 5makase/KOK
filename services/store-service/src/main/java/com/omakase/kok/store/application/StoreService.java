@@ -152,8 +152,9 @@ public class StoreService {
         return StoreResult.of(store, todayHours, amenities, imagePreview, menuPreview);
     }
 
-    public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID userId, String role, Pageable pageable) {
-        StoreSearchCondition resolved = resolveCondition(condition, userId, role);
+    public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID categoryId, UUID userId, String role, Pageable pageable) {
+        StoreSearchCondition withCategory = resolveCategoryIds(condition, categoryId);
+        StoreSearchCondition resolved = resolveCondition(withCategory, userId, role);
 
         // OWNER는 본인 매장만 조회 - 캐시 효과 낮고 다른 OWNER 캐시와 격리 필요
         if (AuthConstants.OWNER.equals(role)) {
@@ -165,6 +166,21 @@ public class StoreService {
             storeListCacheRepository.set(resolved, pageable, result);
             return result;
         });
+    }
+
+    // 대분류 ID면 활성 소분류 ID 목록으로 확장, 소분류 ID면 단일 목록, null이면 조건 없음
+    // 카테고리 계층 해석은 도메인 규칙이므로 인프라(Repository)가 아닌 이 레이어에서 처리한다
+    private StoreSearchCondition resolveCategoryIds(StoreSearchCondition condition, UUID categoryId) {
+        if (categoryId == null) return condition;
+        StoreCategory category = storeCategoryRepository.findCategory(categoryId)
+                .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
+        List<UUID> categoryIds = category.isSubCategory()
+                ? List.of(categoryId)
+                : category.getChildren().stream()
+                        .filter(child -> !child.isDeleted())
+                        .map(StoreCategory::getCategoryId)
+                        .toList();
+        return condition.toBuilder().categoryIds(categoryIds).build();
     }
 
     // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로

@@ -63,7 +63,7 @@ public class StoreQueryRepository {
                                             StoreSearchCondition condition) {
         return new BooleanExpression[]{
                 store.deletedAt.isNull(),
-                eqCategory(store, condition.getCategoryId()),
+                inCategories(store, condition.getCategoryIds()),
                 eqSido(store, condition.getSido()),
                 eqSigungu(store, condition.getSigungu()),
                 containsKeyword(store, condition.getKeyword()),
@@ -74,8 +74,12 @@ public class StoreQueryRepository {
         };
     }
 
-    private BooleanExpression eqCategory(QStore store, UUID categoryId) {
-        return categoryId != null ? store.category.categoryId.eq(categoryId) : null;
+    // null: 카테고리 필터 없음(categoryId 미입력) → 전체 조회
+    // 빈 리스트: 대분류의 활성 소분류가 없음(StoreService.resolveCategoryIds 참조) → 결과 없음 보장
+    private BooleanExpression inCategories(QStore store, List<UUID> categoryIds) {
+        if (categoryIds == null) return null;
+        if (categoryIds.isEmpty()) return Expressions.FALSE;
+        return store.category.categoryId.in(categoryIds);
     }
 
     private BooleanExpression eqSido(QStore store, String sido) {

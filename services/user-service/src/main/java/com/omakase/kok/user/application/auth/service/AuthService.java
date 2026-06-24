@@ -89,7 +89,7 @@ public class AuthService {
                 .orElseThrow(() -> new BaseException(AuthErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
         // 4. 저장된 토큰과 불일치 → 탈취 의심, Redis 토큰 즉시 삭제 (강제 로그아웃)
-        if (!storedToken.equals(refreshToken)) {
+        if (!storedToken.equals(refreshTokenStore.digest(refreshToken))) {
             refreshTokenStore.deleteByUserId(userId);
             throw new BaseException(AuthErrorCode.REFRESH_TOKEN_MISMATCH);
         }

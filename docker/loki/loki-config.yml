@@ -1,0 +1,39 @@
+# 로컬 개발용 인증 비활성화
+auth_enabled: false
+
+# Loki HTTP 포트
+server:
+  http_listen_port: 3100
+
+# 로컬 파일 저장소
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# 로그 인덱스 스키마
+schema_config:
+  configs:
+    - from: 2024-04-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# 로그 보관 기간: 7일
+limits_config:
+  retention_period: 168h
+
+# 보관 기간 지난 로그 정리
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem

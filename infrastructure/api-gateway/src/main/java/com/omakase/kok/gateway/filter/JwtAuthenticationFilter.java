@@ -110,11 +110,17 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 log.debug("[Gateway] 인증 성공 - userId: {}, role: {}, path: {} {}", userId, role, method, path);
 
                 // 검증된 사용자 정보를 헤더로 내부 서비스에 전달 (정책 3.4)
-                // application.yml에서 기존 헤더를 RemoveRequestHeader로 먼저 제거한 후 재생성
+                // 외부에서 주입된 헤더 제거 후 JWT 기반 값으로 재설정 (헤더 인젝션 방지)
                 ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
-                        .header("X-User-Id", userId)
-                        .header("X-Username", username)
-                        .header("X-Role", role)
+                        .headers(headers -> {
+                            headers.remove("X-User-Id");
+                            headers.remove("X-Username");
+                            headers.remove("X-Role");
+                            headers.remove("X-User-Role");
+                            headers.add("X-User-Id", userId);
+                            headers.add("X-Username", username);
+                            headers.add("X-Role", role);
+                        })
                         .build();
 
                 return chain.filter(exchange.mutate().request(mutatedRequest).build());

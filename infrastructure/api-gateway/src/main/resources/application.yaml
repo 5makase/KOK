@@ -9,13 +9,6 @@ spring:
     gateway:
       server:
         webflux:
-          # 보안 정책: 외부에서 주입된 헤더 제거 후 Gateway에서 재생성
-          default-filters:
-            - RemoveRequestHeader=X-User-Id
-            - RemoveRequestHeader=X-Username
-            - RemoveRequestHeader=X-Role
-            - RemoveRequestHeader=X-User-Role
-
           routes:
             - id: user-service
               uri: lb://user-service

@@ -103,6 +103,8 @@ public class ReservationService {
                         Reservation reservation = buildReservation(request, userId, slot);
                         reservation.confirm();
                         reservationRepository.save(reservation);
+                        ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId()).orElseThrow();
+                        s.decreaseCapacity(request.getReservationSize());
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
                         return ReservationResponse.from(reservation);
                     });
@@ -164,6 +166,8 @@ public class ReservationService {
                     return new TransactionTemplate(transactionManager).execute(status -> {
                         Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
                         reservation.confirm();
+                        ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId()).orElseThrow();
+                        s.decreaseCapacity(reservation.getReservationSize());
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
                         return ReservationResponse.from(reservation);
                     });
@@ -286,6 +290,8 @@ public class ReservationService {
                 throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
             }
             r.cancel("USER", cancelReason);
+            ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+            s.increaseCapacity(r.getReservationSize());
             outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
             return ReservationResponse.from(r);
         });
@@ -344,6 +350,8 @@ public class ReservationService {
                 throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
             }
             r.cancel("OWNER", cancelReason);
+            ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+            s.increaseCapacity(r.getReservationSize());
             outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
             return ReservationResponse.from(r);
         });
@@ -437,6 +445,12 @@ public class ReservationService {
                     Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
                             .orElseThrow();
                     r.change(newSize);
+                    ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                    if (sizeDiff > 0) {
+                        s.decreaseCapacity(sizeDiff);
+                    } else {
+                        s.increaseCapacity(-sizeDiff);
+                    }
                     outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
                     return ReservationResponse.from(r);
                 });

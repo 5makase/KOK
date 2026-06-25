@@ -16,6 +16,8 @@ public class ReservationResponse {
     private UUID slotId;
     private UUID userId;
     private UUID storeId;
+    private String storeName;
+    private LocalDateTime scheduledAt;
     private String bookerName;
     private String bookerPhone;
     private int reservationSize;
@@ -29,6 +31,8 @@ public class ReservationResponse {
                 .slotId(reservation.getSlotId())
                 .userId(reservation.getUserId())
                 .storeId(reservation.getStoreId())
+                .storeName(reservation.getStoreName())
+                .scheduledAt(reservation.getScheduledAt())
                 .bookerName(reservation.getBookerName())
                 .bookerPhone(reservation.getBookerPhone())
                 .reservationSize(reservation.getReservationSize())

@@ -12,6 +12,5 @@ public class WaitingEnteredEvent {
     private final UUID storeId;
     private final String storeName;
     private final UUID userId;
-    private final String visitorName;
     private final Long waitingNumber;
 }

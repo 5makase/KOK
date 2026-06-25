@@ -38,9 +38,6 @@ public class Waiting extends BaseEntity {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "visitor_name", nullable = false, length = 100)
-    private String visitorName;
-
     @Column(name = "waiting_number", nullable = false)
     private Long waitingNumber;
 
@@ -73,13 +70,12 @@ public class Waiting extends BaseEntity {
     private String noShowReason;
 
     @Builder
-    private Waiting(UUID id, UUID storeId, String storeName, UUID userId, String visitorName, Long waitingNumber,
+    private Waiting(UUID id, UUID storeId, String storeName, UUID userId, Long waitingNumber,
                     Integer peopleCount, String requestMessage) {
         this.id = id != null ? id : UUID.randomUUID();
         this.storeId = storeId;
         this.storeName = storeName;
         this.userId = userId;
-        this.visitorName = visitorName;
         this.waitingNumber = waitingNumber;
         this.peopleCount = peopleCount;
         this.requestMessage = requestMessage;

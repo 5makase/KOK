@@ -117,7 +117,6 @@ class WaitingOutboxPublisherTest {
                 .storeId(UUID.randomUUID())
                 .storeName("테스트 매장")
                 .userId(UUID.randomUUID())
-                .visitorName("테스터")
                 .waitingNumber(1L)
                 .peopleCount(2)
                 .requestMessage(null)

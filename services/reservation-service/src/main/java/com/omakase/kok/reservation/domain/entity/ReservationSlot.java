@@ -26,6 +26,9 @@ public class ReservationSlot extends BaseEntity {
     @Column(name = "store_id", nullable = false)
     private UUID storeId;
 
+    @Column(name = "store_name", length = 100)
+    private String storeName;
+
     @Column(name = "slot_date", nullable = false)
     private LocalDate slotDate;
 
@@ -49,12 +52,13 @@ public class ReservationSlot extends BaseEntity {
     private SlotStatus status;
 
     @Builder
-    public ReservationSlot(UUID storeId, LocalDate slotDate, LocalTime slotTime,
+    public ReservationSlot(UUID storeId, String storeName, LocalDate slotDate, LocalTime slotTime,
                            int maxCapacity, boolean depositRequired, Long depositAmount) {
         if (depositRequired && (depositAmount == null || depositAmount <= 0)) {
             throw new IllegalArgumentException("예약금이 필요한 슬롯은 depositAmount가 0보다 커야 합니다.");
         }
         this.storeId = storeId;
+        this.storeName = storeName;
         this.slotDate = slotDate;
         this.slotTime = slotTime;
         this.maxCapacity = maxCapacity;
@@ -84,5 +88,26 @@ public class ReservationSlot extends BaseEntity {
         if (this.remainingCapacity > 0 && this.status == SlotStatus.FULL) {
             this.status = SlotStatus.OPEN;
         }
+    }
+
+    public void update(LocalDate slotDate, LocalTime slotTime, Integer maxCapacity,
+                       Boolean depositRequired, Long depositAmount) {
+        if (slotDate != null) this.slotDate = slotDate;
+        if (slotTime != null) this.slotTime = slotTime;
+        if (maxCapacity != null) {
+            int used = this.maxCapacity - this.remainingCapacity;
+            this.remainingCapacity = maxCapacity - used;
+            this.maxCapacity = maxCapacity;
+            if (this.remainingCapacity <= 0) {
+                this.status = SlotStatus.FULL;
+            } else if (this.status == SlotStatus.FULL) {
+                this.status = SlotStatus.OPEN;
+            }
+        }
+        if (depositRequired != null) {
+            this.depositRequired = depositRequired;
+            if (!depositRequired) this.depositAmount = null;
+        }
+        if (depositAmount != null && this.depositRequired) this.depositAmount = depositAmount;
     }
 }

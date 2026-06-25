@@ -1,6 +1,7 @@
 package com.omakase.kok.store.presentation;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreHoursService;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
@@ -36,8 +37,10 @@ public class StoreHoursController {
     public ResponseEntity<ApiResponse<List<StoreHoursResponse>>> createBulkHours(
             @PathVariable UUID storeId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody CreateStoreHoursBulkRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
                 .storeId(storeId)
                 .requesterId(userId)
@@ -52,7 +55,7 @@ public class StoreHoursController {
                                 .build())
                         .toList())
                 .build();
-        List<StoreHoursResponse> response = storeHoursService.createBulkHours(command).stream()
+        List<StoreHoursResponse> response = storeHoursService.createBulkHours(command, role).stream()
                 .map(StoreHoursResponse::from).toList();
         return ResponseEntity.status(201).body(ApiResponse.created(response));
     }
@@ -63,8 +66,10 @@ public class StoreHoursController {
             @PathVariable UUID storeId,
             @PathVariable UUID hoursId,
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role,
             @Valid @RequestBody UpdateStoreHoursRequest request
     ) {
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
         UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
                 .storeId(storeId)
                 .hoursId(hoursId)
@@ -75,7 +80,7 @@ public class StoreHoursController {
                 .breakEndTime(request.getBreakEndTime())
                 .isDayOff(request.getIsDayOff())
                 .build();
-        return ResponseEntity.ok(ApiResponse.success(StoreHoursResponse.from(storeHoursService.updateHours(command))));
+        return ResponseEntity.ok(ApiResponse.success(StoreHoursResponse.from(storeHoursService.updateHours(command, role))));
     }
 
     // 영업시간 삭제 (OPEN 매장 불가 - isDayOff 변경 유도)
@@ -83,9 +88,11 @@ public class StoreHoursController {
     public ResponseEntity<ApiResponse<Void>> deleteHours(
             @PathVariable UUID storeId,
             @PathVariable UUID hoursId,
-            @RequestHeader(AuthConstants.USER_ID) UUID userId
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader(AuthConstants.ROLE) String role
     ) {
-        storeHoursService.deleteHours(storeId, hoursId, userId);
+        RoleAuthorizationUtils.requireAnyRole(role, AuthConstants.OWNER, AuthConstants.MASTER);
+        storeHoursService.deleteHours(storeId, hoursId, userId, role);
         return ResponseEntity.ok(ApiResponse.deleted());
     }
 

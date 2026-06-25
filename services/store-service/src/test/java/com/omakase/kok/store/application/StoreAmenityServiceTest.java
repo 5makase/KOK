@@ -1,6 +1,8 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
@@ -35,6 +37,7 @@ class StoreAmenityServiceTest {
 
     @Mock StoreAmenityRepository storeAmenityRepository;
     @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
     StoreAmenityService storeAmenityService;
@@ -68,11 +71,11 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of(AmenityType.WIFI))
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         // 응답에는 WIFI만 포함, PARKING은 제외
         assertThat(result.getAmenities()).hasSize(1);
-        assertThat(result.getAmenities().get(0).getAmenityType()).isEqualTo(AmenityType.WIFI);
+        assertThat(result.getAmenities().get(0).getAmenityType()).isEqualTo(AmenityType.WIFI.name());
         assertThat(existing.isDeleted()).isTrue();
     }
 
@@ -94,7 +97,7 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of(AmenityType.PARKING))
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         assertThat(deleted.isDeleted()).isFalse(); // restore 확인
         assertThat(result.getAmenities()).hasSize(1);
@@ -114,11 +117,11 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of(AmenityType.WIFI, AmenityType.PARKING))
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         assertThat(result.getAmenities())
                 .extracting(StoreAmenityResult::getAmenityType)
-                .containsExactlyInAnyOrder(AmenityType.WIFI, AmenityType.PARKING);
+                .containsExactlyInAnyOrder(AmenityType.WIFI.name(), AmenityType.PARKING.name());
     }
 
     @Test
@@ -138,7 +141,7 @@ class StoreAmenityServiceTest {
                 .amenityTypes(List.of())
                 .build();
 
-        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command);
+        StoreAmenityResult.Bulk result = storeAmenityService.syncAmenities(command, AuthConstants.OWNER);
 
         assertThat(wifi.isDeleted()).isTrue();
         assertThat(parking.isDeleted()).isTrue();
@@ -190,6 +193,37 @@ class StoreAmenityServiceTest {
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.AMENITY_ACCESS_DENIED);
     }
+
+    // getAmenities
+
+    @Test
+    @DisplayName("편의시설 목록 조회 - 활성 항목만 반환")
+    void getAmenities_returns_active_only() {
+        StoreAmenity wifi = StoreAmenity.create(store, AmenityType.WIFI);
+        StoreAmenity parking = StoreAmenity.create(store, AmenityType.PARKING);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeAmenityRepository.findAllAmenities(store)).thenReturn(List.of(wifi, parking));
+
+        List<StoreAmenityResult> results = storeAmenityService.getAmenities(storeId);
+
+        assertThat(results).hasSize(2);
+        assertThat(results).extracting(StoreAmenityResult::getAmenityType)
+                .containsExactlyInAnyOrder(AmenityType.WIFI.name(), AmenityType.PARKING.name()); // String 비교
+    }
+
+    @Test
+    @DisplayName("편의시설 없는 매장 목록 조회 시 빈 리스트 반환")
+    void getAmenities_empty_store_returns_empty_list() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeAmenityRepository.findAllAmenities(store)).thenReturn(List.of());
+
+        List<StoreAmenityResult> results = storeAmenityService.getAmenities(storeId);
+
+        assertThat(results).isEmpty();
+    }
+
+    // deleteAmenity
 
     @Test
     @DisplayName("이미 삭제된 편의시설 삭제 시 400")

@@ -114,7 +114,9 @@ public class PendingExpirationScheduler {
             payloadData.put("reservationId", reservation.getReservationId().toString());
             payloadData.put("userId", reservation.getUserId().toString());
             payloadData.put("storeId", reservation.getStoreId().toString());
-            payloadData.put("visitedAt", reservation.getVisitedAt());
+            payloadData.put("storeName", reservation.getStoreName());
+            payloadData.put("visitedAt", reservation.getScheduledAt());
+            payloadData.put("cancelReason", reservation.getCancelReason());
 
             Map<String, Object> envelope = new LinkedHashMap<>();
             envelope.put("eventId", outboxEventId.toString());

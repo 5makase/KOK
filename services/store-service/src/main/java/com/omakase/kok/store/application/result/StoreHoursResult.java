@@ -3,6 +3,7 @@ package com.omakase.kok.store.application.result;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
@@ -10,6 +11,7 @@ import java.util.UUID;
 
 @Getter
 @Builder
+@Jacksonized // Lombok Builder와 Jackson 역직렬화 연동(Redis 캐시 복원 시 필요)
 public class StoreHoursResult {
 
     private UUID hoursId;

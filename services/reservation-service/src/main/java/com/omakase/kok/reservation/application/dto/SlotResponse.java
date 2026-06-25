@@ -16,6 +16,7 @@ public class SlotResponse {
 
     private UUID slotId;
     private UUID storeId;
+    private String storeName;
     private LocalDate slotDate;
     private LocalTime slotTime;
     private int maxCapacity;
@@ -29,6 +30,7 @@ public class SlotResponse {
         return SlotResponse.builder()
                 .slotId(slot.getSlotId())
                 .storeId(slot.getStoreId())
+                .storeName(slot.getStoreName())
                 .slotDate(slot.getSlotDate())
                 .slotTime(slot.getSlotTime())
                 .maxCapacity(slot.getMaxCapacity())

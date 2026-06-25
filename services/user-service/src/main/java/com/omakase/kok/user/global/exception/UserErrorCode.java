@@ -22,7 +22,7 @@ public enum UserErrorCode implements ErrorCode {
     OWNER_APPROVAL_REQUIRED(HttpStatus.BAD_REQUEST, "USER-102", "OWNER 계정은 승인 대기 상태로 가입됩니다."),
 
     // 로그인 / 인증
-    LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "USER-201", "아이디 또는 비밀번호가 올바르지 않습니다."),
+    INVALID_LOGIN_INFO(HttpStatus.UNAUTHORIZED, "USER-201", "아이디 또는 비밀번호가 올바르지 않습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "USER-202", "인증이 필요합니다."),
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "USER-203", "토큰이 만료되었습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "USER-204", "유효하지 않은 토큰입니다."),

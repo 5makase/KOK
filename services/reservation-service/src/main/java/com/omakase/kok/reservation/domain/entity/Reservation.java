@@ -10,6 +10,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -32,6 +33,12 @@ public class Reservation extends BaseEntity {
 
     @Column(name = "store_id", nullable = false)
     private UUID storeId;
+
+    @Column(name = "store_name", length = 100)
+    private String storeName;
+
+    @Column(name = "scheduled_at")
+    private LocalDateTime scheduledAt;
 
     @Column(name = "booker_name", nullable = false, length = 50)
     private String bookerName;
@@ -62,11 +69,13 @@ public class Reservation extends BaseEntity {
     private String cancelReason;
 
     @Builder
-    public Reservation(UUID slotId, UUID userId, UUID storeId, String bookerName,
-                       String bookerPhone, int reservationSize, String requestMessage) {
+    public Reservation(UUID slotId, UUID userId, UUID storeId, String storeName, LocalDateTime scheduledAt,
+                       String bookerName, String bookerPhone, int reservationSize, String requestMessage) {
         this.slotId = slotId;
         this.userId = userId;
         this.storeId = storeId;
+        this.storeName = storeName;
+        this.scheduledAt = scheduledAt;
         this.bookerName = bookerName;
         this.bookerPhone = bookerPhone;
         this.reservationSize = reservationSize;
@@ -104,6 +113,16 @@ public class Reservation extends BaseEntity {
             throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
         }
         this.status = ReservationStatus.NO_SHOW;
+    }
+
+    public void change(int reservationSize) {
+        if (this.status != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+        }
+        if (this.scheduledAt != null && !this.scheduledAt.toLocalDate().isAfter(LocalDate.now())) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+        }
+        this.reservationSize = reservationSize;
     }
 
     public boolean isCancellable() {

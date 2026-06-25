@@ -14,7 +14,6 @@ import java.util.UUID;
 public class StoreWaitingResponse {
     private UUID waitingId;
     private UUID userId;
-    private String visitorName;
     private Long waitingNumber;
     private Integer peopleCount;
     private WaitingStatus status;
@@ -28,7 +27,6 @@ public class StoreWaitingResponse {
         return new StoreWaitingResponse(
                 waiting.getId(),
                 waiting.getUserId(),
-                waiting.getVisitorName(),
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),
                 waiting.getStatus(),

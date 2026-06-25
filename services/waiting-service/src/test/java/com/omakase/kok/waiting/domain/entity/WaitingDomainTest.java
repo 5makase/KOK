@@ -136,7 +136,6 @@ class WaitingDomainTest {
                 .storeId(UUID.randomUUID())
                 .storeName("UNKNOWN")
                 .userId(UUID.randomUUID())
-                .visitorName("UNKNOWN")
                 .waitingNumber(1L)
                 .peopleCount(2)
                 .requestMessage(null)

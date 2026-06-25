@@ -6,7 +6,6 @@ import com.omakase.kok.store.application.result.StoreImageResult;
 import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreResult.CategoryInfo;
 import com.omakase.kok.store.application.result.StoreResult.MenuPreviewResult;
-import com.omakase.kok.store.domain.enums.StoreStatus;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -31,7 +30,7 @@ public class StoreResponse {
     private BigDecimal latitude;
     private BigDecimal longitude;
     private String description;
-    private StoreStatus status;
+    private String status;
     private Integer maxCapacity;
     private BigDecimal averageRating;
     private int reviewCount;

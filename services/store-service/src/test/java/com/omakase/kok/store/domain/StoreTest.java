@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -93,6 +94,38 @@ class StoreTest {
 
         assertThat(store.isOwnedBy(ownerId)).isTrue();
         assertThat(store.isOwnedBy(other)).isFalse();
+    }
+
+    @Test
+    @DisplayName("updateRating() - 평점과 리뷰수 갱신")
+    void update_rating_updates_fields() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+
+        store.updateRating(new BigDecimal("4.50"), 10);
+
+        assertThat(store.getAverageRating()).isEqualByComparingTo("4.50");
+        assertThat(store.getReviewCount()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("updateThumbnail() - 썸네일 URL 갱신")
+    void update_thumbnail_sets_url() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+
+        store.updateThumbnail("https://cdn.example.com/thumb.jpg");
+
+        assertThat(store.getThumbnailUrl()).isEqualTo("https://cdn.example.com/thumb.jpg");
+    }
+
+    @Test
+    @DisplayName("isAvailableForService() - OPEN이면 true, 그 외 false")
+    void is_available_for_service() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+
+        assertThat(store.isAvailableForService()).isFalse(); // PREPARING
+
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        assertThat(store.isAvailableForService()).isTrue();
     }
 
     private Address address() {

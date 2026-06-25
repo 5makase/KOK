@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 public enum SlotErrorCode implements ErrorCode {
 
     SLOT_NOT_FOUND(HttpStatus.NOT_FOUND, "SLOT-001", "슬롯을 찾을 수 없습니다."),
-    SLOT_HAS_ACTIVE_RESERVATION(HttpStatus.CONFLICT, "SLOT-002", "활성 예약이 존재하여 슬롯을 삭제할 수 없습니다.");
+    SLOT_HAS_ACTIVE_RESERVATION(HttpStatus.CONFLICT, "SLOT-002", "활성 예약이 존재하여 슬롯을 삭제할 수 없습니다."),
+    SLOT_CAPACITY_BELOW_USED(HttpStatus.CONFLICT, "SLOT-003", "최대 인원을 현재 예약된 인원보다 작게 줄일 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

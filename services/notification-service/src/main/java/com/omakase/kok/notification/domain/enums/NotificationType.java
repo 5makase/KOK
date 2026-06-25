@@ -12,13 +12,6 @@ public enum NotificationType {
                     params.get("storeName"), params.get("waitingNumber"), params.get("peopleCount"));
         }
     },
-    WAITING_NEAR_TURN {
-        @Override
-        public String render(Map<String, Object> params) {
-            return String.format("[%s] 곧 입장입니다. (앞에 %s팀 남음)",
-                    params.get("storeName"), params.get("remainingTeams"));
-        }
-    },
     WAITING_CALLED {
         @Override
         public String render(Map<String, Object> params) {
@@ -47,45 +40,48 @@ public enum NotificationType {
                     params.get("storeName"));
         }
     },
-    WAITING_AUTO_CANCEL_WARNING {
-        @Override
-        public String render(Map<String, Object> params) {
-            return String.format("[%s] 곧 자동 취소됩니다. 빠르게 입장해주세요.",
-                    params.get("storeName"));
-        }
-    },
 
     // ── 예약 ──────────────────────────────────────────
-    RESERVATION_RECEIVED {
-        @Override
-        public String render(Map<String, Object> params) {
-            return String.format("[%s] 예약이 접수되었습니다.",
-                    params.get("storeName"));
-        }
-    },
     RESERVATION_CONFIRMED {
         @Override
         public String render(Map<String, Object> params) {
-            return String.format("[%s] 예약이 확정되었습니다. (%s %s, %s명)",
+            return String.format("[%s] 예약이 등록되었습니다. (%s %s, %s명)",
                     params.get("storeName"), params.get("slotDate"),
-                    params.get("slotTime"), params.get("reservationSize"));
+                    params.get("slotTime"), params.get("partySize"));
         }
     },
     RESERVATION_CANCELLED {
         @Override
         public String render(Map<String, Object> params) {
-            return String.format("[%s] 예약이 취소되었습니다.",
+            return String.format("[%s] 예약이 취소되었습니다. 사유: %s",
+                    params.get("storeName"), params.get("cancelReason"));
+        }
+    },
+    RESERVATION_VISITED {
+        @Override
+        public String render(Map<String, Object> params) {
+            return String.format("[%s] 입장이 완료되었습니다. 즐거운 시간 되세요!",
                     params.get("storeName"));
         }
     },
+
+    RESERVATION_NO_SHOW {
+        @Override
+        public String render(Map<String, Object> params) {
+            return String.format("[%s] 미입장으로 인해 예약이 취소 처리되었습니다.",
+                    params.get("storeName"));
+        }
+    },
+
     RESERVATION_CHANGED {
         @Override
         public String render(Map<String, Object> params) {
             return String.format("[%s] 예약이 변경되었습니다. (%s %s, %s명)",
                     params.get("storeName"), params.get("slotDate"),
-                    params.get("slotTime"), params.get("reservationSize"));
+                    params.get("slotTime"), params.get("partySize"));
         }
     },
+
     RESERVATION_REMINDER_1DAY {
         @Override
         public String render(Map<String, Object> params) {
@@ -98,20 +94,6 @@ public enum NotificationType {
         public String render(Map<String, Object> params) {
             return String.format("[%s] 1시간 후 방문 예정입니다. (%s)",
                     params.get("storeName"), params.get("slotTime"));
-        }
-    },
-    RESERVATION_NO_SHOW {
-        @Override
-        public String render(Map<String, Object> params) {
-            return String.format("[%s] 노쇼 처리되었습니다. 패널티가 부과됩니다.",
-                    params.get("storeName"));
-        }
-    },
-    RESERVATION_NEW_OWNER {
-        @Override
-        public String render(Map<String, Object> params) {
-            return String.format("[새 예약] %s명 / %s %s",
-                    params.get("reservationSize"), params.get("slotDate"), params.get("slotTime"));
         }
     },
 

@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:postgresql://localhost:5432/store_db",
+        "spring.datasource.url=jdbc:postgresql://localhost:5432/kok_db",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.datasource.username=postgres",
         "spring.datasource.password=postgres",

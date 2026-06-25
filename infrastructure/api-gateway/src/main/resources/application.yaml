@@ -38,6 +38,13 @@ spring:
               filters:
                 - name: JwtAuthenticationFilter
 
+            - id: slot-service
+              uri: lb://reservation-service
+              predicates:
+                - Path=/api/v1/slots/**
+              filters:
+                - name: JwtAuthenticationFilter
+
             - id: waiting-service
               uri: lb://waiting-service
               predicates:

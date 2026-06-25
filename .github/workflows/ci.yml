@@ -17,8 +17,19 @@ jobs:
         image: redis:latest
         ports:
           - 6379:6379
-
-
+    postgres:
+      image: postgis/postgis:15-3.3 # 일반 버전을 쓴다면 postgres:15 등
+      env:
+        POSTGRES_USER: user       # application-test.yml에 설정된 DB 계정
+        POSTGRES_PASSWORD: password # application-test.yml에 설정된 DB 비밀번호
+        POSTGRES_DB: kok_db       # application-test.yml에 설정된 DB 이름
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd pg_isready
+        --health-interval 10s
+        --health-timeout 5s
+        --health-retries 5
     steps:
       # 1. 코드를 임시 컴퓨터로 내려받기
       - name: 코드 체크아웃

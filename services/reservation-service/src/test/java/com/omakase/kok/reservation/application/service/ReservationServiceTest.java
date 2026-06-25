@@ -241,7 +241,7 @@ class ReservationServiceTest {
 
         @Test
         @DisplayName("방문 3일 이상 전 취소 시 전액 환불이 요청된다")
-        void success_fullRefund_threeDaysAhead() {
+        void success_fullRefund_threeDaysAhead() throws Exception {
             UUID userId = UUID.randomUUID();
             UUID storeId = UUID.randomUUID();
             UUID reservationId = UUID.randomUUID();
@@ -272,9 +272,7 @@ class ReservationServiceTest {
             when(paymentFeignClient.getPayment(reservationId)).thenReturn(apiResponse);
             givenTransactionExecutes();
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(redissonClient.getLock(anyString())).thenReturn(rLock);
-            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-            when(rLock.isHeldByCurrentThread()).thenReturn(true);
+            givenLockAcquired();
             when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
 
             CancelReservationRequest cancelRequest = new CancelReservationRequest();
@@ -287,7 +285,7 @@ class ReservationServiceTest {
 
         @Test
         @DisplayName("방문 1~2일 전 취소 시 50% 환불이 요청된다")
-        void success_halfRefund_twoDaysAhead() {
+        void success_halfRefund_twoDaysAhead() throws Exception {
             UUID userId = UUID.randomUUID();
             UUID storeId = UUID.randomUUID();
             UUID reservationId = UUID.randomUUID();
@@ -317,9 +315,7 @@ class ReservationServiceTest {
             when(paymentFeignClient.getPayment(reservationId)).thenReturn(apiResponse);
             givenTransactionExecutes();
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(redissonClient.getLock(anyString())).thenReturn(rLock);
-            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-            when(rLock.isHeldByCurrentThread()).thenReturn(true);
+            givenLockAcquired();
             when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
 
             reservationService.cancelReservation(reservationId, userId, null);
@@ -329,7 +325,7 @@ class ReservationServiceTest {
 
         @Test
         @DisplayName("방문 당일 취소 시 환불이 요청되지 않는다")
-        void success_noRefund_sameDay() {
+        void success_noRefund_sameDay() throws Exception {
             UUID userId = UUID.randomUUID();
             UUID storeId = UUID.randomUUID();
             UUID reservationId = UUID.randomUUID();
@@ -358,9 +354,7 @@ class ReservationServiceTest {
             when(paymentFeignClient.getPayment(reservationId)).thenReturn(apiResponse);
             givenTransactionExecutes();
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(redissonClient.getLock(anyString())).thenReturn(rLock);
-            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-            when(rLock.isHeldByCurrentThread()).thenReturn(true);
+            givenLockAcquired();
             when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
 
             reservationService.cancelReservation(reservationId, userId, null);

@@ -1,6 +1,7 @@
 package com.omakase.kok.reservation.domain.repository;
 
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
+import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
@@ -15,4 +16,10 @@ public interface ReservationSlotRepository extends JpaRepository<ReservationSlot
     List<ReservationSlot> findByStoreIdAndDeletedAtIsNull(UUID storeId);
 
     List<ReservationSlot> findByStoreIdAndSlotDateAndDeletedAtIsNull(UUID storeId, LocalDate slotDate);
+
+    List<ReservationSlot> findByStoreIdAndStatusAndSlotDateGreaterThanEqualAndDeletedAtIsNull(
+            UUID storeId, SlotStatus status, LocalDate from);
+
+    List<ReservationSlot> findByStoreIdAndStatusAndSlotDateAndDeletedAtIsNull(
+            UUID storeId, SlotStatus status, LocalDate slotDate);
 }

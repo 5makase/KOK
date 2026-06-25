@@ -129,7 +129,7 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 log.warn("[Gateway] 만료된 토큰: {} {}", method, path);
                 return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "[AUTH-003] 만료된 토큰입니다.");
             } catch (JwtException e) {
-                log.warn("[Gateway] 위조된 토큰: {} {}", method, path);
+                log.warn("[Gateway] 위조된 토큰: {} {} | {} - {}", method, path, e.getClass().getSimpleName(), e.getMessage());
                 return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "[AUTH-004] 유효하지 않은 토큰입니다.");
             } catch (IllegalArgumentException e) {
                 log.warn("[Gateway] 잘못된 토큰 형식: {} {}", method, path);

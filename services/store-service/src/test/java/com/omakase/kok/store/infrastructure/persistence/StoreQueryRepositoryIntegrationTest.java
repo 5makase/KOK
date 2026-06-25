@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -37,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Import(QueryDslConfig.class)
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = Replace.NONE)
+@Transactional
 class StoreQueryRepositoryIntegrationTest {
 
     @Autowired EntityManager em;

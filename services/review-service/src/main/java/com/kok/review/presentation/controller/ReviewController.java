@@ -93,7 +93,7 @@ public class ReviewController {
     public ResponseEntity<ApiResponse<ReviewUpdateResponseDto>> updateReview(@PathVariable UUID reviewId,
                                                                              @RequestHeader("X-User-Id")UUID userId,
                                                                              @Valid @RequestBody ReviewUpdateRequestDto dto,
-                                                                             @RequestHeader("X-User-Role") String userRole) {
+                                                                             @RequestHeader("X-Role") String userRole) {
         ReviewUpdateResponseDto reviewUpdateResponseDto =  reviewService.updateReview(reviewId,userId,dto,userRole);
         return ResponseEntity.ok(ApiResponse.success(reviewUpdateResponseDto));
     }

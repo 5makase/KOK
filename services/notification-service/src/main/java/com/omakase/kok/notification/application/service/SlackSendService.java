@@ -42,7 +42,7 @@ public class SlackSendService {
     private String resolveSlackId(UUID userId, SlackSendLog slackSendLog) {
         UserResponse user;
         try {
-            user = userServiceClient.getUser(userId).getData();
+            user = userServiceClient.getUser(userId, "MASTER").getData();
         } catch (FeignException e) {
             log.warn("[SlackSendService] User Service 호출 실패. userId={}", userId, e);
             slackSendLog.markAsSkipped();

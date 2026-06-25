@@ -28,6 +28,14 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 
+	// 추적(트레이싱) 기능 — Micrometer Tracing + Brave
+	implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+	// 추적 데이터를 Zipkin 형식으로 보내기
+	implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+	implementation 'com.github.loki4j:loki-logback-appender:1.5.2'
+
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
+	implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
 	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 	implementation 'org.springframework.kafka:spring-kafka'
 

@@ -36,4 +36,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics   # prometheus/metrics는 다음 단계 대비(있어도 무방)
+  tracing:
+    sampling:
+      probability: 1.0                              # 모든 요청 추적 (개발용)
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}   # Zipkin 주소

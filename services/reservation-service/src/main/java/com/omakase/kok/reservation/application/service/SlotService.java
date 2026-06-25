@@ -5,6 +5,7 @@ import com.omakase.kok.reservation.application.dto.CreateSlotRequest;
 import com.omakase.kok.reservation.application.dto.SlotResponse;
 import com.omakase.kok.reservation.application.dto.UpdateSlotRequest;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
+import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
@@ -90,6 +91,17 @@ public class SlotService {
         }
 
         return SlotResponse.from(slot);
+    }
+
+    public List<SlotResponse> getAvailableSlots(UUID storeId, LocalDate date) {
+        List<ReservationSlot> slots = (date != null)
+                ? slotRepository.findByStoreIdAndStatusAndSlotDateAndDeletedAtIsNull(storeId, SlotStatus.OPEN, date)
+                : slotRepository.findByStoreIdAndStatusAndSlotDateGreaterThanEqualAndDeletedAtIsNull(
+                        storeId, SlotStatus.OPEN, LocalDate.now());
+
+        return slots.stream()
+                .map(SlotResponse::from)
+                .toList();
     }
 
     public List<SlotResponse> getSlots(UUID storeId, LocalDate date) {

@@ -7,69 +7,71 @@ spring:
 
   cloud:
     gateway:
-      # 보안 정책: 외부에서 주입된 헤더 제거 후 Gateway에서 재생성
-      default-filters:
-        - RemoveRequestHeader=X-User-Id
-        - RemoveRequestHeader=X-Username
-        - RemoveRequestHeader=X-Role
-        - RemoveRequestHeader=X-User-Role
+      server:
+        webflux:
+          # 보안 정책: 외부에서 주입된 헤더 제거 후 Gateway에서 재생성
+          default-filters:
+            - RemoveRequestHeader=X-User-Id
+            - RemoveRequestHeader=X-Username
+            - RemoveRequestHeader=X-Role
+            - RemoveRequestHeader=X-User-Role
 
-      routes:
-        - id: user-service
-          uri: lb://user-service
-          predicates:
-            - Path=/api/v1/users/**, /api/v1/auth/**, /api/v1/owners/**
-          filters:
-            - name: JwtAuthenticationFilter
+          routes:
+            - id: user-service
+              uri: lb://user-service
+              predicates:
+                - Path=/api/v1/users/**, /api/v1/auth/**, /api/v1/owners/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: store-service
-          uri: lb://store-service
-          predicates:
-            - Path=/api/v1/stores/**, /api/v1/categories/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: store-service
+              uri: lb://store-service
+              predicates:
+                - Path=/api/v1/stores/**, /api/v1/categories/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: store-service-admin
-          uri: lb://store-service
-          predicates:
-            - Path=/api/v1/admin/stores/**, /api/v1/admin/categories/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: store-service-admin
+              uri: lb://store-service
+              predicates:
+                - Path=/api/v1/admin/stores/**, /api/v1/admin/categories/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: reservation-service
-          uri: lb://reservation-service
-          predicates:
-            - Path=/api/v1/reservations/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: reservation-service
+              uri: lb://reservation-service
+              predicates:
+                - Path=/api/v1/reservations/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: waiting-service
-          uri: lb://waiting-service
-          predicates:
-            - Path=/api/v1/waitings/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: waiting-service
+              uri: lb://waiting-service
+              predicates:
+                - Path=/api/v1/waitings/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: notification-service
-          uri: lb://notification-service
-          predicates:
-            - Path=/api/v1/notifications/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: notification-service
+              uri: lb://notification-service
+              predicates:
+                - Path=/api/v1/notifications/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: review-service
-          uri: lb://review-service
-          predicates:
-            - Path=/api/v1/reviews/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: review-service
+              uri: lb://review-service
+              predicates:
+                - Path=/api/v1/reviews/**
+              filters:
+                - name: JwtAuthenticationFilter
 
-        - id: payment-service
-          uri: lb://payment-service
-          predicates:
-            - Path=/api/v1/payments/**
-          filters:
-            - name: JwtAuthenticationFilter
+            - id: payment-service
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/v1/payments/**
+              filters:
+                - name: JwtAuthenticationFilter
 
 jwt:
   secret: ${JWT_SECRET}

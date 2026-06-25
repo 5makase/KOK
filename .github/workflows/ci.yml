@@ -34,5 +34,4 @@ jobs:
         env:
           # CI 테스트 전용 더미 값 (실제 운영에선 환경변수로 주입됨)
           JWT_SECRET: dGVzdC1zZWNyZXQta2V5LWZvci1jaS1vbmx5LW5vdC1mb3ItcHJvZHVjdGlvbg==
-          SLACK_WEBHOOK_URL: https://hooks.slack.com/services/dummy/dummy/dummy
-          SLACK_TOKEN: xoxb-dummy-token-for-ci
+          SLACK_BOT_TOKEN: xoxb-dummy-token-for-ci

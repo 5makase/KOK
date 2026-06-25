@@ -38,6 +38,7 @@ feign:
 logging:
   level:
     com.omakase.kok.reservation.infrastructure.client: DEBUG
+    org.springframework.security: DEBUG
 
 eureka:
   client:

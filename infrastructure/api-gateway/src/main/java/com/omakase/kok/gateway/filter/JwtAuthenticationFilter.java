@@ -66,14 +66,25 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             String path = request.getPath().value();
             String method = request.getMethod().name();
 
+            // 외부 헤더 인젝션 방지: 화이트리스트 경로 포함 모든 요청에서 X-User-* 헤더 제거
+            ServerHttpRequest strippedRequest = request.mutate()
+                    .headers(headers -> {
+                        headers.remove("X-User-Id");
+                        headers.remove("X-Username");
+                        headers.remove("X-Role");
+                        headers.remove("X-User-Role");
+                    })
+                    .build();
+            ServerWebExchange strippedExchange = exchange.mutate().request(strippedRequest).build();
+
             // 인증 제외 경로 확인
             if (isWhiteListed(path, method)) {
                 log.debug("[Gateway] 인증 제외 경로 통과: {} {}", method, path);
-                return chain.filter(exchange);
+                return chain.filter(strippedExchange);
             }
 
             // Authorization Header 확인
-            String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            String authHeader = strippedRequest.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
 
             if (authHeader == null || authHeader.isBlank()) {
                 log.warn("[Gateway] Authorization 헤더 없음: {} {}", method, path);
@@ -110,20 +121,21 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 log.debug("[Gateway] 인증 성공 - userId: {}, role: {}, path: {} {}", userId, role, method, path);
 
                 // 검증된 사용자 정보를 헤더로 내부 서비스에 전달 (정책 3.4)
-                // application.yml에서 기존 헤더를 RemoveRequestHeader로 먼저 제거한 후 재생성
-                ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
-                        .header("X-User-Id", userId)
-                        .header("X-Username", username)
-                        .header("X-Role", role)
+                ServerHttpRequest mutatedRequest = strippedRequest.mutate()
+                        .headers(headers -> {
+                            headers.add("X-User-Id", userId);
+                            headers.add("X-Username", username);
+                            headers.add("X-Role", role);
+                        })
                         .build();
 
-                return chain.filter(exchange.mutate().request(mutatedRequest).build());
+                return chain.filter(strippedExchange.mutate().request(mutatedRequest).build());
 
             } catch (ExpiredJwtException e) {
                 log.warn("[Gateway] 만료된 토큰: {} {}", method, path);
                 return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "[AUTH-003] 만료된 토큰입니다.");
             } catch (JwtException e) {
-                log.warn("[Gateway] 위조된 토큰: {} {}", method, path);
+                log.warn("[Gateway] 위조된 토큰: {} {} | {} - {}", method, path, e.getClass().getSimpleName(), e.getMessage());
                 return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "[AUTH-004] 유효하지 않은 토큰입니다.");
             } catch (IllegalArgumentException e) {
                 log.warn("[Gateway] 잘못된 토큰 형식: {} {}", method, path);

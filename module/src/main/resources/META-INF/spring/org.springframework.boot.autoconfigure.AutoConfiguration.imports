@@ -2,3 +2,4 @@
 # @SpringBootApplication 스캔 범위 밖에 있는 공통 모듈 빈을 자동 등록
 # 개별 서비스에서 별도 설정 없이 공통 설정(AuditorAware 등) 적용
 com.omakase.kok.common.config.JpaConfig
+com.omakase.kok.common.advice.GlobalExceptionHandler

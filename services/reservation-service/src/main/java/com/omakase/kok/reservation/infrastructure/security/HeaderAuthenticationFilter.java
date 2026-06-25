@@ -13,13 +13,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class HeaderAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(HeaderAuthenticationFilter.class);
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String userId = request.getHeader(AuthConstants.USER_ID);
         String role = request.getHeader(AuthConstants.ROLE);
+        String maskedUserId = (userId != null) ? userId.substring(0, Math.min(8, userId.length())) + "***" : "null";
+        log.debug("[HeaderAuthFilter] X-User-Id={}, X-Role={}, path={}", maskedUserId, role, request.getRequestURI());
 
         if (userId != null && !userId.isBlank() && role != null && !role.isBlank()) {
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(

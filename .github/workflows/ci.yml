@@ -12,6 +12,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+
+
     steps:
       # 1. 코드를 임시 컴퓨터로 내려받기
       - name: 코드 체크아웃

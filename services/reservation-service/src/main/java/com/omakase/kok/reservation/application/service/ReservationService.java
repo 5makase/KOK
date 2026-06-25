@@ -284,17 +284,38 @@ public class ReservationService {
 
         // DB 커밋 전 재검증으로 동시 취소 요청 방어
         String cancelReason = request != null ? request.getCancelReason() : null;
-        ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
-            Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
-            if (!r.isCancellable()) {
-                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
+        ReservationResponse response;
+        try {
+            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
-            r.cancel("USER", cancelReason);
-            ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
-            s.increaseCapacity(r.getReservationSize());
-            outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
-            return ReservationResponse.from(r);
-        });
+            response = new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+                if (!r.isCancellable()) {
+                    throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+                }
+                r.cancel("USER", cancelReason);
+                ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                s.increaseCapacity(r.getReservationSize());
+                outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+                return ReservationResponse.from(r);
+            });
+            try {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                        .addAndGet(reservation.getReservationSize());
+            } catch (Exception e) {
+                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
 
         // DB 커밋 이후 환불 처리 (DB가 취소 상태의 원천)
         if (slot.isDepositRequired() && finalPayment != null) {
@@ -306,14 +327,6 @@ public class ReservationService {
                     log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
                 }
             }
-        }
-
-        // Redis 잔여 인원 복구 실패 시 로그 기록 (슬롯 용량 불일치 방지)
-        try {
-            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
-                    .addAndGet(reservation.getReservationSize());
-        } catch (Exception e) {
-            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
         }
 
         return response;
@@ -344,17 +357,38 @@ public class ReservationService {
 
         // DB 커밋 전 재검증으로 동시 취소 요청 방어
         String cancelReason = request != null ? request.getCancelReason() : null;
-        ReservationResponse response = new TransactionTemplate(transactionManager).execute(status -> {
-            Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
-            if (!r.isCancellable()) {
-                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
+        ReservationResponse response;
+        try {
+            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
-            r.cancel("OWNER", cancelReason);
-            ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
-            s.increaseCapacity(r.getReservationSize());
-            outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
-            return ReservationResponse.from(r);
-        });
+            response = new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+                if (!r.isCancellable()) {
+                    throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+                }
+                r.cancel("OWNER", cancelReason);
+                ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                s.increaseCapacity(r.getReservationSize());
+                outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+                return ReservationResponse.from(r);
+            });
+            try {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                        .addAndGet(reservation.getReservationSize());
+            } catch (Exception e) {
+                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
 
         // DB 커밋 이후 전액 환불 처리
         if (slot.isDepositRequired() && finalPayment != null) {
@@ -363,14 +397,6 @@ public class ReservationService {
             } catch (Exception e) {
                 log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
             }
-        }
-
-        // Redis 잔여 인원 복구 실패 시 로그 기록
-        try {
-            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
-                    .addAndGet(reservation.getReservationSize());
-        } catch (Exception e) {
-            log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
         }
 
         return response;

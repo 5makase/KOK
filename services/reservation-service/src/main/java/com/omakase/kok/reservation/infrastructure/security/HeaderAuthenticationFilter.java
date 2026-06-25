@@ -25,7 +25,8 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String userId = request.getHeader(AuthConstants.USER_ID);
         String role = request.getHeader(AuthConstants.ROLE);
-        log.debug("[HeaderAuthFilter] X-User-Id={}, X-Role={}, path={}", userId, role, request.getRequestURI());
+        String maskedUserId = (userId != null) ? userId.substring(0, Math.min(8, userId.length())) + "***" : "null";
+        log.debug("[HeaderAuthFilter] X-User-Id={}, X-Role={}, path={}", maskedUserId, role, request.getRequestURI());
 
         if (userId != null && !userId.isBlank() && role != null && !role.isBlank()) {
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(

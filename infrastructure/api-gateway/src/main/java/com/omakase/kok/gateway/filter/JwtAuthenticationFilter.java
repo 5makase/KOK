@@ -66,14 +66,25 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             String path = request.getPath().value();
             String method = request.getMethod().name();
 
+            // 외부 헤더 인젝션 방지: 화이트리스트 경로 포함 모든 요청에서 X-User-* 헤더 제거
+            ServerHttpRequest strippedRequest = request.mutate()
+                    .headers(headers -> {
+                        headers.remove("X-User-Id");
+                        headers.remove("X-Username");
+                        headers.remove("X-Role");
+                        headers.remove("X-User-Role");
+                    })
+                    .build();
+            ServerWebExchange strippedExchange = exchange.mutate().request(strippedRequest).build();
+
             // 인증 제외 경로 확인
             if (isWhiteListed(path, method)) {
                 log.debug("[Gateway] 인증 제외 경로 통과: {} {}", method, path);
-                return chain.filter(exchange);
+                return chain.filter(strippedExchange);
             }
 
             // Authorization Header 확인
-            String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            String authHeader = strippedRequest.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
 
             if (authHeader == null || authHeader.isBlank()) {
                 log.warn("[Gateway] Authorization 헤더 없음: {} {}", method, path);
@@ -110,20 +121,15 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 log.debug("[Gateway] 인증 성공 - userId: {}, role: {}, path: {} {}", userId, role, method, path);
 
                 // 검증된 사용자 정보를 헤더로 내부 서비스에 전달 (정책 3.4)
-                // 외부에서 주입된 헤더 제거 후 JWT 기반 값으로 재설정 (헤더 인젝션 방지)
-                ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
+                ServerHttpRequest mutatedRequest = strippedRequest.mutate()
                         .headers(headers -> {
-                            headers.remove("X-User-Id");
-                            headers.remove("X-Username");
-                            headers.remove("X-Role");
-                            headers.remove("X-User-Role");
                             headers.add("X-User-Id", userId);
                             headers.add("X-Username", username);
                             headers.add("X-Role", role);
                         })
                         .build();
 
-                return chain.filter(exchange.mutate().request(mutatedRequest).build());
+                return chain.filter(strippedExchange.mutate().request(mutatedRequest).build());
 
             } catch (ExpiredJwtException e) {
                 log.warn("[Gateway] 만료된 토큰: {} {}", method, path);

@@ -57,7 +57,7 @@ public class JwtUtil {
     }
 
     public String getUserId(Claims claims) {
-        return claims.get("userId", String.class);
+        return claims.getSubject();
     }
 
     public String getUsername(Claims claims) {

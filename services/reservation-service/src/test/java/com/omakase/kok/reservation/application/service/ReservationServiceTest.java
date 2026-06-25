@@ -272,6 +272,9 @@ class ReservationServiceTest {
             when(paymentFeignClient.getPayment(reservationId)).thenReturn(apiResponse);
             givenTransactionExecutes();
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(redissonClient.getLock(anyString())).thenReturn(rLock);
+            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+            when(rLock.isHeldByCurrentThread()).thenReturn(true);
             when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
 
             CancelReservationRequest cancelRequest = new CancelReservationRequest();
@@ -314,6 +317,9 @@ class ReservationServiceTest {
             when(paymentFeignClient.getPayment(reservationId)).thenReturn(apiResponse);
             givenTransactionExecutes();
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(redissonClient.getLock(anyString())).thenReturn(rLock);
+            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+            when(rLock.isHeldByCurrentThread()).thenReturn(true);
             when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
 
             reservationService.cancelReservation(reservationId, userId, null);
@@ -352,6 +358,9 @@ class ReservationServiceTest {
             when(paymentFeignClient.getPayment(reservationId)).thenReturn(apiResponse);
             givenTransactionExecutes();
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(redissonClient.getLock(anyString())).thenReturn(rLock);
+            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+            when(rLock.isHeldByCurrentThread()).thenReturn(true);
             when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
 
             reservationService.cancelReservation(reservationId, userId, null);

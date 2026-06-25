@@ -53,8 +53,11 @@ public class NotificationEventService {
         }
 
         // 4. 미읽음 카운트 증가 (TX 커밋 후)
-        redisUnreadCountService.increment(userId);
-
+        try {
+            redisUnreadCountService.increment(userId);
+        } catch (Exception e) {
+            log.warn("[NotificationEventService] 미읽음 카운트 증가 실패. userId={}", userId, e);
+        }
         // 5. Slack 발송
         slackSendService.send(userId, result.notification().getMessage(), result.slackSendLog());
     }

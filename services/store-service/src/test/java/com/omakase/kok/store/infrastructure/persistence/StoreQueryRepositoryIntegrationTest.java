@@ -1,5 +1,6 @@
 package com.omakase.kok.store.infrastructure.persistence;
 
+import com.omakase.kok.common.config.JpaConfig;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreAmenity;
 import com.omakase.kok.store.domain.entity.StoreCategory;
@@ -35,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * DISTANCE 정렬 + withinRadius 복합 테스트는 PostgreSQL 전용 파일(StoreQueryRepositoryDistanceIntegrationTest) 참고
  */
 @DataJpaTest
-@Import(QueryDslConfig.class)
+@Import({QueryDslConfig.class, JpaConfig.class})
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 @Transactional

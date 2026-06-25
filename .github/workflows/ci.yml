@@ -1,7 +1,5 @@
-# 워크플로우 이름 (GitHub 화면에 표시)
 name: CI Pipeline
 
-# 언제 실행할지
 on:
   push:
     branches: [ main, develop ]
@@ -13,52 +11,50 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
+      # Redis 서비스 설정
       redis:
         image: redis:latest
         ports:
           - 6379:6379
-    postgres:
-      image: postgis/postgis:15-3.3 # 일반 버전을 쓴다면 postgres:15 등
-      env:
-        POSTGRES_USER: user       # application-test.yml에 설정된 DB 계정
-        POSTGRES_PASSWORD: password # application-test.yml에 설정된 DB 비밀번호
-        POSTGRES_DB: kok_db       # application-test.yml에 설정된 DB 이름
-      ports:
-        - 5432:5432
-      options: >-
-        --health-cmd pg_isready
-        --health-interval 10s
-        --health-timeout 5s
-        --health-retries 5
+      # PostgreSQL 서비스 설정 (들여쓰기 수정 완료)
+      postgres:
+        image: postgis/postgis:15-3.3
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: kok_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      # 1. 코드를 임시 컴퓨터로 내려받기
       - name: 코드 체크아웃
         uses: actions/checkout@v4
 
-      # 2. JDK 17 설치 및 빌드 캐싱 (속도 향상)
       - name: JDK 17 설치
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle' # 의존성 캐시 추가 (강력 추천)
+          cache: 'gradle'
 
-      # 3. gradlew 실행 권한 부여
       - name: gradlew 권한 부여
         run: chmod +x ./gradlew
 
-      # 4. 빌드 + 테스트 (clean을 추가하여 이전 빌드 찌꺼기 제거)
       - name: 빌드 및 테스트
         run: ./gradlew clean build
         env:
           JWT_SECRET: dGVzdC1zZWNyZXQta2V5LWZvci1jaS1vbmx5LW5vdC1mb3ItcHJvZHVjdGlvbg==
           SLACK_BOT_TOKEN: xoxb-dummy-token-for-ci
 
-      # 5. 테스트 실패 시 리포트 저장 (디버깅 용이)
       - name: 테스트 결과 리포트 저장
         uses: actions/upload-artifact@v4
-        if: always() # 테스트가 실패하더라도 리포트를 저장하도록 설정
+        if: always()
         with:
           name: test-reports
           path: '**/build/reports/tests/test/'
-          retention-days: 5 # 5일 뒤 자동 삭제
+          retention-days: 5

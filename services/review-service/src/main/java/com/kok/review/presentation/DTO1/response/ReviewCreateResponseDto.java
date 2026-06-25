@@ -12,14 +12,14 @@ import java.util.UUID;
 @Getter
 @Builder
 @AllArgsConstructor
-public class ReviewResponseDto {
+public class ReviewCreateResponseDto {
     private UUID storeId;
     private UUID reservationId;
     private BigDecimal rating;
     private LocalDateTime createdAt;
 
-    public static ReviewResponseDto form(Review review) {
-        return ReviewResponseDto.builder()
+    public static ReviewCreateResponseDto form(Review review) {
+        return ReviewCreateResponseDto.builder()
                 .storeId(review.getStoreId())
                 .reservationId(review.getReservationId())
                 .rating(review.getRating())

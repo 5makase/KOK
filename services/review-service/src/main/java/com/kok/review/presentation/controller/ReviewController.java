@@ -1,14 +1,20 @@
 package com.kok.review.presentation.controller;
 
 import com.kok.review.application.service.ReviewService;
+import com.kok.review.presentation.DTO1.request.ReviewSortType;
 import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
 import com.kok.review.presentation.DTO1.response.ReviewDeletedResponseDto;
 import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
-import com.kok.review.presentation.DTO1.response.ReviewResponseDto;
+import com.kok.review.presentation.DTO1.response.ReviewCreateResponseDto;
+import com.kok.review.presentation.DTO1.response.ReviewGetResponseDto;
 import com.kok.review.presentation.DTO1.response.ReviewUpdateResponseDto;
 import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.common.dto.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +26,69 @@ import java.util.UUID;
 public class ReviewController {
     private final ReviewService reviewService;
 
+    /**
+     * 내 리뷰 조회
+     * @param sort
+     * @param photoOnly
+     * @param page
+     * @param size
+     * @return
+     */
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<PageResponse<ReviewGetResponseDto>>> getMyReviews(@RequestHeader("X-User-Id") UUID userId,
+                                                                                      @RequestParam(defaultValue = "LATEST") ReviewSortType sort,
+                                                                                      @RequestParam(defaultValue = "false") boolean photoOnly,
+                                                                                      @RequestParam(defaultValue = "0") int page,
+                                                                                      @RequestParam(defaultValue = "10") int size){
+        int safeSize = Math.min(size, 50);   //size ~ 최대 50개 까지
+        Pageable pageable = PageRequest.of(page, safeSize);
+        Page<ReviewGetResponseDto> result = reviewService.getMyReviews(userId, sort, photoOnly, pageable);
+        return ResponseEntity.ok(
+                ApiResponse.success(PageResponse.from(result)));
+    }
+
+    /**
+     * 리뷰 목록 조회
+     * @param storeId
+     * @param sort
+     * @param photoOnly
+     * @param page
+     * @param size
+     * @return
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<PageResponse<ReviewGetResponseDto>>> getReviews(@RequestParam UUID storeId,
+                                                                                      @RequestParam(defaultValue = "LATEST") ReviewSortType sort,
+                                                                                      @RequestParam(defaultValue = "false") boolean photoOnly,
+                                                                                      @RequestParam(defaultValue = "0") int page,
+                                                                                      @RequestParam(defaultValue = "10") int size){
+        int safeSize = Math.min(size, 50);   //size ~ 최대 50개 까지
+        Pageable pageable = PageRequest.of(page, safeSize);
+
+        Page<ReviewGetResponseDto> result = reviewService.getReviews(storeId, sort, photoOnly, pageable);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(PageResponse.from(result)));   // Page → PageResponse
+    }
+    /**
+     * 리뷰 상세 조회
+     * @param reviewId
+     * @return
+     */
+    @GetMapping("/{reviewId}")
+    public ResponseEntity<ApiResponse<ReviewGetResponseDto>> getReview(@PathVariable UUID reviewId) {
+        ReviewGetResponseDto reviewGetResponseDto = reviewService.getReview(reviewId);
+        return ResponseEntity.ok(ApiResponse.success(reviewGetResponseDto));
+    }
+
+    /**
+     * 리뷰 수정
+     * @param reviewId
+     * @param userId
+     * @param dto
+     * @param userRole
+     * @return
+     */
     @PutMapping("/{reviewId}")
     public ResponseEntity<ApiResponse<ReviewUpdateResponseDto>> updateReview(@PathVariable UUID reviewId,
                                                                              @RequestHeader("X-User-Id")UUID userId,
@@ -47,8 +116,8 @@ public class ReviewController {
      * @return
      */
     @PostMapping
-    public ResponseEntity<ApiResponse<ReviewResponseDto>> createReview(@Valid @RequestBody ReviewRequestDto requestDto, @RequestHeader("X-User-Id")UUID userId) {
-        ReviewResponseDto reviewResponseDto = reviewService.createReview(requestDto,userId);
+    public ResponseEntity<ApiResponse<ReviewCreateResponseDto>> createReview(@Valid @RequestBody ReviewRequestDto requestDto, @RequestHeader("X-User-Id")UUID userId) {
+        ReviewCreateResponseDto reviewResponseDto = reviewService.createReview(requestDto,userId);
         return ResponseEntity.ok(ApiResponse.success(reviewResponseDto));
     }
 }

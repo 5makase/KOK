@@ -19,7 +19,7 @@ public class OpenApiConfig {
                         .description("알림 조회, 읽음 처리, 미읽음 카운트 API")
                         .version("v1"))
                 .addSecurityItem(new SecurityRequirement()
-                        .addList("X-User-Id").addList("X-User-Role"))
+                        .addList("X-User-Id"))
                 .components(new Components()
                         .addSecuritySchemes("X-User-Id", new SecurityScheme()
                                 .type(SecurityScheme.Type.APIKEY)

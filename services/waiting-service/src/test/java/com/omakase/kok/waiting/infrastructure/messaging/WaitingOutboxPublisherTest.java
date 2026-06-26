@@ -83,8 +83,8 @@ class WaitingOutboxPublisherTest {
     }
 
     @Test
-    @DisplayName("최대 재시도 횟수에 도달한 실패 이벤트는 DEAD_LETTER로 전이한다")
-    void publishPendingEvents_deadLettersPoisonEvent() {
+    @DisplayName("Kafka 발행 실패 시 PENDING 이벤트는 FAILED로 전이한다")
+    void publishPendingEvents_marksPendingEventAsFailedWhenKafkaPublishFails() {
         WaitingOutboxEvent pendingEvent = WaitingOutboxEvent.builder()
                 .waiting(waiting())
                 .eventType(WaitingEventType.WAITING_REGISTERED)
@@ -109,6 +109,36 @@ class WaitingOutboxPublisherTest {
         assertThat(pendingEvent.getStatus()).isEqualTo(OutboxStatus.FAILED);
         assertThat(pendingEvent.getRetryCount()).isEqualTo(1);
         assertThat(pendingEvent.getFailedReason()).isEqualTo("kafka down");
+    }
+
+    @Test
+    @DisplayName("Kafka 재발행도 실패해 최대 재시도 횟수에 도달하면 DEAD_LETTER로 전이한다")
+    void retryFailedEvents_deadLettersEventWhenKafkaPublishFailsAgain() {
+        WaitingOutboxEvent failedEvent = WaitingOutboxEvent.builder()
+                .waiting(waiting())
+                .eventType(WaitingEventType.WAITING_REGISTERED)
+                .payload("{\"waitingId\":\"test\"}")
+                .build();
+        failedEvent.fail("kafka down");
+
+        given(waitingOutboxEventRepository.findByStatusOrderByCreatedAtAsc(eq(OutboxStatus.FAILED), any(Pageable.class)))
+                .willReturn(List.of(failedEvent));
+        CompletableFuture<SendResult<String, String>> failedFuture = new CompletableFuture<>();
+        failedFuture.completeExceptionally(new RuntimeException("kafka still down"));
+        given(waitingKafkaTemplate.send(any(String.class), any(String.class), any(String.class))).willReturn(failedFuture);
+
+        WaitingOutboxPublisher publisher = new WaitingOutboxPublisher(
+                waitingOutboxEventRepository,
+                waitingKafkaTemplate,
+                new WaitingKafkaProperties("waiting.events.v1", 1, (short) 1),
+                new WaitingKafkaPublisherProperties(5000L, 60000L, 3000L, 100)
+        );
+
+        publisher.retryFailedEvents();
+
+        assertThat(failedEvent.getStatus()).isEqualTo(OutboxStatus.DEAD_LETTER);
+        assertThat(failedEvent.getRetryCount()).isEqualTo(2);
+        assertThat(failedEvent.getFailedReason()).isEqualTo("kafka still down");
     }
 
     private Waiting waiting() {

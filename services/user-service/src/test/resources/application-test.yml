@@ -9,6 +9,8 @@ spring:
     hibernate:
       ddl-auto: create-drop
     database-platform: org.hibernate.dialect.H2Dialect
+jwt:
+  secret: test-secret-key-for-testing-only-must-be-at-least-32-bytes
 
 eureka:
   client:

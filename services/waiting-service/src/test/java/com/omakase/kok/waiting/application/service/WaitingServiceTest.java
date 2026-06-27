@@ -150,6 +150,56 @@ class WaitingServiceTest {
     }
 
     @Test
+    @DisplayName("최대 대기 팀 수를 초과하면 웨이팅 등록에 실패한다")
+    void createWaiting_failWhenCapacityExceeded() {
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        WaitingCreateRequest request = waitingCreateRequest(storeId, 2, null);
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 2, 10, true, 15));
+        given(waitingQueueRedisStore.register(eq(storeId), eq(userId), any(UUID.class), eq(2), any(LocalDate.class)))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> waitingService.createWaiting(userId, request))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CAPACITY_EXCEEDED));
+
+        then(waitingRepository).should(never()).saveAndFlush(any(Waiting.class));
+        then(waitingOutboxEventRepository).should(never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DB 저장 실패 후 Redis 롤백이 실패해도 원래 저장 예외를 유지한다")
+    void createWaiting_keepsOriginalExceptionWhenQueueRollbackFailsAfterDbSaveFailure() {
+        UUID storeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        WaitingCreateRequest request = waitingCreateRequest(storeId, 2, null);
+        RuntimeException dbException = new RuntimeException("db down");
+        RuntimeException redisException = new RuntimeException("redis down");
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
+        given(waitingSettingService.getStoreWaitingValues(storeId))
+                .willReturn(new StoreWaitingValues(true, 50, 10, true, 15));
+        given(waitingQueueRedisStore.register(eq(storeId), eq(userId), any(UUID.class), eq(50), any(LocalDate.class)))
+                .willReturn(Optional.of(new WaitingRegistration(1L, 1L)));
+        given(waitingRepository.saveAndFlush(any(Waiting.class))).willThrow(dbException);
+        org.mockito.Mockito.doThrow(redisException)
+                .when(waitingQueueRedisStore).remove(eq(storeId), eq(userId), any(UUID.class), any(LocalDate.class));
+
+        assertThatThrownBy(() -> waitingService.createWaiting(userId, request))
+                .isSameAs(dbException)
+                .satisfies(exception -> assertThat(exception.getSuppressed()).contains(redisException));
+
+        then(waitingQueueRedisStore).should()
+                .remove(eq(storeId), eq(userId), any(UUID.class), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should(never()).save(any());
+    }
+
+    @Test
     @DisplayName("내 웨이팅 목록 조회는 상태 필터와 현재 순번을 포함해 응답한다")
     void getMyWaitings_success() {
         UUID userId = UUID.randomUUID();

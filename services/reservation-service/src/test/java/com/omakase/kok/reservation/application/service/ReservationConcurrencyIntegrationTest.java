@@ -1,6 +1,8 @@
 package com.omakase.kok.reservation.application.service;
 
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
+import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
@@ -9,6 +11,7 @@ import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -132,6 +135,40 @@ class ReservationConcurrencyIntegrationTest {
         assertThat(redisRemaining)
                 .as("Redis 잔여 인원이 DB 잔여 인원과 일치해야 한다")
                 .isEqualTo(updated.getRemainingCapacity());
+    }
+
+    @Nested
+    @DisplayName("취소 후 DB/Redis 잔여 인원 정합성")
+    class CancelReservationConsistency {
+
+        @Test
+        @DisplayName("예약 취소 후 DB remainingCapacity와 Redis 잔여 인원이 일치한다")
+        void cancel_restoresCapacityInDbAndRedis() {
+            UUID userId = UUID.randomUUID();
+            int reservationSize = 2;
+
+            // 예약 생성 (size=2) → DB remainingCapacity=2, Redis=2
+            CreateReservationRequest req = buildRequest(slot.getSlotId(), reservationSize, "취소테스터", "010-9999-9999");
+            ReservationResponse created = reservationService.createReservation(req, userId);
+
+            ReservationSlot afterCreate = slotRepository.findBySlotIdAndDeletedAtIsNull(slot.getSlotId()).orElseThrow();
+            assertThat(afterCreate.getRemainingCapacity()).isEqualTo(4 - reservationSize);
+            long redisAfterCreate = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).get();
+            assertThat(redisAfterCreate).isEqualTo(4 - reservationSize);
+
+            // 예약 취소 → DB remainingCapacity=4, Redis=4
+            reservationService.cancelReservation(created.getReservationId(), userId, null);
+
+            ReservationSlot afterCancel = slotRepository.findBySlotIdAndDeletedAtIsNull(slot.getSlotId()).orElseThrow();
+            assertThat(afterCancel.getRemainingCapacity())
+                    .as("취소 후 DB 잔여 인원이 원래대로 복구되어야 한다")
+                    .isEqualTo(4);
+
+            long redisAfterCancel = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).get();
+            assertThat(redisAfterCancel)
+                    .as("취소 후 Redis 잔여 인원이 DB와 일치해야 한다")
+                    .isEqualTo(afterCancel.getRemainingCapacity());
+        }
     }
 
     private CreateReservationRequest buildRequest(UUID slotId, int size, String bookerName, String bookerPhone) {

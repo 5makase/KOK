@@ -27,7 +27,7 @@
           </elementProp>
           <elementProp name="userCsv" elementType="Argument">
             <stringProp name="Argument.name">userCsv</stringProp>
-            <stringProp name="Argument.value">${__P(userCsv,/Users/hyeeun/Documents/workspace/KOK/jmeter/waiting/users.csv)}</stringProp>
+            <stringProp name="Argument.value">${__P(userCsv,jmeter/waiting/users.csv)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
         </collectionProp>

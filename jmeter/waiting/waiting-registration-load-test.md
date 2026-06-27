@@ -59,7 +59,7 @@ jmeter/waiting/results/waiting-registration-{threads}-{rampUp}-{loops}.jtl
 jmeter/waiting/results/html-{threads}-{rampUp}-{loops}/index.html
 ```
 
-직접 `jmeter` 명령을 실행하려면 아래처럼 실행한다.
+직접 `jmeter` 명령을 실행하려면 테스트 사용자 CSV를 준비한 뒤 아래처럼 실행한다.
 
 ```bash
 jmeter -n \
@@ -67,7 +67,7 @@ jmeter -n \
   -Jhost=localhost \
   -Jport=8004 \
   -JstoreId=49e778c5-522c-4cfd-86a9-57f5e9b7fab4 \
-  -JuserCsv=/Users/hyeeun/Documents/workspace/KOK/jmeter/waiting/users.csv \
+  -JuserCsv=jmeter/waiting/users.csv \
   -Jthreads=50 \
   -JrampUp=10 \
   -Jloops=1 \

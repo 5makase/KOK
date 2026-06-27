@@ -30,6 +30,17 @@ if [[ "${USER_CSV}" == "${GENERATED_USER_CSV}" ]]; then
   for ((i = 1; i <= TOTAL_USERS; i++)); do
     uuidgen | tr '[:upper:]' '[:lower:]' >> "${USER_CSV}"
   done
+else
+  if [[ ! -f "${USER_CSV}" ]]; then
+    echo "USER_CSV file not found: ${USER_CSV}" >&2
+    exit 1
+  fi
+
+  USER_ROWS=$(( $(wc -l < "${USER_CSV}") - 1 ))
+  if (( USER_ROWS < TOTAL_USERS )); then
+    echo "USER_CSV has ${USER_ROWS} data rows, but ${TOTAL_USERS} are required." >&2
+    exit 1
+  fi
 fi
 
 jmeter -n \

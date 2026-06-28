@@ -94,7 +94,22 @@ public class ReservationService {
 
             if (remaining < 0) {
                 capacityKey.addAndGet(request.getReservationSize());
-                throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+
+                // Redis 복구 실패 등으로 Redis < DB 불일치가 발생한 경우:
+                // 락 안에서 이미 fresh read한 DB 값으로 재동기화 후 재시도
+                int dbRemaining = slot.getRemainingCapacity();
+                if (dbRemaining >= request.getReservationSize()) {
+                    log.warn("Redis-DB 잔여 인원 불일치 감지 - slotId: {}, redis: {}, db: {}. DB 기준으로 재동기화",
+                            request.getSlotId(), remaining + request.getReservationSize(), dbRemaining);
+                    capacityKey.set(dbRemaining);
+                    remaining = capacityKey.addAndGet(-request.getReservationSize());
+                    if (remaining < 0) {
+                        capacityKey.addAndGet(request.getReservationSize());
+                        throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+                    }
+                } else {
+                    throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+                }
             }
 
             if (!slot.isDepositRequired()) {

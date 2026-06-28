@@ -95,13 +95,20 @@ public class ReservationService {
             if (remaining < 0) {
                 capacityKey.addAndGet(request.getReservationSize());
 
-                // Redis 복구 실패 등으로 Redis < DB 불일치가 발생한 경우:
-                // 락 안에서 이미 fresh read한 DB 값으로 재동기화 후 재시도
+                // Redis 복구 실패로 Redis < DB 불일치가 발생한 경우 재동기화:
+                // DB remaining은 CONFIRMED 기준이고 PAYMENT_PENDING은 반영 안 되어 있으므로
+                // effectiveRemaining = DB remaining - PAYMENT_PENDING 합계로 실제 가용 인원 계산
                 int dbRemaining = slot.getRemainingCapacity();
-                if (dbRemaining >= request.getReservationSize()) {
-                    log.warn("Redis-DB 잔여 인원 불일치 감지 - slotId: {}, redis: {}, db: {}. DB 기준으로 재동기화",
-                            request.getSlotId(), remaining + request.getReservationSize(), dbRemaining);
-                    capacityKey.set(dbRemaining);
+                int pendingSize = reservationRepository
+                        .findBySlotIdAndStatusInAndDeletedAtIsNull(
+                                slot.getSlotId(), List.of(ReservationStatus.PAYMENT_PENDING))
+                        .stream().mapToInt(Reservation::getReservationSize).sum();
+                int effectiveRemaining = dbRemaining - pendingSize;
+
+                if (effectiveRemaining >= request.getReservationSize()) {
+                    log.warn("Redis-DB 잔여 인원 불일치 감지 - slotId: {}, redis: {}, effective: {}. 재동기화",
+                            request.getSlotId(), remaining + request.getReservationSize(), effectiveRemaining);
+                    capacityKey.set(effectiveRemaining);
                     remaining = capacityKey.addAndGet(-request.getReservationSize());
                     if (remaining < 0) {
                         capacityKey.addAndGet(request.getReservationSize());
@@ -311,9 +318,13 @@ public class ReservationService {
                 if (!r.isCancellable()) {
                     throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
                 }
+                boolean wasConfirmed = r.getStatus() == ReservationStatus.CONFIRMED;
                 r.cancel("USER", cancelReason);
-                ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
-                s.increaseCapacity(r.getReservationSize());
+                // PAYMENT_PENDING은 DB remaining_capacity를 감소시킨 적 없으므로 복구하지 않음
+                if (wasConfirmed) {
+                    ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                    s.increaseCapacity(r.getReservationSize());
+                }
                 outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
                 return ReservationResponse.from(r);
             });
@@ -384,9 +395,13 @@ public class ReservationService {
                 if (!r.isCancellable()) {
                     throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
                 }
+                boolean wasConfirmed = r.getStatus() == ReservationStatus.CONFIRMED;
                 r.cancel("OWNER", cancelReason);
-                ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
-                s.increaseCapacity(r.getReservationSize());
+                // PAYMENT_PENDING은 DB remaining_capacity를 감소시킨 적 없으므로 복구하지 않음
+                if (wasConfirmed) {
+                    ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                    s.increaseCapacity(r.getReservationSize());
+                }
                 outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
                 return ReservationResponse.from(r);
             });

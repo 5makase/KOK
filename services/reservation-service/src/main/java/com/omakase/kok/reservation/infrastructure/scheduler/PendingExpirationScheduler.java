@@ -92,6 +92,7 @@ public class PendingExpirationScheduler {
                 return false;
             }
             r.cancel("SYSTEM", "결제 시간 초과");
+            reservationRepository.saveAndFlush(r);
             outboxEventRepository.save(buildOutboxEvent(r));
             return true;
         });

@@ -48,12 +48,13 @@ public class ReviewEligibility {
     }
 
     public static ReviewEligibility create(ReservationEvent event) {
+        var p = event.payload();
         return ReviewEligibility.builder()
                 .eventId(event.eventId())
-                .reservationId(event.reservationId())
-                .storeId(event.storeId())
-                .userId(event.userId())
-                .visitedAt(event.visitedAt())
+                .reservationId(p.reservationId())
+                .storeId(p.storeId())
+                .userId(p.userId())
+                .visitedAt(p.visitedAt())
                 .build();
     }
 

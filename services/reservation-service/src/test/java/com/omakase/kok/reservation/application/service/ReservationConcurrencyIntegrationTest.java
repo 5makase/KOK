@@ -3,6 +3,7 @@ package com.omakase.kok.reservation.application.service;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
+import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
@@ -23,6 +24,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -168,6 +170,46 @@ class ReservationConcurrencyIntegrationTest {
             assertThat(redisAfterCancel)
                     .as("취소 후 Redis 잔여 인원이 DB와 일치해야 한다")
                     .isEqualTo(afterCancel.getRemainingCapacity());
+        }
+
+        @Test
+        @DisplayName("PAYMENT_PENDING 예약 취소 시 DB remainingCapacity는 변하지 않고 Redis만 복구된다")
+        void cancelPendingReservation_doesNotInflateDbCapacity() {
+            // Given: PAYMENT_PENDING 예약이 생성된 상태 시뮬레이션
+            // 설계상 PAYMENT_PENDING은 DB remaining_capacity를 감소시키지 않음
+            // Redis만 예약 인원만큼 감소된 상태
+            int reservationSize = 2;
+            UUID userId = UUID.randomUUID();
+
+            Reservation pending = Reservation.builder()
+                    .slotId(slot.getSlotId())
+                    .userId(userId)
+                    .storeId(slot.getStoreId())
+                    .storeName(slot.getStoreName())
+                    .scheduledAt(LocalDateTime.now().plusDays(5))
+                    .bookerName("결제대기테스터")
+                    .bookerPhone("010-5555-5555")
+                    .reservationSize(reservationSize)
+                    .build(); // status = PAYMENT_PENDING
+            reservationRepository.save(pending);
+
+            // Redis는 PAYMENT_PENDING 생성 시 이미 감소된 상태 (DB는 4 그대로)
+            redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).set(4 - reservationSize);
+
+            // When: PAYMENT_PENDING 예약 취소
+            reservationService.cancelReservation(pending.getReservationId(), userId, null);
+
+            // Then: DB remainingCapacity는 4 그대로여야 함 (한 번도 감소된 적 없으므로 증가도 없어야 함)
+            ReservationSlot afterCancel = slotRepository.findBySlotIdAndDeletedAtIsNull(slot.getSlotId()).orElseThrow();
+            assertThat(afterCancel.getRemainingCapacity())
+                    .as("PAYMENT_PENDING 취소 시 DB 잔여 인원이 변하면 안 된다 (maxCapacity 초과 방지)")
+                    .isEqualTo(4);
+
+            // Redis는 원래 값(4)으로 복구되어야 함
+            long redisAfterCancel = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).get();
+            assertThat(redisAfterCancel)
+                    .as("PAYMENT_PENDING 취소 후 Redis 잔여 인원이 원래 값으로 복구되어야 한다")
+                    .isEqualTo(4);
         }
     }
 

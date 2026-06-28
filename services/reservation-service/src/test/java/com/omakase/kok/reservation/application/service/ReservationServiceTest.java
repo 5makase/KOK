@@ -196,7 +196,16 @@ class ReservationServiceTest {
         @DisplayName("Redis 잔여 인원 부족 시 SLOT_CAPACITY_EXCEEDED 예외가 발생하고 Redis가 복구된다")
         void fail_capacityExceeded() throws Exception {
             UUID storeId = UUID.randomUUID();
-            ReservationSlot slot = buildOpenSlot(storeId, false);
+            // maxCapacity=1: DB도 요청 인원(2)보다 부족해 재동기화 없이 즉시 예외 발생
+            ReservationSlot slot = ReservationSlot.builder()
+                    .storeId(storeId)
+                    .slotDate(LocalDate.now().plusDays(5))
+                    .slotTime(LocalTime.of(18, 0))
+                    .maxCapacity(1)
+                    .depositRequired(false)
+                    .depositAmount(null)
+                    .build();
+            ReflectionTestUtils.setField(slot, "slotId", UUID.randomUUID());
             UUID slotId = slot.getSlotId();
 
             when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))

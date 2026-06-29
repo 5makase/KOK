@@ -32,6 +32,7 @@ public class StoreSummaryCacheRepository {
             return Optional.of(objectMapper.readValue(json, StoreSummaryResponse.class));
         } catch (JsonProcessingException e) {
             log.warn("매장 요약 캐시 역직렬화 실패 - 캐시 미스로 처리. key={}", cacheKey, e);
+            evictMalformedCache(cacheKey);
             return Optional.empty();
         } catch (Exception e) {
             log.warn("매장 요약 캐시 조회 실패 - store-service 조회로 fallback. key={}", cacheKey, e);
@@ -53,5 +54,13 @@ public class StoreSummaryCacheRepository {
 
     private String cacheKey(UUID storeId) {
         return KEY_PREFIX + storeId;
+    }
+
+    private void evictMalformedCache(String cacheKey) {
+        try {
+            redisTemplate.delete(cacheKey);
+        } catch (Exception e) {
+            log.warn("역직렬화 실패한 매장 요약 캐시 삭제 실패. key={}", cacheKey, e);
+        }
     }
 }

@@ -46,6 +46,14 @@ public class ReviewService {
     private final UserClient userClient;
     private final StoreClient storeClient;
 
+    /**
+     * 나의 리뷰 조회
+     * @param userId
+     * @param sort
+     * @param photoOnly
+     * @param pageable
+     * @return
+     */
     @Transactional(readOnly = true)
     public Page<ReviewGetResponseDto> getMyReviews(UUID userId, ReviewSortType sort,
                                                    boolean photoOnly, Pageable pageable ){
@@ -60,6 +68,14 @@ public class ReviewService {
         });
     }
 
+    /**
+     * 리뷰 목록 조회
+     * @param storeId
+     * @param sort
+     * @param photoOnly
+     * @param pageable
+     * @return
+     */
     @Transactional(readOnly = true)
     public Page<ReviewGetResponseDto> getReviews(UUID storeId, ReviewSortType sort,
                                                  boolean photoOnly, Pageable pageable) {
@@ -76,10 +92,18 @@ public class ReviewService {
         });
     }
 
+    /**
+     * 리뷰 조회
+     * @param reviewId 조회할 리뷰 식별자
+     * @return 조회한 리뷰
+     */
     @Transactional(readOnly = true)
     public ReviewGetResponseDto getReview(UUID reviewId){
         //reviewId로 Review를 조회한다.
         Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("조회되는 리뷰가 없음."));
+
+        //review.reservationId로 ReviewEligibility(리뷰 권한 테이블) 조회
+        ReviewEligibility reviewEligibility = reviewEligibilityRepository.findById(review.getReservationId()).orElseThrow(()-> new IllegalArgumentException("적재된 권한이 없음."));
 
         //reviewId로 ReviewImage를 조회한다.
         List<ReviewImage> reviewImageList =  reviewImageRepository.findByReviewReviewId(reviewId);
@@ -97,15 +121,10 @@ public class ReviewService {
             userName = "일반 사용자";
         }
 
-        //Review의 storeId로 Store를 조회한다.- trycatch를 사용한다.
-        String storeName = null;
-        try{
-            StoreResponse store = storeClient.getStore(review.getStoreId());
-            storeName = store.name();
-        }catch (Exception e){
-            log.warn("매장 정보 조회 실패. storeId={}", review.getStoreId());
-            storeName = "일반 매장";
-        }
+        //
+        String storeName = reviewEligibility.getStoreName();
+
+
         //ReviewGetResponseDto를 만든다.
         return ReviewGetResponseDto.from(review, imageUrls,userName,storeName);
     }

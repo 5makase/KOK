@@ -3,6 +3,7 @@ package com.omakase.kok.waiting.infrastructure.messaging.store;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.ErrorCode;
 import com.omakase.kok.waiting.application.service.WaitingSettingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,10 +46,21 @@ public class StoreEventConsumer {
         } catch (JsonProcessingException e) {
             log.warn("store.events.v1 역직렬화 실패 — 메시지 버림 (raw payload omitted)", e);
         } catch (BaseException e) {
-            log.warn("store.events.v1 처리 불가 — 비즈니스 예외. error={}", e.getMessage());
+            if (isRetriable(e)) {
+                log.error("store.events.v1 재처리 필요 — 일시/내부 예외. errorCode={}, error={}",
+                        e.getErrorCode().getCode(), e.getMessage(), e);
+                throw new RuntimeException("store.events.v1 처리 실패 — Kafka 재처리 유도", e);
+            }
+            log.warn("store.events.v1 처리 불가 — 비재시도 비즈니스 예외. errorCode={}, error={}",
+                    e.getErrorCode().getCode(), e.getMessage());
         } catch (Exception e) {
             log.error("store.events.v1 처리 실패. error={}", e.getMessage(), e);
             throw new RuntimeException("store.events.v1 처리 실패 — Kafka 재처리 유도", e);
         }
+    }
+
+    private boolean isRetriable(BaseException exception) {
+        ErrorCode errorCode = exception.getErrorCode();
+        return errorCode != null && errorCode.getStatus().is5xxServerError();
     }
 }

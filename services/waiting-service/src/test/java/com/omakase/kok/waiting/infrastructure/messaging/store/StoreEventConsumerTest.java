@@ -6,6 +6,8 @@ import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.waiting.application.service.WaitingSettingService;
 import com.omakase.kok.waiting.domain.entity.WaitingSetting;
+import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
+import com.omakase.kok.waiting.global.exception.WaitingException;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -121,13 +123,23 @@ class StoreEventConsumerTest {
     }
 
     @Test
-    @DisplayName("비즈니스 예외는 예외를 전파하지 않는다")
-    void consume_baseException_doesNotThrow() {
-        doThrow(new BaseException(CommonErrorCode.INTERNAL_SERVER_ERROR))
+    @DisplayName("4xx 비즈니스 예외는 예외를 전파하지 않는다")
+    void consume_nonRetriableBaseException_doesNotThrow() {
+        doThrow(new WaitingException(WaitingErrorCode.WAITING_SETTING_INVALID))
                 .when(waitingSettingService).initializeDefaultWaitingSetting(any());
 
         assertThatCode(() -> storeEventConsumer.consume(validMessage))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("5xx BaseException은 Kafka 재처리를 위해 RuntimeException으로 전파한다")
+    void consume_retriableBaseException_propagates() {
+        doThrow(new BaseException(CommonErrorCode.INTERNAL_SERVER_ERROR))
+                .when(waitingSettingService).initializeDefaultWaitingSetting(any());
+
+        assertThatThrownBy(() -> storeEventConsumer.consume(validMessage))
+                .isInstanceOf(RuntimeException.class);
     }
 
     @Test

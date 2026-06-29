@@ -9,6 +9,9 @@ import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -27,6 +30,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.mockito.ArgumentCaptor;
@@ -75,6 +79,55 @@ class SlotServiceTest {
                 .build();
         ReflectionTestUtils.setField(slot, "slotId", UUID.randomUUID());
         return slot;
+    }
+
+    @Nested
+    @DisplayName("CreateSlotRequest 유효성 검사")
+    class CreateSlotRequestValidation {
+
+        private Validator validator;
+
+        @BeforeEach
+        void setUpValidator() {
+            validator = Validation.buildDefaultValidatorFactory().getValidator();
+        }
+
+        @Test
+        @DisplayName("예약금 필요 슬롯에 depositAmount=0 설정 시 유효성 위반이 발생한다")
+        void fail_depositAmountZero() {
+            CreateSlotRequest req = new CreateSlotRequest();
+            ReflectionTestUtils.setField(req, "storeId", UUID.randomUUID());
+            ReflectionTestUtils.setField(req, "storeName", "테스트 매장");
+            ReflectionTestUtils.setField(req, "slotDate", SLOT_DATE);
+            ReflectionTestUtils.setField(req, "slotTime", LocalTime.of(18, 0));
+            ReflectionTestUtils.setField(req, "maxCapacity", 4);
+            ReflectionTestUtils.setField(req, "depositRequired", true);
+            ReflectionTestUtils.setField(req, "depositAmount", 0L);
+
+            Set<ConstraintViolation<CreateSlotRequest>> violations = validator.validate(req);
+
+            assertThat(violations).isNotEmpty();
+            assertThat(violations).anyMatch(v ->
+                    v.getPropertyPath().toString().equals("depositAmountValid"));
+        }
+
+        @Test
+        @DisplayName("예약금 필요 슬롯에 depositAmount=null 설정 시 유효성 위반이 발생한다")
+        void fail_depositAmountNull() {
+            CreateSlotRequest req = new CreateSlotRequest();
+            ReflectionTestUtils.setField(req, "storeId", UUID.randomUUID());
+            ReflectionTestUtils.setField(req, "storeName", "테스트 매장");
+            ReflectionTestUtils.setField(req, "slotDate", SLOT_DATE);
+            ReflectionTestUtils.setField(req, "slotTime", LocalTime.of(18, 0));
+            ReflectionTestUtils.setField(req, "maxCapacity", 4);
+            ReflectionTestUtils.setField(req, "depositRequired", true);
+
+            Set<ConstraintViolation<CreateSlotRequest>> violations = validator.validate(req);
+
+            assertThat(violations).isNotEmpty();
+            assertThat(violations).anyMatch(v ->
+                    v.getPropertyPath().toString().equals("depositAmountValid"));
+        }
     }
 
     @Nested

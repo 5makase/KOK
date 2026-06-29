@@ -60,6 +60,23 @@ public class WaitingSettingService {
         return WaitingSettingInitializeResponse.of(setting, settingCreated);
     }
 
+    // 매장 생성 이벤트 기반 웨이팅 세팅 기본값 초기화
+    @Transactional
+    public WaitingSettingInitializeResponse initializeDefaultWaitingSetting(UUID storeId) {
+        Optional<WaitingSetting> existingSetting = waitingSettingRepository.findByStoreId(storeId);
+        Boolean settingCreated = existingSetting.isEmpty();
+        WaitingSetting setting = existingSetting.orElseGet(() -> waitingSettingRepository.save(WaitingSetting.create(
+                storeId,
+                null,
+                null,
+                null,
+                null,
+                null
+        )));
+        scheduleStoreWaitingValuesCacheAfterCommit(setting);
+        return WaitingSettingInitializeResponse.of(setting, settingCreated);
+    }
+
     // 웨이팅 세팅 수정
     @Transactional
     public WaitingSettingResponse updateWaitingSetting(

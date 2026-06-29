@@ -119,6 +119,53 @@ class WaitingSettingServiceTest {
     }
 
     @Test
+    @DisplayName("매장 생성 이벤트 기반 초기화는 요청값 없이 기본값으로 웨이팅 설정을 생성한다")
+    void initializeDefaultWaitingSetting_createNewSettingWithDefaults() {
+        UUID storeId = UUID.randomUUID();
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
+        given(waitingSettingRepository.save(any(WaitingSetting.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isTrue();
+
+        ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
+        then(waitingSettingRepository).should().save(settingCaptor.capture());
+
+        WaitingSetting setting = settingCaptor.getValue();
+        assertThat(setting.getStoreId()).isEqualTo(storeId);
+        assertThat(setting.getWaitingEnabled()).isFalse();
+        assertThat(setting.getMaxWaitingCount()).isEqualTo(100);
+        assertThat(setting.getCallTimeoutMinutes()).isEqualTo(10);
+        assertThat(setting.getAllowUserCancel()).isTrue();
+        assertThat(setting.getAverageWaitingMinutes()).isEqualTo(10);
+
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, false, 100, 10, true, 10);
+    }
+
+    @Test
+    @DisplayName("매장 생성 이벤트 기반 초기화는 기존 설정이 있으면 새로 만들지 않고 기존값을 유지한다")
+    void initializeDefaultWaitingSetting_useExistingSetting() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, false, 11);
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSetting));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isFalse();
+
+        then(waitingSettingRepository).should(never()).save(any());
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 20, 8, false, 11);
+    }
+
+    @Test
     @DisplayName("웨이팅 설정 수정은 본인 매장이면 요청값만 반영하고 Redis 캐시를 갱신한다")
     void updateWaitingSetting_success() {
         UUID storeId = UUID.randomUUID();

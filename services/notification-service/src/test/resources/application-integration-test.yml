@@ -1,0 +1,36 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+
+  kafka:
+    bootstrap-servers: localhost:9092  # 실제 연결 안 함
+    listener:
+      auto-startup: false              # @KafkaListener 자동 시작 차단
+
+eureka:
+  client:
+    enabled: false
+
+slack:
+  bot-token: test-token
+
+notification:
+  idempotency:
+    ttl-days: 7
+  retry:
+    max-attempt-count: 3
+    fixed-delay-ms: 300000
+    initial-delay-ms: 3600000  # 테스트 중 백그라운드 스케줄러 자동 실행 방지
+
+feign:
+  client:
+    config:
+      user-service:
+        connectTimeout: 1000
+        readTimeout: 1000

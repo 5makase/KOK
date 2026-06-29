@@ -30,7 +30,10 @@ public class RetryScheduler {
     @Value("${notification.retry.max-attempt-count:3}")
     private int maxAttemptCount;
 
-    @Scheduled(fixedDelayString = "${notification.retry.fixed-delay-ms:300000}")
+    @Scheduled(
+            initialDelayString = "${notification.retry.initial-delay-ms:0}",
+            fixedDelayString = "${notification.retry.fixed-delay-ms:300000}"
+    )
     @SchedulerLock(name = "retryFailedSlackSend", lockAtLeastFor = "PT1M", lockAtMostFor = "PT9M")
     public void retryFailedSlackSend() {
         List<SlackSendLog> targets = slackSendLogRepository.findRetryTargets(

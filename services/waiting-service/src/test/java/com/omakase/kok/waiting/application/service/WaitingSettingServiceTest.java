@@ -18,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -74,7 +75,7 @@ class WaitingSettingServiceTest {
         WaitingSettingInitializeRequest request = waitingSettingInitializeRequest(true, 30, 5, false, 12);
 
         given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
-        given(waitingSettingRepository.save(any(WaitingSetting.class)))
+        given(waitingSettingRepository.saveAndFlush(any(WaitingSetting.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         WaitingSettingInitializeResponse response = waitingSettingService.initializeWaitingSetting(storeId, request);
@@ -83,7 +84,7 @@ class WaitingSettingServiceTest {
         assertThat(response.getSettingCreated()).isTrue();
 
         ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
-        then(waitingSettingRepository).should().save(settingCaptor.capture());
+        then(waitingSettingRepository).should().saveAndFlush(settingCaptor.capture());
 
         WaitingSetting setting = settingCaptor.getValue();
         assertThat(setting.getStoreId()).isEqualTo(storeId);
@@ -124,7 +125,7 @@ class WaitingSettingServiceTest {
         UUID storeId = UUID.randomUUID();
 
         given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
-        given(waitingSettingRepository.save(any(WaitingSetting.class)))
+        given(waitingSettingRepository.saveAndFlush(any(WaitingSetting.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
@@ -133,7 +134,7 @@ class WaitingSettingServiceTest {
         assertThat(response.getSettingCreated()).isTrue();
 
         ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
-        then(waitingSettingRepository).should().save(settingCaptor.capture());
+        then(waitingSettingRepository).should().saveAndFlush(settingCaptor.capture());
 
         WaitingSetting setting = settingCaptor.getValue();
         assertThat(setting.getStoreId()).isEqualTo(storeId);
@@ -145,6 +146,28 @@ class WaitingSettingServiceTest {
 
         then(waitingQueueRedisStore).should()
                 .cacheStoreValues(storeId, false, 100, 10, true, 10);
+    }
+
+    @Test
+    @DisplayName("매장 생성 이벤트 기반 초기화 중 unique 충돌이 발생하면 기존 설정을 재조회해 멱등 처리한다")
+    void initializeDefaultWaitingSetting_duplicateStoreIdReloadsExistingSetting() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, false, 11);
+
+        given(waitingSettingRepository.findByStoreId(storeId))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(existingSetting));
+        given(waitingSettingRepository.saveAndFlush(any(WaitingSetting.class)))
+                .willThrow(new DataIntegrityViolationException("duplicate store_id"));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isFalse();
+
+        then(waitingSettingRepository).should().saveAndFlush(any(WaitingSetting.class));
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 20, 8, false, 11);
     }
 
     @Test

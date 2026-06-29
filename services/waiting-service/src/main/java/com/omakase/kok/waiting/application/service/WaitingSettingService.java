@@ -17,6 +17,7 @@ import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingUpdateRequ
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -46,35 +47,31 @@ public class WaitingSettingService {
             UUID storeId,
             WaitingSettingInitializeRequest request
     ) {
-        Optional<WaitingSetting> existingSetting = waitingSettingRepository.findByStoreId(storeId);
-        Boolean settingCreated = existingSetting.isEmpty();
-        WaitingSetting setting = existingSetting.orElseGet(() -> waitingSettingRepository.save(WaitingSetting.create(
+        WaitingSettingInitialization initialization = initializeWaitingSettingIfAbsent(
                 storeId,
                 request.getWaitingEnabled(),
                 request.getMaxWaitingCount(),
                 request.getCallTimeoutMinutes(),
                 request.getAllowUserCancel(),
                 request.getAverageWaitingMinutes()
-        )));
-        scheduleStoreWaitingValuesCacheAfterCommit(setting);
-        return WaitingSettingInitializeResponse.of(setting, settingCreated);
+        );
+        scheduleStoreWaitingValuesCacheAfterCommit(initialization.setting());
+        return WaitingSettingInitializeResponse.of(initialization.setting(), initialization.settingCreated());
     }
 
     // 매장 생성 이벤트 기반 웨이팅 세팅 기본값 초기화
     @Transactional
     public WaitingSettingInitializeResponse initializeDefaultWaitingSetting(UUID storeId) {
-        Optional<WaitingSetting> existingSetting = waitingSettingRepository.findByStoreId(storeId);
-        Boolean settingCreated = existingSetting.isEmpty();
-        WaitingSetting setting = existingSetting.orElseGet(() -> waitingSettingRepository.save(WaitingSetting.create(
+        WaitingSettingInitialization initialization = initializeWaitingSettingIfAbsent(
                 storeId,
                 null,
                 null,
                 null,
                 null,
                 null
-        )));
-        scheduleStoreWaitingValuesCacheAfterCommit(setting);
-        return WaitingSettingInitializeResponse.of(setting, settingCreated);
+        );
+        scheduleStoreWaitingValuesCacheAfterCommit(initialization.setting());
+        return WaitingSettingInitializeResponse.of(initialization.setting(), initialization.settingCreated());
     }
 
     // 웨이팅 세팅 수정
@@ -142,6 +139,39 @@ public class WaitingSettingService {
                 cacheStoreWaitingValues(setting);
             }
         });
+    }
+
+    private WaitingSettingInitialization initializeWaitingSettingIfAbsent(
+            UUID storeId,
+            Boolean waitingEnabled,
+            Integer maxWaitingCount,
+            Integer callTimeoutMinutes,
+            Boolean allowUserCancel,
+            Integer averageWaitingMinutes
+    ) {
+        Optional<WaitingSetting> existingSetting = waitingSettingRepository.findByStoreId(storeId);
+        if (existingSetting.isPresent()) {
+            return new WaitingSettingInitialization(existingSetting.get(), false);
+        }
+
+        try {
+            WaitingSetting setting = waitingSettingRepository.saveAndFlush(WaitingSetting.create(
+                    storeId,
+                    waitingEnabled,
+                    maxWaitingCount,
+                    callTimeoutMinutes,
+                    allowUserCancel,
+                    averageWaitingMinutes
+            ));
+            return new WaitingSettingInitialization(setting, true);
+        } catch (DataIntegrityViolationException e) {
+            WaitingSetting setting = waitingSettingRepository.findByStoreId(storeId)
+                    .orElseThrow(() -> e);
+            return new WaitingSettingInitialization(setting, false);
+        }
+    }
+
+    private record WaitingSettingInitialization(WaitingSetting setting, boolean settingCreated) {
     }
 
     private void validateStoreOwnerAccess(UUID userId, String role, UUID storeId) {

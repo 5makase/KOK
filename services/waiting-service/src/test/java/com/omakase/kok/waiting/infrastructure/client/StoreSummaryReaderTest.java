@@ -59,6 +59,22 @@ class StoreSummaryReaderTest {
     }
 
     @Test
+    @DisplayName("store-service가 요청 매장과 다른 storeId를 응답하면 캐싱하지 않고 예외를 던진다")
+    void getStoreSummary_throwsWhenResponseStoreIdDoesNotMatchRequest() {
+        UUID requestedStoreId = UUID.randomUUID();
+        UUID responseStoreId = UUID.randomUUID();
+        StoreSummaryResponse mismatched = StoreSummaryResponse.of(responseStoreId, "다른 매장", UUID.randomUUID());
+        given(storeSummaryCacheRepository.get(requestedStoreId)).willReturn(java.util.Optional.empty());
+        given(storeFeignClient.getStoreSummary(requestedStoreId)).willReturn(ApiResponse.success(mismatched));
+
+        assertThatThrownBy(() -> storeSummaryReader.getStoreSummary(requestedStoreId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_STORE_SUMMARY_UNAVAILABLE));
+
+        then(storeSummaryCacheRepository).should(never()).set(requestedStoreId, mismatched);
+    }
+
+    @Test
     @DisplayName("매장 요약 캐시가 있으면 store-service를 호출하지 않는다")
     void getStoreSummary_cacheHitSkipsStoreService() {
         UUID storeId = UUID.randomUUID();

@@ -29,16 +29,17 @@ public class StoreSummaryReader {
     private StoreSummaryResponse getStoreSummaryFromStoreService(UUID storeId) {
         ApiResponse<StoreSummaryResponse> response = storeFeignClient.getStoreSummary(storeId);
         StoreSummaryResponse summary = response == null ? null : response.getData();
-        StoreSummaryResponse validatedSummary = validate(summary);
+        StoreSummaryResponse validatedSummary = validate(storeId, summary);
         storeSummaryCacheRepository.set(storeId, validatedSummary);
         return validatedSummary;
     }
 
-    private StoreSummaryResponse validate(StoreSummaryResponse summary) {
+    private StoreSummaryResponse validate(UUID requestedStoreId, StoreSummaryResponse summary) {
         if (summary == null
                 || summary.getStoreId() == null
                 || summary.getStoreName() == null
-                || summary.getOwnerId() == null) {
+                || summary.getOwnerId() == null
+                || !requestedStoreId.equals(summary.getStoreId())) {
             throw new WaitingException(WaitingErrorCode.WAITING_STORE_SUMMARY_UNAVAILABLE);
         }
         return summary;

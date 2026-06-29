@@ -11,7 +11,13 @@ import java.util.Map;
 import java.util.UUID;
 
 @Entity
-@Table(name = "p_notifications")
+@Table(
+        name = "p_notifications",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_notifications_reference_type_user",
+                columnNames = {"reference_id", "notification_type", "user_id"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

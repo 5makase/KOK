@@ -10,10 +10,12 @@ import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
+import com.omakase.kok.store.presentation.dto.response.BusinessHoursValidationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -108,6 +110,29 @@ public class StoreHoursService {
         return storeHoursRepository.findAllHours(store).stream()
                 .map(StoreHoursResult::from)
                 .toList();
+    }
+
+    public BusinessHoursValidationResponse checkBusinessHours(UUID storeId, LocalDate date, LocalTime time) {
+        Store store = storeFinder.findActiveOrThrow(storeId);
+        if (!store.isAvailableForService()) {
+            return BusinessHoursValidationResponse.denied("STORE_NOT_OPEN");
+        }
+
+        StoreHours hours = storeHoursRepository.findTodayHours(storeId, date.getDayOfWeek())
+                .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_HOURS_NOT_FOUND));
+
+        if (hours.isDayOff()) {
+            return BusinessHoursValidationResponse.denied("DAY_OFF");
+        }
+        if (time.isBefore(hours.getOpenTime()) || !time.isBefore(hours.getCloseTime())) {
+            return BusinessHoursValidationResponse.denied("OUTSIDE_HOURS");
+        }
+        if (hours.getBreakStartTime() != null
+                && !time.isBefore(hours.getBreakStartTime())
+                && time.isBefore(hours.getBreakEndTime())) {
+            return BusinessHoursValidationResponse.denied("BREAK_TIME");
+        }
+        return BusinessHoursValidationResponse.ok();
     }
 
     private StoreHours findHours(UUID storeId, UUID hoursId) {

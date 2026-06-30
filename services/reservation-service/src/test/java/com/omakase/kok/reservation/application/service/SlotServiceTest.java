@@ -1,5 +1,6 @@
 package com.omakase.kok.reservation.application.service;
 
+import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateSlotRequest;
 import com.omakase.kok.reservation.application.dto.SlotResponse;
@@ -9,6 +10,8 @@ import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
+import com.omakase.kok.reservation.infrastructure.client.StoreServiceFeignClient;
+import com.omakase.kok.reservation.infrastructure.client.dto.BusinessHoursValidationResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -17,6 +20,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -47,6 +52,7 @@ class SlotServiceTest {
     @Mock private ReservationRepository reservationRepository;
     @Mock private RedissonClient redissonClient;
     @Mock private RAtomicLong atomicLong;
+    @Mock private StoreServiceFeignClient storeServiceFeignClient;
 
     private static final LocalDate SLOT_DATE = LocalDate.of(2026, 7, 1);
 
@@ -54,7 +60,14 @@ class SlotServiceTest {
 
     @BeforeEach
     void setUp() {
-        slotService = new SlotService(slotRepository, reservationRepository, redissonClient);
+        slotService = new SlotService(slotRepository, reservationRepository, redissonClient, storeServiceFeignClient);
+    }
+
+    private void stubValidationOk() {
+        BusinessHoursValidationResponse available = new BusinessHoursValidationResponse();
+        org.springframework.test.util.ReflectionTestUtils.setField(available, "available", true);
+        when(storeServiceFeignClient.validateBusinessHours(any(), any(), any()))
+                .thenReturn(ApiResponse.success(available));
     }
 
     private CreateSlotRequest buildCreateRequest(UUID storeId, boolean depositRequired, Long depositAmount) {
@@ -139,6 +152,7 @@ class SlotServiceTest {
         void success_redisSetOnAfterCommit() {
             UUID storeId = UUID.randomUUID();
             CreateSlotRequest req = buildCreateRequest(storeId, false, null);
+            stubValidationOk();
 
             ArgumentCaptor<String> redisKeyCaptor = ArgumentCaptor.forClass(String.class);
             UUID[] savedSlotId = new UUID[1];
@@ -173,6 +187,7 @@ class SlotServiceTest {
         void success_withDeposit() {
             UUID storeId = UUID.randomUUID();
             CreateSlotRequest req = buildCreateRequest(storeId, true, 10000L);
+            stubValidationOk();
 
             when(slotRepository.save(any(ReservationSlot.class))).thenAnswer(inv -> {
                 ReservationSlot s = inv.getArgument(0);
@@ -195,6 +210,30 @@ class SlotServiceTest {
                 assertThat(response.isDepositRequired()).isTrue();
                 assertThat(response.getDepositAmount()).isEqualTo(10000L);
             }
+        }
+
+        @ParameterizedTest(name = "reason={0} → {1}")
+        @CsvSource({
+                "STORE_NOT_OPEN, SLOT_STORE_NOT_OPEN",
+                "DAY_OFF,        SLOT_ON_DAY_OFF",
+                "OUTSIDE_HOURS,  SLOT_OUTSIDE_BUSINESS_HOURS",
+                "BREAK_TIME,     SLOT_IN_BREAK_TIME"
+        })
+        @DisplayName("검증 거부 사유별로 올바른 에러 코드가 반환된다")
+        void fail_denialReasonMapsToCorrectErrorCode(String reason, String expectedCode) {
+            UUID storeId = UUID.randomUUID();
+            CreateSlotRequest req = buildCreateRequest(storeId, false, null);
+
+            BusinessHoursValidationResponse denied = new BusinessHoursValidationResponse();
+            ReflectionTestUtils.setField(denied, "available", false);
+            ReflectionTestUtils.setField(denied, "reason", reason);
+            when(storeServiceFeignClient.validateBusinessHours(any(), any(), any()))
+                    .thenReturn(ApiResponse.success(denied));
+
+            assertThatThrownBy(() -> slotService.createSlot(req, storeId))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode().getCode())
+                    .isEqualTo(SlotErrorCode.valueOf(expectedCode).getCode());
         }
     }
 

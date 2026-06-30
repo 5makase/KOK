@@ -10,6 +10,8 @@ import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import com.omakase.kok.reservation.infrastructure.client.StoreServiceFeignClient;
+import com.omakase.kok.reservation.infrastructure.client.dto.BusinessHoursValidationResponse;
 import lombok.RequiredArgsConstructor;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
@@ -31,9 +33,12 @@ public class SlotService {
     private final ReservationSlotRepository slotRepository;
     private final ReservationRepository reservationRepository;
     private final RedissonClient redissonClient;
+    private final StoreServiceFeignClient storeServiceFeignClient;
 
     @Transactional
     public SlotResponse createSlot(CreateSlotRequest request, UUID ownerId) {
+        validateBusinessHours(request);
+
         ReservationSlot slot = ReservationSlot.builder()
                 .storeId(request.getStoreId())
                 .storeName(request.getStoreName())
@@ -112,6 +117,23 @@ public class SlotService {
         return slots.stream()
                 .map(SlotResponse::from)
                 .toList();
+    }
+
+    private void validateBusinessHours(CreateSlotRequest request) {
+        BusinessHoursValidationResponse validation = storeServiceFeignClient
+                .validateBusinessHours(request.getStoreId(), request.getSlotDate(), request.getSlotTime())
+                .getData();
+
+        if (!validation.isAvailable()) {
+            SlotErrorCode errorCode = switch (validation.getReason()) {
+                case "STORE_NOT_OPEN" -> SlotErrorCode.SLOT_STORE_NOT_OPEN;
+                case "DAY_OFF"        -> SlotErrorCode.SLOT_ON_DAY_OFF;
+                case "OUTSIDE_HOURS"  -> SlotErrorCode.SLOT_OUTSIDE_BUSINESS_HOURS;
+                case "BREAK_TIME"     -> SlotErrorCode.SLOT_IN_BREAK_TIME;
+                default               -> throw new IllegalStateException("Unknown validation reason: " + validation.getReason());
+            };
+            throw new BaseException(errorCode);
+        }
     }
 
     @Transactional

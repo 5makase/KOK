@@ -30,6 +30,9 @@ public class ReviewEligibility {
     @Column(nullable = false)
     private LocalDateTime visitedAt;
 
+    @Column(name = "store_name",nullable = false)
+    private String storeName;
+
     @Column(nullable = false)
     private boolean isUsed;           // 리뷰 작성 완료 시 true
 
@@ -38,12 +41,13 @@ public class ReviewEligibility {
 
     @Builder
     private ReviewEligibility(UUID reservationId, UUID storeId, UUID userId,
-                              LocalDateTime visitedAt, UUID eventId) {
+                              LocalDateTime visitedAt, UUID eventId, String storeName) {
         this.reservationId = reservationId;
         this.storeId = storeId;
         this.userId = userId;
         this.visitedAt = visitedAt;
         this.eventId = eventId;
+        this.storeName = storeName;
         this.isUsed = false;          // 생성 시 항상 미사용 상태
     }
 
@@ -55,6 +59,7 @@ public class ReviewEligibility {
                 .storeId(p.storeId())
                 .userId(p.userId())
                 .visitedAt(p.visitedAt())
+                .storeName(p.storeName())
                 .build();
     }
 

@@ -49,4 +49,6 @@
 //        assertThat(summary.getCount5()).isEqualTo(0);
 //        assertThat(summary.getAverageRating()).isEqualTo(new BigDecimal("3.00"));
 //    }
+//
+//
 //}

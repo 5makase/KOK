@@ -21,8 +21,10 @@ import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,14 @@ public class ReviewService {
     private final UserClient userClient;
     private final StoreClient storeClient;
 
+    /**
+     * 나의 리뷰 조회
+     * @param userId
+     * @param sort
+     * @param photoOnly
+     * @param pageable
+     * @return
+     */
     @Transactional(readOnly = true)
     public Page<ReviewGetResponseDto> getMyReviews(UUID userId, ReviewSortType sort,
                                                    boolean photoOnly, Pageable pageable ){
@@ -60,6 +70,14 @@ public class ReviewService {
         });
     }
 
+    /**
+     * 리뷰 목록 조회
+     * @param storeId
+     * @param sort
+     * @param photoOnly
+     * @param pageable
+     * @return
+     */
     @Transactional(readOnly = true)
     public Page<ReviewGetResponseDto> getReviews(UUID storeId, ReviewSortType sort,
                                                  boolean photoOnly, Pageable pageable) {
@@ -76,10 +94,18 @@ public class ReviewService {
         });
     }
 
+    /**
+     * 리뷰 조회
+     * @param reviewId 조회할 리뷰 식별자
+     * @return 조회한 리뷰
+     */
     @Transactional(readOnly = true)
     public ReviewGetResponseDto getReview(UUID reviewId){
         //reviewId로 Review를 조회한다.
         Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("조회되는 리뷰가 없음."));
+
+        //review.reservationId로 ReviewEligibility(리뷰 권한 테이블) 조회
+        ReviewEligibility reviewEligibility = reviewEligibilityRepository.findById(review.getReservationId()).orElseThrow(()-> new IllegalArgumentException("적재된 권한이 없음."));
 
         //reviewId로 ReviewImage를 조회한다.
         List<ReviewImage> reviewImageList =  reviewImageRepository.findByReviewReviewId(reviewId);
@@ -97,15 +123,10 @@ public class ReviewService {
             userName = "일반 사용자";
         }
 
-        //Review의 storeId로 Store를 조회한다.- trycatch를 사용한다.
-        String storeName = null;
-        try{
-            StoreResponse store = storeClient.getStore(review.getStoreId());
-            storeName = store.name();
-        }catch (Exception e){
-            log.warn("매장 정보 조회 실패. storeId={}", review.getStoreId());
-            storeName = "일반 매장";
-        }
+        //
+        String storeName = reviewEligibility.getStoreName();
+
+
         //ReviewGetResponseDto를 만든다.
         return ReviewGetResponseDto.from(review, imageUrls,userName,storeName);
     }
@@ -118,10 +139,10 @@ public class ReviewService {
      * @return
      */
     @Retryable(
-            retryFor = {OptimisticLockException.class, DataIntegrityViolationException.class},
+            retryFor = { OptimisticLockingFailureException.class,/*낙관적 락 버전 충돌 시 발생되는 예외*/
+                    DataIntegrityViolationException.class/*DB 제약 조건 위반 시 발생되는 예외*/ },
             maxAttempts = 3,
-            backoff = @Backoff(delay = 50)
-    )
+            backoff = @Backoff(delay = 100,multiplier = 2.0, random = true))
     @Transactional
     public ReviewUpdateResponseDto updateReview(UUID reviewId, UUID userId,
                                                 ReviewUpdateRequestDto dto, String userRole) {
@@ -173,10 +194,10 @@ public class ReviewService {
      * 전 과정이 하나의 트랜잭션. 낙관적 락/중복 키 충돌 시 트랜잭션 전체를 최대 3회 재시도.
      */
     @Retryable(
-            retryFor = { OptimisticLockException.class,/*같은 매장에 동시 리뷰가 들어와 집계를 동시 수정할 때 발생.(낙관적락)*/
-                    DataIntegrityViolationException.class/*집계 행이 없는 매장에 첫 리뷰가 동시에 들어와 같은 PK로 Insert가 겹칠 때 발생.*/ },
+            retryFor = { OptimisticLockingFailureException.class,/*낙관적 락 버전 충돌 시 발생되는 예외*/
+                         DataIntegrityViolationException.class/*DB 제약 조건 위반 시 발생되는 예외*/ },
             maxAttempts = 3,
-            backoff = @Backoff(delay = 50))
+            backoff = @Backoff(delay = 100,multiplier = 2.0, random = true))
     @Transactional
     public ReviewCreateResponseDto createReview(ReviewRequestDto dto, UUID userId) {
         // 적재된 권한 조회
@@ -228,9 +249,10 @@ public class ReviewService {
      * 본인 확인 → 이미지/리뷰 soft delete → 집계 제외 + Outbox 이벤트 저장.
      */
     @Retryable(
-            retryFor = { OptimisticLockException.class, DataIntegrityViolationException.class },
+            retryFor = { OptimisticLockingFailureException.class,/*낙관적 락 버전 충돌 시 발생되는 예외*/
+                    DataIntegrityViolationException.class/*DB 제약 조건 위반 시 발생되는 예외*/ },
             maxAttempts = 3,
-            backoff = @Backoff(delay = 50))
+            backoff = @Backoff(delay = 100,multiplier = 2.0, random = true))
     @Transactional
     public ReviewDeletedResponseDto deleteReview(UUID reviewId, UUID userId) {
         // 리뷰 조회 (@SQLRestriction 으로 이미 삭제된 리뷰는 조회되지 않음 → 재삭제 자동 방지)

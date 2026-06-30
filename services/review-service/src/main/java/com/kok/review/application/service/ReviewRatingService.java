@@ -8,7 +8,11 @@ import com.kok.review.domain.repository.ReviewOutboxEventRepository;
 import com.kok.review.domain.repository.ReviewRatingSummaryRepository;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventEnvelope;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventPayload;
+import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;

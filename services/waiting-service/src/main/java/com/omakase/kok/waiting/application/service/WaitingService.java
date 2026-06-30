@@ -63,7 +63,10 @@ public class WaitingService {
     private static final String WAITING_CALL_NEXT_LOCK_KEY_PREFIX = "waiting:store:";
     private static final String WAITING_CALL_NEXT_LOCK_KEY_SUFFIX = ":call-next:lock";
     private static final long WAITING_CALL_NEXT_LOCK_WAIT_SECONDS = 0L;
+
+    // 자동 미입장
     private static final String AUTO_NO_SHOW_REASON = "호출 제한 시간 초과";
+    private static final UUID SYSTEM_ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final WaitingRepository waitingRepository;
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
@@ -233,20 +236,35 @@ public class WaitingService {
     // 호출 제한 시간이 지난 웨이팅을 자동 미입장 처리
     @Transactional
     public int autoNoShowExpiredWaitings(int batchSize) {
-        List<Waiting> expiredWaitings = waitingRepository.findByStatusAndCallExpiresAtLessThanEqualOrderByCallExpiresAtAsc(
+        LocalDateTime now = LocalDateTime.now();
+        List<UUID> expiredWaitingIds = waitingRepository.findExpiredCalledWaitingIds(
                 WaitingStatus.CALLED,
-                LocalDateTime.now(),
+                now,
                 PageRequest.of(0, batchSize)
         );
 
-        for (Waiting waiting : expiredWaitings) {
-            waiting.noShow(AUTO_NO_SHOW_REASON);
-            Waiting savedWaiting = waitingRepository.save(waiting);
-            scheduleQueueRemovalAfterCommit(savedWaiting);
-            saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
+        int processedCount = 0;
+        for (UUID waitingId : expiredWaitingIds) {
+            int updatedCount = waitingRepository.markNoShowIfExpired(
+                    waitingId,
+                    WaitingStatus.CALLED,
+                    WaitingStatus.NO_SHOW,
+                    AUTO_NO_SHOW_REASON,
+                    SYSTEM_ACTOR_ID,
+                    now
+            );
+            if (updatedCount != 1) {
+                continue;
+            }
+
+            waitingRepository.findById(waitingId).ifPresent(waiting -> {
+                scheduleQueueRemovalAfterCommit(waiting);
+                saveOutboxEvent(waiting, WaitingEventType.WAITING_NO_SHOW);
+            });
+            processedCount++;
         }
 
-        return expiredWaitings.size();
+        return processedCount;
     }
 
     // 순번 임박 알림 대상 조회

@@ -666,13 +666,22 @@ class WaitingServiceTest {
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now().minusMinutes(11));
         ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().minusMinutes(1));
+        waiting.noShow("호출 제한 시간 초과");
 
-        given(waitingRepository.findByStatusAndCallExpiresAtLessThanEqualOrderByCallExpiresAtAsc(
+        given(waitingRepository.findExpiredCalledWaitingIds(
                 eq(WaitingStatus.CALLED),
                 any(LocalDateTime.class),
                 eq(PageRequest.of(0, 100))
-        )).willReturn(List.of(waiting));
-        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+        )).willReturn(List.of(waitingId));
+        given(waitingRepository.markNoShowIfExpired(
+                eq(waitingId),
+                eq(WaitingStatus.CALLED),
+                eq(WaitingStatus.NO_SHOW),
+                eq("호출 제한 시간 초과"),
+                eq(UUID.fromString("00000000-0000-0000-0000-000000000000")),
+                any(LocalDateTime.class)
+        )).willReturn(1);
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
 
         int processedCount = waitingService.autoNoShowExpiredWaitings(100);
 
@@ -680,9 +689,37 @@ class WaitingServiceTest {
         assertThat(waiting.getStatus()).isEqualTo(WaitingStatus.NO_SHOW);
         assertThat(waiting.getNoShowReason()).isEqualTo("호출 제한 시간 초과");
         assertThat(waiting.getNoShowedAt()).isNotNull();
-        then(waitingRepository).should().save(waiting);
+        then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should().remove(eq(storeId), eq(waiting.getUserId()), eq(waitingId), any(LocalDate.class));
         then(waitingOutboxEventRepository).should().save(any());
+    }
+
+    @Test
+    @DisplayName("자동 미입장 처리는 조회 후 상태가 바뀐 웨이팅이면 Outbox를 저장하지 않는다")
+    void autoNoShowExpiredWaitings_skipWhenConcurrentOwnerActionWins() {
+        UUID waitingId = UUID.randomUUID();
+
+        given(waitingRepository.findExpiredCalledWaitingIds(
+                eq(WaitingStatus.CALLED),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 100))
+        )).willReturn(List.of(waitingId));
+        given(waitingRepository.markNoShowIfExpired(
+                eq(waitingId),
+                eq(WaitingStatus.CALLED),
+                eq(WaitingStatus.NO_SHOW),
+                eq("호출 제한 시간 초과"),
+                eq(UUID.fromString("00000000-0000-0000-0000-000000000000")),
+                any(LocalDateTime.class)
+        )).willReturn(0);
+
+        int processedCount = waitingService.autoNoShowExpiredWaitings(100);
+
+        assertThat(processedCount).isZero();
+        then(waitingRepository).should(never()).findById(waitingId);
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should(never()).save(any());
     }
 
     @Test

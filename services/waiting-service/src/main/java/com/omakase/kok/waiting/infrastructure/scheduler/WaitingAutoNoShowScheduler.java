@@ -30,7 +30,6 @@ public class WaitingAutoNoShowScheduler {
         try {
             locked = lock.tryLock(
                     AUTO_NO_SHOW_LOCK_WAIT_MS,
-                    waitingAutoNoShowProperties.lockLeaseMs(),
                     TimeUnit.MILLISECONDS
             );
             if (!locked) {

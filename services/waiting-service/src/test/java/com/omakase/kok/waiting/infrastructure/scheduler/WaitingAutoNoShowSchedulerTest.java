@@ -32,7 +32,7 @@ class WaitingAutoNoShowSchedulerTest {
     void autoNoShowExpiredWaitings_runsWhenLockAcquired() throws InterruptedException {
         WaitingAutoNoShowScheduler scheduler = scheduler();
         given(redissonClient.getLock("waiting:auto-no-show:lock")).willReturn(lock);
-        given(lock.tryLock(0L, 300000L, TimeUnit.MILLISECONDS)).willReturn(true);
+        given(lock.tryLock(0L, TimeUnit.MILLISECONDS)).willReturn(true);
         given(lock.isHeldByCurrentThread()).willReturn(true);
 
         scheduler.autoNoShowExpiredWaitings();
@@ -46,7 +46,7 @@ class WaitingAutoNoShowSchedulerTest {
     void autoNoShowExpiredWaitings_skipsWhenLockNotAcquired() throws InterruptedException {
         WaitingAutoNoShowScheduler scheduler = scheduler();
         given(redissonClient.getLock("waiting:auto-no-show:lock")).willReturn(lock);
-        given(lock.tryLock(0L, 300000L, TimeUnit.MILLISECONDS)).willReturn(false);
+        given(lock.tryLock(0L, TimeUnit.MILLISECONDS)).willReturn(false);
 
         scheduler.autoNoShowExpiredWaitings();
 
@@ -58,7 +58,7 @@ class WaitingAutoNoShowSchedulerTest {
         return new WaitingAutoNoShowScheduler(
                 waitingService,
                 redissonClient,
-                new WaitingAutoNoShowProperties("0 * * * * *", 300000L, 100)
+                new WaitingAutoNoShowProperties("0 * * * * *", 100)
         );
     }
 }

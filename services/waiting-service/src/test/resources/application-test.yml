@@ -24,7 +24,6 @@ spring:
 waiting:
   auto-no-show:
     cron: 0 * * * * *
-    lock-lease-ms: 300000
     batch-size: 100
   kafka:
     topic:

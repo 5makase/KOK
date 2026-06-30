@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface StoreOutboxEventJpaRepository extends JpaRepository<StoreOutboxEvent, UUID> {
-    List<StoreOutboxEvent> findByStatusOrderByCreatedAtAsc(OutboxEventStatus status);
 
     List<StoreOutboxEvent> findByStatusOrderByCreatedAtAsc(OutboxEventStatus status, Pageable pageable);
+
 }

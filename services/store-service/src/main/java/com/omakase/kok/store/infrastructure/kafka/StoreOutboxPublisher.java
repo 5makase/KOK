@@ -44,8 +44,11 @@ public class StoreOutboxPublisher {
     public void publishPendingEvents() {
         RLock lock = redissonClient.getLock(LOCK_KEY);
         try {
-            // 락 획득 실패 시(다른 인스턴스가 처리 중) 즉시 종료: 대기하지 않음
-            if (!lock.tryLock(0, 5, TimeUnit.SECONDS)) return;
+            if (!lock.tryLock(0, 5, TimeUnit.SECONDS)) {
+                log.debug("락 획득 실패 - 다른 인스턴스가 처리 중");
+                return;
+            }
+            log.debug("락 획득 성공 - PENDING 이벤트 처리 시작");
 
             List<StoreOutboxEvent> events = storeOutboxEventRepository.findPendingEvents(BATCH_SIZE);
             for (StoreOutboxEvent event : events) {
@@ -55,7 +58,9 @@ public class StoreOutboxPublisher {
             Thread.currentThread().interrupt();
             log.error("Outbox Publisher 인터럽트 발생", e);
         } finally {
-            if (lock.isHeldByCurrentThread()) lock.unlock();
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
     }
 

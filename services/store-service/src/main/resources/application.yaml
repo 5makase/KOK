@@ -57,6 +57,8 @@ eureka:
 logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+    # level:
+    #   com.omakase.kok.store.infrastructure.kafka.StoreOutboxPublisher: DEBUG  # 분산 락 동작 확인 시 주석 해제
 
 management:
   endpoints:

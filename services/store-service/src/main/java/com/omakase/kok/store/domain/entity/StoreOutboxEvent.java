@@ -36,6 +36,8 @@ import java.util.UUID;
 public class StoreOutboxEvent {
 
     private static final int MAX_RETRY_COUNT = 2;
+    private static final int MAX_FAILED_REASON_LENGTH = 200; // failed_reason 컬럼 길이(VARCHAR(200))와 일치
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -97,7 +99,7 @@ public class StoreOutboxEvent {
             throw new IllegalStateException("PENDING 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
         }
         this.retryCount++;
-        this.failedReason = reason;
+        this.failedReason = truncateReason(reason);
         if (this.retryCount >= MAX_RETRY_COUNT) {
             this.status = OutboxEventStatus.FAILED;
         }
@@ -109,5 +111,12 @@ public class StoreOutboxEvent {
         }
         this.status = OutboxEventStatus.PENDING;
         this.failedReason = null;
+    }
+
+    // failed_reason 컬럼 길이를 초과하지 않도록 엔티티 스스로 보장
+    private String truncateReason(String reason) {
+        if (reason == null) return null;
+
+        return reason.length() <= MAX_FAILED_REASON_LENGTH ? reason : reason.substring(0, MAX_FAILED_REASON_LENGTH);
     }
 }

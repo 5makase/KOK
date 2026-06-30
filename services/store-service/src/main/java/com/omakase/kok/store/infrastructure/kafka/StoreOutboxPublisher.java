@@ -44,7 +44,7 @@ public class StoreOutboxPublisher {
     public void publishPendingEvents() {
         RLock lock = redissonClient.getLock(LOCK_KEY);
         try {
-            if (!lock.tryLock(0, 5, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(0, TimeUnit.SECONDS)) {
                 log.debug("락 획득 실패 - 다른 인스턴스가 처리 중");
                 return;
             }
@@ -69,7 +69,7 @@ public class StoreOutboxPublisher {
     public void retryFailedEvents() {
         RLock lock = redissonClient.getLock(LOCK_KEY);
         try {
-            if (!lock.tryLock(0, 5, TimeUnit.SECONDS)) return;
+            if (!lock.tryLock(0, TimeUnit.SECONDS)) return;
 
             List<StoreOutboxEvent> events = storeOutboxEventRepository.findFailedEvents(BATCH_SIZE);
             for (StoreOutboxEvent event : events) {

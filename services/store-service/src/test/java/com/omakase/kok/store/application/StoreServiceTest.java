@@ -45,6 +45,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.lang.reflect.Field;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -197,7 +198,7 @@ class StoreServiceTest {
                     inv.getArgument(0, UUID.class),
                     StoreEventType.STORE_CREATED.name(),
                     1,
-                    java.time.LocalDateTime.now(),
+                    Instant.now(),
                     "store-service",
                     new StoreCreatedEvent(savedStore.getStoreId())
                 );

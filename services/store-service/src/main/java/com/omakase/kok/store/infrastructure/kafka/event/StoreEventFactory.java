@@ -4,6 +4,7 @@ import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.enums.StoreEventType;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Component
@@ -18,7 +19,7 @@ public class StoreEventFactory {
             eventId,
             StoreEventType.STORE_CREATED.name(),
             SCHEMA_VERSION,
-            store.getCreatedAt(),
+            Instant.now(),
             PRODUCER,
             payload
         );

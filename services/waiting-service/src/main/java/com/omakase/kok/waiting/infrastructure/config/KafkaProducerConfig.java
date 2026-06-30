@@ -15,7 +15,8 @@ import java.util.Map;
 @Configuration
 @EnableConfigurationProperties({
         WaitingKafkaProperties.class,
-        WaitingKafkaPublisherProperties.class
+        WaitingKafkaPublisherProperties.class,
+        WaitingAutoNoShowProperties.class
 })
 public class KafkaProducerConfig {
     @Bean // Producer 인스턴스를 생성하는 팩토리 빈

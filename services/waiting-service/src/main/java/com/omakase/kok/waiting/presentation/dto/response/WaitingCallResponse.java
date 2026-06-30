@@ -19,6 +19,7 @@ public class WaitingCallResponse {
     private Integer peopleCount;
     private WaitingStatus status;
     private LocalDateTime calledAt;
+    private LocalDateTime callExpiresAt;
 
     public static WaitingCallResponse from(Waiting waiting) {
         return new WaitingCallResponse(
@@ -28,7 +29,8 @@ public class WaitingCallResponse {
                 waiting.getWaitingNumber(),
                 waiting.getPeopleCount(),
                 waiting.getStatus(),
-                waiting.getCalledAt()
+                waiting.getCalledAt(),
+                waiting.getCallExpiresAt()
         );
     }
 }

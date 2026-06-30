@@ -42,6 +42,10 @@ spring:
         max.in.flight.requests.per.connection: 5
 
 waiting:
+  auto-no-show:
+    cron: ${WAITING_AUTO_NO_SHOW_CRON:0 * * * * *}
+    lock-lease-ms: ${WAITING_AUTO_NO_SHOW_LOCK_LEASE_MS:300000}
+    batch-size: ${WAITING_AUTO_NO_SHOW_BATCH_SIZE:100}
   kafka:
     topic:
       store-events:

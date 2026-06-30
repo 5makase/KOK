@@ -22,6 +22,10 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
 waiting:
+  auto-no-show:
+    cron: 0 * * * * *
+    lock-lease-ms: 300000
+    batch-size: 100
   kafka:
     topic:
       waiting-events:

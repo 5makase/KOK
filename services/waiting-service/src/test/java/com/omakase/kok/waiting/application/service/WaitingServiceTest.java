@@ -490,6 +490,8 @@ class WaitingServiceTest {
         assertThat(response.getWaitingNumber()).isEqualTo(10L);
         assertThat(response.getStatus()).isEqualTo(WaitingStatus.CALLED);
         assertThat(response.getCalledAt()).isNotNull();
+        assertThat(response.getCallExpiresAt()).isEqualTo(response.getCalledAt().plusMinutes(10));
+        assertThat(waiting.getCallExpiresAt()).isEqualTo(waiting.getCalledAt().plusMinutes(10));
 
         then(waitingRepository).should().save(waiting);
         then(waitingQueueRedisStore).should().remove(eq(storeId), eq(userId), eq(waitingId), any(LocalDate.class));
@@ -653,6 +655,34 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+    }
+
+    @Test
+    @DisplayName("자동 미입장 처리는 호출 만료 시간이 지난 CALLED 웨이팅을 NO_SHOW로 변경한다")
+    void autoNoShowExpiredWaitings_success() {
+        UUID storeId = UUID.randomUUID();
+        UUID waitingId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 18L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now().minusMinutes(11));
+        ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().minusMinutes(1));
+
+        given(waitingRepository.findByStatusAndCallExpiresAtLessThanEqualOrderByCallExpiresAtAsc(
+                eq(WaitingStatus.CALLED),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 100))
+        )).willReturn(List.of(waiting));
+        given(waitingRepository.save(any(Waiting.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        int processedCount = waitingService.autoNoShowExpiredWaitings(100);
+
+        assertThat(processedCount).isEqualTo(1);
+        assertThat(waiting.getStatus()).isEqualTo(WaitingStatus.NO_SHOW);
+        assertThat(waiting.getNoShowReason()).isEqualTo("호출 제한 시간 초과");
+        assertThat(waiting.getNoShowedAt()).isNotNull();
+        then(waitingRepository).should().save(waiting);
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(waiting.getUserId()), eq(waitingId), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should().save(any());
     }
 
     @Test

@@ -37,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -61,6 +63,7 @@ public class WaitingService {
     private static final String WAITING_CALL_NEXT_LOCK_KEY_PREFIX = "waiting:store:";
     private static final String WAITING_CALL_NEXT_LOCK_KEY_SUFFIX = ":call-next:lock";
     private static final long WAITING_CALL_NEXT_LOCK_WAIT_SECONDS = 0L;
+    private static final String AUTO_NO_SHOW_REASON = "호출 제한 시간 초과";
 
     private final WaitingRepository waitingRepository;
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
@@ -179,10 +182,11 @@ public class WaitingService {
             Waiting waiting = waitingRepository.findById(waitingId)
                     .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
 
-            waiting.call();
+            waiting.validateCallAllowed();
+            Integer callTimeoutMinutes = waitingSettingService.getStoreWaitingValues(storeId).callTimeoutMinutes();
+            waiting.call(callTimeoutMinutes);
             Waiting savedWaiting = waitingRepository.save(waiting);
             scheduleQueueRemovalAfterCommit(savedWaiting);
-            Integer callTimeoutMinutes = waitingSettingService.getStoreWaitingValues(storeId).callTimeoutMinutes();
             saveCalledOutboxEvent(savedWaiting, callTimeoutMinutes);
 
             return WaitingCallResponse.from(savedWaiting);
@@ -224,6 +228,25 @@ public class WaitingService {
         saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
 
         return WaitingNoShowResponse.from(savedWaiting);
+    }
+
+    // 호출 제한 시간이 지난 웨이팅을 자동 미입장 처리
+    @Transactional
+    public int autoNoShowExpiredWaitings(int batchSize) {
+        List<Waiting> expiredWaitings = waitingRepository.findByStatusAndCallExpiresAtLessThanEqualOrderByCallExpiresAtAsc(
+                WaitingStatus.CALLED,
+                LocalDateTime.now(),
+                PageRequest.of(0, batchSize)
+        );
+
+        for (Waiting waiting : expiredWaitings) {
+            waiting.noShow(AUTO_NO_SHOW_REASON);
+            Waiting savedWaiting = waitingRepository.save(waiting);
+            scheduleQueueRemovalAfterCommit(savedWaiting);
+            saveOutboxEvent(savedWaiting, WaitingEventType.WAITING_NO_SHOW);
+        }
+
+        return expiredWaitings.size();
     }
 
     // 순번 임박 알림 대상 조회

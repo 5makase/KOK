@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,6 +28,13 @@ public interface WaitingRepository extends JpaRepository<Waiting, UUID> {
 
     // 사용자별 전체 조회
     List<Waiting> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    // 자동 미입장 처리 대상 조회
+    List<Waiting> findByStatusAndCallExpiresAtLessThanEqualOrderByCallExpiresAtAsc(
+            WaitingStatus status,
+            LocalDateTime now,
+            Pageable pageable
+    );
 
     // 중복 웨이팅 여부 확인
     boolean existsByStoreIdAndUserIdAndStatus(UUID storeId, UUID userId, WaitingStatus status);

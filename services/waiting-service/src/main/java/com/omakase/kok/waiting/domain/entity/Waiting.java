@@ -102,8 +102,15 @@ public class Waiting extends BaseEntity {
         if (this.status != WaitingStatus.CALLED) {
             throw new WaitingException(WaitingErrorCode.WAITING_ENTER_NOT_ALLOWED);
         }
+        validateEnterNotExpired();
         this.status = WaitingStatus.ENTERED;
         this.enteredAt = LocalDateTime.now();
+    }
+
+    private void validateEnterNotExpired() {
+        if (this.callExpiresAt != null && !LocalDateTime.now().isBefore(this.callExpiresAt)) {
+            throw new WaitingException(WaitingErrorCode.WAITING_ENTER_EXPIRED);
+        }
     }
 
     public void cancel(String cancelReason) {

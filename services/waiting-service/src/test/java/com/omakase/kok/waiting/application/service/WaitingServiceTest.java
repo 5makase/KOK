@@ -571,6 +571,7 @@ class WaitingServiceTest {
         Waiting waiting = waiting(storeId, UUID.randomUUID(), 13L, WaitingStatus.CALLED, null);
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+        ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().plusMinutes(1));
 
         given(storeSummaryReader.getStoreSummary(storeId))
                 .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
@@ -606,6 +607,30 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+    }
+
+    @Test
+    @DisplayName("입장 완료 처리는 호출 제한 시간이 지났으면 실패한다")
+    void enterWaiting_failWhenCallExpired() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 15L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now().minusMinutes(2));
+        ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().minusMinutes(1));
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.enterWaiting(ownerId, "OWNER", waitingId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_ENTER_EXPIRED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should(never()).save(any());
     }
 
     @Test

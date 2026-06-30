@@ -1,7 +1,10 @@
 package com.omakase.kok.store.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
@@ -15,17 +18,22 @@ import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.entity.StoreImage;
+import com.omakase.kok.store.domain.entity.StoreOutboxEvent;
+import com.omakase.kok.store.domain.enums.StoreEventType;
 import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.MenuRepository;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
+import com.omakase.kok.store.domain.repository.StoreOutboxEventRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
-import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
+import com.omakase.kok.store.infrastructure.kafka.event.StoreCreatedEvent;
+import com.omakase.kok.store.infrastructure.kafka.event.StoreEventEnvelope;
+import com.omakase.kok.store.infrastructure.kafka.event.StoreEventFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -44,15 +52,26 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class StoreService {
 
+    // 도메인 Repository
     private final StoreRepository storeRepository;
     private final StoreCategoryRepository storeCategoryRepository;
     private final StoreHoursRepository storeHoursRepository;
     private final StoreAmenityRepository storeAmenityRepository;
     private final StoreImageRepository storeImageRepository;
     private final MenuRepository menuRepository;
+    private final StoreOutboxEventRepository storeOutboxEventRepository;
+
+    // 조회/캐시
     private final StoreFinder storeFinder;
     private final StoreListCacheRepository storeListCacheRepository;
+
+    // 검증
     private final StoreOwnerValidator storeOwnerValidator;
+
+    // Kafka Outbox 이벤트 생성
+    private final StoreEventFactory storeEventFactory;
+
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public StoreResult createStore(CreateStoreCommand command) {
@@ -74,7 +93,13 @@ public class StoreService {
                 command.getMaxCapacity()
         );
 
-        StoreResult result = StoreResult.from(storeRepository.save(store));
+        // 영속화
+        Store savedStore = storeRepository.save(store);
+
+        // Outbox 이벤트 저장 (매장 저장과 같은 트랜잭션->원자성 보장): waiting-service가 STORE_CREATED 구독 → 기본 웨이팅 설정 자동 초기화
+        saveStoreCreatedOutboxEvent(savedStore);
+
+        StoreResult result = StoreResult.from(savedStore);
         evictListCacheAfterCommit();
         return result;
     }
@@ -134,6 +159,7 @@ public class StoreService {
 
     // 매장 상세 조회 - 서브 데이터(todayHours/amenities/imagePreview/menuPreview) 포함
     // MASTER: soft delete된 매장도 조회 가능
+
     public StoreResult getStore(UUID storeId, String role) {
         Store store = AuthConstants.MASTER.equals(role)
                 ? storeRepository.findById(storeId)
@@ -151,7 +177,6 @@ public class StoreService {
 
         return StoreResult.of(store, todayHours, amenities, imagePreview, menuPreview);
     }
-
     public Page<StoreResult> searchStores(StoreSearchCondition condition, UUID categoryId, UUID userId, String role, Pageable pageable) {
         StoreSearchCondition withCategory = resolveCategoryIds(condition, categoryId);
         StoreSearchCondition resolved = resolveCondition(withCategory, userId, role);
@@ -170,6 +195,7 @@ public class StoreService {
 
     // 대분류 ID면 활성 소분류 ID 목록으로 확장, 소분류 ID면 단일 목록, null이면 조건 없음
     // 카테고리 계층 해석은 도메인 규칙이므로 인프라(Repository)가 아닌 이 레이어에서 처리한다
+
     private StoreSearchCondition resolveCategoryIds(StoreSearchCondition condition, UUID categoryId) {
         if (categoryId == null) return condition;
         StoreCategory category = storeCategoryRepository.findCategory(categoryId)
@@ -182,8 +208,8 @@ public class StoreService {
                         .toList();
         return condition.toBuilder().categoryIds(categoryIds).build();
     }
-
     // OWNER: ownerId 자동 주입 / USER·비로그인: OPEN 강제 / MASTER: 조건 그대로
+
     private StoreSearchCondition resolveCondition(StoreSearchCondition condition, UUID userId, String role) {
         if (AuthConstants.OWNER.equals(role)) {
             // userId null이면 ownerId 필터가 무효화되어 전체 매장이 조회되므로 반드시 차단
@@ -201,14 +227,14 @@ public class StoreService {
                 .status(StoreStatus.OPEN)
                 .build();
     }
-
     // 내부 API - 웨이팅 서비스에서 매장 기본 정보 조회 시 사용
+
     public StoreSummaryResult getStoreSummary(UUID storeId) {
         return StoreSummaryResult.from(storeFinder.findActiveOrThrow(storeId));
     }
-
     // DB 커밋 완료 후 목록 캐시 무효화 - 롤백 시 불필요한 eviction 방지
     // 매장 데이터를 변경하는 @Transactional 메서드는 반드시 이 메서드를 호출해야 함
+
     private void evictListCacheAfterCommit() {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             storeListCacheRepository.evictAll();
@@ -222,4 +248,28 @@ public class StoreService {
         });
     }
 
+    /**
+     * 매장 생성 이벤트를 Envelope으로 감싸 Outbox 테이블에 PENDING 상태로 저장
+     * 실제 Kafka 발행은 StoreOutboxPublisher 스케줄러가 별도로 처리
+     */
+    private void saveStoreCreatedOutboxEvent(Store store) {
+        StoreEventEnvelope<StoreCreatedEvent> envelope = storeEventFactory.createStoreCreatedEnvelope(UUID.randomUUID(), store);
+
+        StoreOutboxEvent outboxEvent = StoreOutboxEvent.builder()
+            .storeId(store.getStoreId())
+            .eventType(StoreEventType.STORE_CREATED)
+            .payload(serializeEnvelope(envelope))
+            .build();
+
+        storeOutboxEventRepository.save(outboxEvent);
+    }
+
+    // Envelope을 JSON 문자열로 직렬화 (Kafka 메시지로 발행될 형태)
+    private String serializeEnvelope(Object envelope) {
+        try {
+            return objectMapper.writeValueAsString(envelope);
+        } catch (JsonProcessingException e) {
+            throw new BaseException(StoreErrorCode.PAYLOAD_SERIALIZATION_FAILED);
+        }
+    }
 }

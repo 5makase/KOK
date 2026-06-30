@@ -24,15 +24,30 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
-  # Kafka Consumer - review.events.v1 이벤트 수신 (REVIEW_CREATED/UPDATED/DELETED)
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Consumer - review.events.v1 이벤트 수신 (REVIEW_CREATED/UPDATED/DELETED)
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP_ID:store-service-group}
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
       enable-auto-commit: false
+      # Producer - store.events.v1 이벤트 발행 (STORE_CREATED: waiting-service가 구독 → 매장 등록 시 기본 웨이팅 설정 자동 초기화)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # acks: all → 모든 ISR(동기화된 복제본)이 응답해야 발행 성공 처리(매장 등록처럼 누락되면 안 되는 이벤트라 가장 안전한 옵션 사용)
+      acks: all
+      # 발행 실패 시 자동 재시도 횟수 (네트워크 일시 장애 대응)
+      # Outbox의 retry_count(애플리케이션 레벨 재시도)와는 별개로,Kafka 클라이언트 레벨에서 즉시 재시도하는 횟수
+      retries: 10
+      properties:
+        # 멱등성 프로듀서 활성화 - 재시도로 인한 Kafka 레벨 중복 발행 방지
+        # (waiting 측 eventId Redis 멱등 체크와 같은 목적, 통신 계층에서 한 번 더 막음)
+        enable.idempotence: true
+        # 멱등성 프로듀서 사용 시 권장 설정 (전송 순서 보장 유지)
+        max.in.flight.requests.per.connection: 5
 
 eureka:
   client:
@@ -42,6 +57,8 @@ eureka:
 logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+    # level:
+    #   com.omakase.kok.store.infrastructure.kafka.StoreOutboxPublisher: DEBUG  # 분산 락 동작 확인 시 주석 해제
 
 management:
   endpoints:

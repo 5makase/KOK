@@ -125,12 +125,14 @@ public class SlotService {
                 .getData();
 
         if (!validation.isAvailable()) {
-            throw new BaseException(switch (validation.getReason()) {
+            SlotErrorCode errorCode = switch (validation.getReason()) {
                 case "STORE_NOT_OPEN" -> SlotErrorCode.SLOT_STORE_NOT_OPEN;
                 case "DAY_OFF"        -> SlotErrorCode.SLOT_ON_DAY_OFF;
+                case "OUTSIDE_HOURS"  -> SlotErrorCode.SLOT_OUTSIDE_BUSINESS_HOURS;
                 case "BREAK_TIME"     -> SlotErrorCode.SLOT_IN_BREAK_TIME;
-                default               -> SlotErrorCode.SLOT_OUTSIDE_BUSINESS_HOURS;
-            });
+                default               -> throw new IllegalStateException("Unknown validation reason: " + validation.getReason());
+            };
+            throw new BaseException(errorCode);
         }
     }
 

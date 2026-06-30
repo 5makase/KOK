@@ -20,6 +20,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -208,6 +210,30 @@ class SlotServiceTest {
                 assertThat(response.isDepositRequired()).isTrue();
                 assertThat(response.getDepositAmount()).isEqualTo(10000L);
             }
+        }
+
+        @ParameterizedTest(name = "reason={0} → {1}")
+        @CsvSource({
+                "STORE_NOT_OPEN, SLOT_STORE_NOT_OPEN",
+                "DAY_OFF,        SLOT_ON_DAY_OFF",
+                "OUTSIDE_HOURS,  SLOT_OUTSIDE_BUSINESS_HOURS",
+                "BREAK_TIME,     SLOT_IN_BREAK_TIME"
+        })
+        @DisplayName("검증 거부 사유별로 올바른 에러 코드가 반환된다")
+        void fail_denialReasonMapsToCorrectErrorCode(String reason, String expectedCode) {
+            UUID storeId = UUID.randomUUID();
+            CreateSlotRequest req = buildCreateRequest(storeId, false, null);
+
+            BusinessHoursValidationResponse denied = new BusinessHoursValidationResponse();
+            ReflectionTestUtils.setField(denied, "available", false);
+            ReflectionTestUtils.setField(denied, "reason", reason);
+            when(storeServiceFeignClient.validateBusinessHours(any(), any(), any()))
+                    .thenReturn(ApiResponse.success(denied));
+
+            assertThatThrownBy(() -> slotService.createSlot(req, storeId))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode().getCode())
+                    .isEqualTo(SlotErrorCode.valueOf(expectedCode).getCode());
         }
     }
 

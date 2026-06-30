@@ -9,6 +9,7 @@ import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepos
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
+import com.omakase.kok.reservation.infrastructure.client.StoreServiceFeignClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +51,7 @@ class ReservationConcurrencyIntegrationTest {
     @Autowired private RedissonClient redissonClient;
 
     @MockBean private PaymentFeignClient paymentFeignClient;
+    @MockBean private StoreServiceFeignClient storeServiceFeignClient;
 
     private ReservationSlot slot;
 

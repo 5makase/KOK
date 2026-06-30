@@ -1,5 +1,7 @@
 package com.omakase.kok.store.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.common.exception.CommonErrorCode;
@@ -9,27 +11,33 @@ import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
 import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.entity.StoreOutboxEvent;
+import com.omakase.kok.store.domain.enums.StoreEventType;
 import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.MenuRepository;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.repository.StoreImageRepository;
+import com.omakase.kok.store.domain.repository.StoreOutboxEventRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
-import com.omakase.kok.store.application.validator.StoreOwnerValidator;
-import org.mockito.Spy;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
+import com.omakase.kok.store.infrastructure.kafka.event.StoreCreatedEvent;
+import com.omakase.kok.store.infrastructure.kafka.event.StoreEventEnvelope;
+import com.omakase.kok.store.infrastructure.kafka.event.StoreEventFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -63,7 +71,10 @@ class StoreServiceTest {
     @Mock MenuRepository menuRepository;
     @Mock StoreListCacheRepository storeListCacheRepository;
     @Mock StoreFinder storeFinder;
+    @Mock StoreOutboxEventRepository storeOutboxEventRepository;
+    @Mock StoreEventFactory storeEventFactory;
     @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
+    @Spy ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @InjectMocks
     StoreService storeService;
@@ -78,7 +89,7 @@ class StoreServiceTest {
         storeId = UUID.randomUUID();
         StoreCategory category = StoreCategory.create("한식", 1, null);
         store = Store.create(ownerId, category, "테스트 매장", null,
-                new Address("서울특별시", "강남구", null, null, null, null), null, null);
+            new Address("서울특별시", "강남구", null, null, null, null), null, null);
     }
 
     // deleteStore
@@ -91,7 +102,7 @@ class StoreServiceTest {
 
         // masterId가 ownerId와 다르지만 MASTER 권한이므로 삭제 가능
         assertThatCode(() -> storeService.deleteStore(storeId, masterId, AuthConstants.MASTER))
-                .doesNotThrowAnyException();
+            .doesNotThrowAnyException();
         assertThat(store.isDeleted()).isTrue();
     }
 
@@ -101,7 +112,7 @@ class StoreServiceTest {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
 
         assertThatCode(() -> storeService.deleteStore(storeId, ownerId, "OWNER"))
-                .doesNotThrowAnyException();
+            .doesNotThrowAnyException();
         assertThat(store.isDeleted()).isTrue();
     }
 
@@ -112,9 +123,9 @@ class StoreServiceTest {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
 
         assertThatThrownBy(() -> storeService.deleteStore(storeId, otherId, "OWNER"))
-                .isInstanceOf(BaseException.class)
-                .extracting(e -> ((BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
     }
 
     // changeStatus
@@ -123,24 +134,24 @@ class StoreServiceTest {
     @DisplayName("OPEN 전환 시 영업시간 7일치 미등록이면 예외")
     void changeStatus_open_requires_hours() {
         Store preparingStore = Store.create(ownerId,
-                StoreCategory.create("한식", 1, null), "이름", null,
-                new Address("서울", "강남", null, null, null, null), null, null);
+            StoreCategory.create("한식", 1, null), "이름", null,
+            new Address("서울", "강남", null, null, null, null), null, null);
 
         UUID preparingStoreId = UUID.randomUUID();
         when(storeFinder.findActiveOrThrow(preparingStoreId)).thenReturn(preparingStore);
         when(storeHoursRepository.countRegisteredHours(preparingStore)).thenReturn(5L);
 
         ChangeStoreStatusCommand command = ChangeStoreStatusCommand.builder()
-                .storeId(preparingStoreId)
-                .requesterId(ownerId)
-                .status(StoreStatus.OPEN)
-                .role("OWNER")
-                .build();
+            .storeId(preparingStoreId)
+            .requesterId(ownerId)
+            .status(StoreStatus.OPEN)
+            .role("OWNER")
+            .build();
 
         assertThatThrownBy(() -> storeService.changeStatus(command))
-                .isInstanceOf(BaseException.class)
-                .extracting(e -> ((BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
     }
 
     @Test
@@ -149,22 +160,22 @@ class StoreServiceTest {
         UUID masterId = UUID.randomUUID();
         UUID masterStoreId = UUID.randomUUID();
         Store masterStore = Store.create(ownerId,
-                StoreCategory.create("한식", 1, null), "이름", null,
-                new Address("서울", "강남", null, null, null, null), null, null);
+            StoreCategory.create("한식", 1, null), "이름", null,
+            new Address("서울", "강남", null, null, null, null), null, null);
 
         when(storeFinder.findActiveOrThrow(masterStoreId)).thenReturn(masterStore);
         when(storeHoursRepository.countRegisteredHours(masterStore)).thenReturn(7L);
 
         ChangeStoreStatusCommand command = ChangeStoreStatusCommand.builder()
-                .storeId(masterStoreId)
-                .requesterId(masterId) // ownerId 아님
-                .status(StoreStatus.OPEN)
-                .role(AuthConstants.MASTER)
-                .build();
+            .storeId(masterStoreId)
+            .requesterId(masterId) // ownerId 아님
+            .status(StoreStatus.OPEN)
+            .role(AuthConstants.MASTER)
+            .build();
 
         // MASTER라서 validateOwner 스킵 → 정상 처리
         assertThatCode(() -> storeService.changeStatus(command))
-                .doesNotThrowAnyException();
+            .doesNotThrowAnyException();
         assertThat(masterStore.getStatus()).isEqualTo(StoreStatus.OPEN);
     }
 
@@ -179,18 +190,32 @@ class StoreServiceTest {
 
         when(storeCategoryRepository.findCategory(categoryId)).thenReturn(java.util.Optional.of(sub));
         when(storeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(storeEventFactory.createStoreCreatedEnvelope(any(UUID.class), any(Store.class)))
+            .thenAnswer(inv -> {
+                Store savedStore = inv.getArgument(1, Store.class);
+                return new StoreEventEnvelope<>(
+                    inv.getArgument(0, UUID.class),
+                    StoreEventType.STORE_CREATED.name(),
+                    1,
+                    java.time.LocalDateTime.now(),
+                    "store-service",
+                    new StoreCreatedEvent(savedStore.getStoreId())
+                );
+            });
 
         CreateStoreCommand command = CreateStoreCommand.builder()
-                .ownerId(ownerId).categoryId(categoryId)
-                .name("테스트 매장").phone(null)
-                .address(new Address("서울", "강남", null, null, null, null))
-                .description(null).maxCapacity(null)
-                .build();
+            .ownerId(ownerId).categoryId(categoryId)
+            .name("테스트 매장").phone(null)
+            .address(new Address("서울", "강남", null, null, null, null))
+            .description(null).maxCapacity(null)
+            .build();
 
         StoreResult result = storeService.createStore(command);
 
         assertThat(result.getName()).isEqualTo("테스트 매장");
         assertThat(result.getStatus()).isEqualTo(StoreStatus.PREPARING.name()); // Result DTO는 String 변환 적용
+        // 매장 저장과 같은 트랜잭션에서 Outbox 이벤트가 저장되는지 검증
+        verify(storeOutboxEventRepository).save(any(StoreOutboxEvent.class));
     }
 
     @Test
@@ -202,16 +227,16 @@ class StoreServiceTest {
         when(storeCategoryRepository.findCategory(categoryId)).thenReturn(java.util.Optional.of(root));
 
         CreateStoreCommand command = CreateStoreCommand.builder()
-                .ownerId(ownerId).categoryId(categoryId)
-                .name("테스트 매장").phone(null)
-                .address(new Address("서울", "강남", null, null, null, null))
-                .description(null).maxCapacity(null)
-                .build();
+            .ownerId(ownerId).categoryId(categoryId)
+            .name("테스트 매장").phone(null)
+            .address(new Address("서울", "강남", null, null, null, null))
+            .description(null).maxCapacity(null)
+            .build();
 
         assertThatThrownBy(() -> storeService.createStore(command))
-                .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
-                .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.INVALID_CATEGORY);
+            .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
+            .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.INVALID_CATEGORY);
     }
 
     // updateStore
@@ -223,13 +248,13 @@ class StoreServiceTest {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
 
         UpdateStoreCommand command = UpdateStoreCommand.builder()
-                .storeId(storeId).requesterId(otherId)
-                .name("변경").build();
+            .storeId(storeId).requesterId(otherId)
+            .name("변경").build();
 
         assertThatThrownBy(() -> storeService.updateStore(command, AuthConstants.OWNER))
-                .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
-                .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
+            .isInstanceOf(com.omakase.kok.common.exception.BaseException.class)
+            .extracting(e -> ((com.omakase.kok.common.exception.BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.STORE_ACCESS_DENIED);
     }
 
     @Test
@@ -238,9 +263,9 @@ class StoreServiceTest {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
 
         UpdateStoreCommand command = UpdateStoreCommand.builder()
-                .storeId(storeId).requesterId(ownerId)
-                .name("변경된 이름").categoryId(null)
-                .build();
+            .storeId(storeId).requesterId(ownerId)
+            .name("변경된 이름").categoryId(null)
+            .build();
 
         StoreResult result = storeService.updateStore(command, AuthConstants.OWNER);
 
@@ -303,7 +328,7 @@ class StoreServiceTest {
     @DisplayName("MASTER 역할 - 조건 그대로 통과 (status 강제 없음)")
     void searchStores_master_passes_condition_as_is() {
         StoreSearchCondition condition = StoreSearchCondition.builder()
-                .status(StoreStatus.PREPARING).build();
+            .status(StoreStatus.PREPARING).build();
         PageRequest pageable = PageRequest.of(0, 20);
         Page<Store> emptyPage = new PageImpl<>(List.of());
 
@@ -314,8 +339,8 @@ class StoreServiceTest {
 
         // MASTER는 OPEN 강제 없이 PREPARING 그대로 전달
         verify(storeRepository).search(
-                argThat(c -> c.getStatus() == StoreStatus.PREPARING),
-                eq(pageable)
+            argThat(c -> c.getStatus() == StoreStatus.PREPARING),
+            eq(pageable)
         );
     }
 
@@ -333,8 +358,8 @@ class StoreServiceTest {
 
         // resolveCondition이 status=OPEN으로 설정했는지 검증
         verify(storeRepository).search(
-                argThat(c -> c.getStatus() == StoreStatus.OPEN),
-                eq(pageable)
+            argThat(c -> c.getStatus() == StoreStatus.OPEN),
+            eq(pageable)
         );
     }
 
@@ -346,7 +371,7 @@ class StoreServiceTest {
         store.delete(ownerId);
         when(storeRepository.findById(storeId)).thenReturn(Optional.of(store));
         when(storeHoursRepository.findTodayHours(eq(storeId), any(DayOfWeek.class)))
-                .thenReturn(Optional.empty());
+            .thenReturn(Optional.empty());
         when(storeAmenityRepository.findAllAmenities(store)).thenReturn(List.of());
         when(storeImageRepository.findImagePreview(storeId)).thenReturn(List.of());
         when(menuRepository.findAllMenus(store)).thenReturn(List.of());
@@ -362,12 +387,12 @@ class StoreServiceTest {
     @DisplayName("USER는 삭제된(비활성) 매장 조회 시 예외")
     void getStore_user_cannot_read_inactive_store() {
         when(storeFinder.findActiveOrThrow(storeId))
-                .thenThrow(new BaseException(StoreErrorCode.STORE_NOT_FOUND));
+            .thenThrow(new BaseException(StoreErrorCode.STORE_NOT_FOUND));
 
         assertThatThrownBy(() -> storeService.getStore(storeId, "USER"))
-                .isInstanceOf(BaseException.class)
-                .extracting(e -> ((BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
     }
 
     @Test
@@ -375,7 +400,7 @@ class StoreServiceTest {
     void getStore_no_today_hours_returns_result_without_hours() {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findTodayHours(eq(storeId), any(DayOfWeek.class)))
-                .thenReturn(Optional.empty());
+            .thenReturn(Optional.empty());
         when(storeAmenityRepository.findAllAmenities(store)).thenReturn(List.of());
         when(storeImageRepository.findImagePreview(storeId)).thenReturn(List.of());
         when(menuRepository.findAllMenus(store)).thenReturn(List.of());
@@ -405,21 +430,21 @@ class StoreServiceTest {
         PageRequest pageable = PageRequest.of(0, 10);
 
         assertThatThrownBy(() -> storeService.searchStores(condition, null, null, AuthConstants.OWNER, pageable))
-                .isInstanceOf(BaseException.class)
-                .extracting(e -> ((BaseException) e).getErrorCode())
-                .isEqualTo(CommonErrorCode.ACCESS_DENIED);
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(CommonErrorCode.ACCESS_DENIED);
     }
 
     @Test
     @DisplayName("getStoreSummary - 비활성 매장이면 예외")
     void getStoreSummary_inactive_store_throws() {
         when(storeFinder.findActiveOrThrow(storeId))
-                .thenThrow(new BaseException(StoreErrorCode.STORE_NOT_FOUND));
+            .thenThrow(new BaseException(StoreErrorCode.STORE_NOT_FOUND));
 
         assertThatThrownBy(() -> storeService.getStoreSummary(storeId))
-                .isInstanceOf(BaseException.class)
-                .extracting(e -> ((BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.STORE_NOT_FOUND);
     }
 
     // resolveCategoryIds (searchStores 경유 테스트)
@@ -435,8 +460,8 @@ class StoreServiceTest {
         storeService.searchStores(condition, null, null, "USER", pageable);
 
         verify(storeRepository).search(
-                argThat(c -> c.getCategoryIds() == null),
-                any()
+            argThat(c -> c.getCategoryIds() == null),
+            any()
         );
         verify(storeCategoryRepository, never()).findCategory(any());
     }
@@ -455,8 +480,8 @@ class StoreServiceTest {
         storeService.searchStores(StoreSearchCondition.builder().build(), subId, null, "USER", PageRequest.of(0, 10));
 
         verify(storeRepository).search(
-                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().equals(List.of(subId))),
-                any()
+            argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().equals(List.of(subId))),
+            any()
         );
     }
 
@@ -476,8 +501,8 @@ class StoreServiceTest {
         storeService.searchStores(StoreSearchCondition.builder().build(), parentId, null, "USER", PageRequest.of(0, 10));
 
         verify(storeRepository).search(
-                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().size() == 2),
-                any()
+            argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().size() == 2),
+            any()
         );
     }
 
@@ -498,8 +523,8 @@ class StoreServiceTest {
 
         // 빈 리스트 → inCategories()에서 Expressions.FALSE → 결과 없음
         verify(storeRepository).search(
-                argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().isEmpty()),
-                any()
+            argThat(c -> c.getCategoryIds() != null && c.getCategoryIds().isEmpty()),
+            any()
         );
     }
 
@@ -510,10 +535,10 @@ class StoreServiceTest {
         when(storeCategoryRepository.findCategory(unknownId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                storeService.searchStores(StoreSearchCondition.builder().build(), unknownId, null, "USER", PageRequest.of(0, 10)))
-                .isInstanceOf(BaseException.class)
-                .extracting(e -> ((BaseException) e).getErrorCode())
-                .isEqualTo(StoreErrorCode.CATEGORY_NOT_FOUND);
+            storeService.searchStores(StoreSearchCondition.builder().build(), unknownId, null, "USER", PageRequest.of(0, 10)))
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.CATEGORY_NOT_FOUND);
     }
 
     // StoreCategory.children은 JPA 관리 컬렉션(setter 없음) → reflection으로 주입

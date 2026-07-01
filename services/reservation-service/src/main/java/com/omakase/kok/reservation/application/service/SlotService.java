@@ -81,7 +81,7 @@ public class SlotService {
     public SlotResponse updateSlot(UUID slotId, UpdateSlotRequest request, UUID ownerId) {
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + slotId);
         try {
-            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
 

@@ -27,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,7 +79,8 @@ class SlotUpdateConcurrencyIntegrationTest {
     @Test
     @DisplayName("슬롯 정원 축소와 동시 예약 요청이 뒤섞여도 DB/Redis 잔여 인원이 일관되게 유지된다")
     void concurrentUpdateAndReservation_keepsCapacityConsistent() throws InterruptedException {
-        int updateThreadCount = 3;
+        int[] targetCapacities = {8, 6, 4};
+        int updateThreadCount = targetCapacities.length;
         int reservationThreadCount = 5;
         int totalThreadCount = updateThreadCount + reservationThreadCount;
 
@@ -87,8 +89,8 @@ class SlotUpdateConcurrencyIntegrationTest {
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(totalThreadCount);
 
+        AtomicInteger updateSuccessCount = new AtomicInteger(0);
         AtomicInteger reservationSuccessCount = new AtomicInteger(0);
-        int[] targetCapacities = {8, 6, 4};
 
         for (int i = 0; i < updateThreadCount; i++) {
             final int newCapacity = targetCapacities[i];
@@ -99,6 +101,7 @@ class SlotUpdateConcurrencyIntegrationTest {
                     UpdateSlotRequest req = new UpdateSlotRequest();
                     ReflectionTestUtils.setField(req, "maxCapacity", newCapacity);
                     slotService.updateSlot(slot.getSlotId(), req, slot.getStoreId());
+                    updateSuccessCount.incrementAndGet();
                 } catch (Exception ignored) {
                     // 락 경쟁/정원 검증 실패는 정상적인 결과이므로 무시
                 } finally {
@@ -125,10 +128,23 @@ class SlotUpdateConcurrencyIntegrationTest {
             });
         }
 
-        ready.await();
+        assertThat(ready.await(10, TimeUnit.SECONDS))
+                .as("모든 스레드가 제한 시간 내에 준비를 마쳐야 한다")
+                .isTrue();
         start.countDown();
-        done.await();
+        assertThat(done.await(30, TimeUnit.SECONDS))
+                .as("모든 스레드가 제한 시간 내에 완료되어야 한다 (데드락 시 실패)")
+                .isTrue();
         executor.shutdown();
+
+        // 대부분의 스레드가 락 타임아웃으로 실패하면 실제 동시성 경쟁 없이도
+        // 아래 정합성 검증이 트리비얼하게 통과할 수 있으므로, 실제로 락 경쟁이 있었음을 보장한다.
+        assertThat(updateSuccessCount.get())
+                .as("최소 1건 이상의 슬롯 수정이 성공해야 한다")
+                .isGreaterThan(0);
+        assertThat(reservationSuccessCount.get())
+                .as("최소 1건 이상의 예약이 성공해야 한다")
+                .isGreaterThan(0);
 
         ReservationSlot updated = slotRepository.findBySlotIdAndDeletedAtIsNull(slot.getSlotId()).orElseThrow();
         long redisRemaining = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).get();

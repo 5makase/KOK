@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -74,7 +75,7 @@ class SlotServiceTest {
 
     private void givenLockAcquired() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(lock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
     }
 
@@ -287,6 +288,13 @@ class SlotServiceTest {
             assertThat(response.getMaxCapacity()).isEqualTo(6);
             verify(atomicLong).set(5);
             verify(lock).unlock();
+
+            InOrder inOrder = inOrder(lock, slotRepository, transactionManager, atomicLong);
+            inOrder.verify(lock).tryLock(anyLong(), any(TimeUnit.class));
+            inOrder.verify(slotRepository).findBySlotIdAndDeletedAtIsNull(slotId);
+            inOrder.verify(transactionManager).commit(any());
+            inOrder.verify(atomicLong).set(5);
+            inOrder.verify(lock).unlock();
         }
 
         @Test
@@ -312,7 +320,7 @@ class SlotServiceTest {
         void fail_lockAcquisitionTimeout_throwsSlotLockFailed() throws InterruptedException {
             UUID slotId = UUID.randomUUID();
             when(redissonClient.getLock(anyString())).thenReturn(lock);
-            when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
+            when(lock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
             when(lock.isHeldByCurrentThread()).thenReturn(false);
 
             UpdateSlotRequest req = buildUpdateRequest(6);

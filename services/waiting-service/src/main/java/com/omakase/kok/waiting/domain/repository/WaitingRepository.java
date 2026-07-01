@@ -25,6 +25,19 @@ public interface WaitingRepository extends JpaRepository<Waiting, UUID> {
             LocalDateTime endAt
     );
 
+    // 매장별 특정 일자에 발급된 최대 웨이팅 번호 조회
+    @Query("""
+            select coalesce(max(w.waitingNumber), 0)
+              from Waiting w
+             where w.storeId = :storeId
+               and w.createdAt between :startAt and :endAt
+            """)
+    Long findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+            @Param("storeId") UUID storeId,
+            @Param("startAt") LocalDateTime startAt,
+            @Param("endAt") LocalDateTime endAt
+    );
+
     // 매장별 상태 페이지 조회
     Page<Waiting> findByStoreIdAndStatus(UUID storeId, WaitingStatus status, Pageable pageable);
 

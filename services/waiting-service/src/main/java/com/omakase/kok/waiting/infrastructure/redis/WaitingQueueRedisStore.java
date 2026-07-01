@@ -76,8 +76,8 @@ public class WaitingQueueRedisStore {
             local queueKey = KEYS[1]
             local sequenceKey = KEYS[2]
             local ttlSeconds = tonumber(ARGV[1])
-            local maxWaitingNumber = 0
-            local index = 2
+            local maxIssuedWaitingNumber = tonumber(ARGV[2])
+            local index = 3
 
             redis.call('DEL', queueKey)
 
@@ -89,19 +89,15 @@ public class WaitingQueueRedisStore {
                 redis.call('ZADD', queueKey, waitingNumber, waitingId)
                 redis.call('SET', activeUserKey, waitingId, 'EX', ttlSeconds)
 
-                if waitingNumber > maxWaitingNumber then
-                    maxWaitingNumber = waitingNumber
-                end
-
                 index = index + 3
             end
 
-            redis.call('SET', sequenceKey, maxWaitingNumber, 'EX', ttlSeconds)
-            if maxWaitingNumber > 0 then
+            redis.call('SET', sequenceKey, maxIssuedWaitingNumber, 'EX', ttlSeconds)
+            if maxIssuedWaitingNumber > 0 then
                 redis.call('EXPIRE', queueKey, ttlSeconds)
             end
 
-            return maxWaitingNumber
+            return maxIssuedWaitingNumber
             """, Long.class);
 
     private String formatDate(LocalDate date) {
@@ -209,10 +205,11 @@ public class WaitingQueueRedisStore {
     }
 
     // DB 기준 대기열 복원
-    public void restoreQueue(UUID storeId, LocalDate waitingDate, List<Waiting> waitings) {
+    public void restoreQueue(UUID storeId, LocalDate waitingDate, List<Waiting> waitings, long maxIssuedWaitingNumber) {
         List<String> keys = List.of(queueKey(storeId, waitingDate), sequenceKey(storeId, waitingDate));
         List<String> args = new java.util.ArrayList<>();
         args.add(String.valueOf(WAITING_KEY_TTL_SECONDS));
+        args.add(String.valueOf(maxIssuedWaitingNumber));
         for (Waiting waiting : waitings) {
             args.add(waiting.getId().toString());
             args.add(activeUserKey(storeId, waiting.getUserId(), waitingDate));

@@ -832,18 +832,24 @@ class WaitingServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         )).willReturn(List.of(firstWaiting, secondWaiting));
+        given(waitingRepository.findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+                eq(storeId),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(9L);
 
         var response = waitingService.restoreWaitingQueue(storeId, waitingDate);
 
         assertThat(response.getStoreId()).isEqualTo(storeId);
         assertThat(response.getWaitingDate()).isEqualTo(waitingDate);
         assertThat(response.getRestoredCount()).isEqualTo(2);
-        assertThat(response.getMaxWaitingNumber()).isEqualTo(5L);
+        assertThat(response.getMaxWaitingNumber()).isEqualTo(9L);
         assertThat(response.getRestoredAt()).isNotNull();
         then(waitingQueueRedisStore).should().restoreQueue(
                 eq(storeId),
                 eq(waitingDate),
-                eq(List.of(firstWaiting, secondWaiting))
+                eq(List.of(firstWaiting, secondWaiting)),
+                eq(9L)
         );
     }
 
@@ -860,8 +866,13 @@ class WaitingServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         )).willReturn(List.of(waiting));
+        given(waitingRepository.findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+                eq(storeId),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(1L);
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
-                .when(waitingQueueRedisStore).restoreQueue(eq(storeId), eq(waitingDate), eq(List.of(waiting)));
+                .when(waitingQueueRedisStore).restoreQueue(eq(storeId), eq(waitingDate), eq(List.of(waiting)), eq(1L));
 
         assertThatThrownBy(() -> waitingService.restoreWaitingQueue(storeId, waitingDate))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->

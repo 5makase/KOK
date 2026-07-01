@@ -55,12 +55,12 @@ class WaitingQueueRedisStoreTest {
         String sequenceKey = "waiting:store:" + storeId + ":sequence:20260701";
         String activeUserKey = "waiting:store:" + storeId + ":user:" + userId + ":20260701:active";
 
-        waitingQueueRedisStore.restoreQueue(storeId, waitingDate, List.of(waiting));
+        waitingQueueRedisStore.restoreQueue(storeId, waitingDate, List.of(waiting), 11L);
 
         verify(redisTemplate).execute(
                 any(DefaultRedisScript.class),
                 eq(List.of(queueKey, sequenceKey)),
-                aryEq(new Object[]{"259200", waitingId.toString(), activeUserKey, "7"})
+                aryEq(new Object[]{"259200", "11", waitingId.toString(), activeUserKey, "7"})
         );
         verify(redisTemplate, never()).expire(anyString(), anyLong(), any());
     }

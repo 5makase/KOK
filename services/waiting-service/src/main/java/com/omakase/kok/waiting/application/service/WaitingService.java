@@ -295,17 +295,14 @@ public class WaitingService {
     public WaitingQueueRestoreResponse restoreWaitingQueue(UUID storeId, LocalDate waitingDate) {
         LocalDate targetDate = waitingDate != null ? waitingDate : LocalDate.now();
         List<Waiting> waitings = getWaitingQueueSnapshot(storeId, targetDate);
+        long maxWaitingNumber = getMaxIssuedWaitingNumber(storeId, targetDate);
         try {
-            waitingQueueRedisStore.restoreQueue(storeId, targetDate, waitings);
+            waitingQueueRedisStore.restoreQueue(storeId, targetDate, waitings, maxWaitingNumber);
         } catch (RuntimeException e) {
             log.error("Failed to restore waiting queue from DB. storeId={}, waitingDate={}", storeId, targetDate, e);
             throw new WaitingException(WaitingErrorCode.WAITING_QUEUE_RESTORE_FAILED);
         }
 
-        long maxWaitingNumber = waitings.stream()
-                .mapToLong(Waiting::getWaitingNumber)
-                .max()
-                .orElse(0L);
         return WaitingQueueRestoreResponse.of(storeId, targetDate, waitings.size(), maxWaitingNumber);
     }
 
@@ -437,6 +434,15 @@ public class WaitingService {
         return waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
                 storeId,
                 WaitingStatus.WAITING,
+                startOfDay(waitingDate),
+                startOfNextDay(waitingDate)
+        );
+    }
+
+    // 해당 일자에 발급된 전체 웨이팅 번호 중 최댓값 조회
+    private long getMaxIssuedWaitingNumber(UUID storeId, LocalDate waitingDate) {
+        return waitingRepository.findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+                storeId,
                 startOfDay(waitingDate),
                 startOfNextDay(waitingDate)
         );

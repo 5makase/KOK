@@ -1,17 +1,22 @@
 package com.omakase.kok.reservation.presentation.controller;
 
 import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.common.dto.PageResponse;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.application.service.ReservationService;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Tag(name = "예약 관리 (점주)")
@@ -25,9 +30,17 @@ public class StoreReservationController {
 
     @Operation(summary = "매장 예약 목록 조회")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ReservationResponse>>> getStoreReservations(
-            @PathVariable UUID storeId) {
-        return ResponseEntity.ok(ApiResponse.success(reservationService.getStoreReservations(storeId)));
+    public ResponseEntity<ApiResponse<PageResponse<ReservationResponse>>> getStoreReservations(
+            @PathVariable UUID storeId,
+            @RequestParam(required = false) ReservationStatus status,
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 50));
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        Page<ReservationResponse> result = reservationService.getStoreReservations(storeId, status, date, pageable);
+        return ResponseEntity.ok(ApiResponse.success(PageResponse.from(result)));
     }
 
     @Operation(summary = "매장 예약 단건 조회")

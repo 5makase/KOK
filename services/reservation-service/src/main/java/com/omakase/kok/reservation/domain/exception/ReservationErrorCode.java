@@ -20,7 +20,10 @@ public enum ReservationErrorCode implements ErrorCode {
     RESERVATION_NOT_VISITABLE(HttpStatus.CONFLICT, "RESERVATION-009", "CONFIRMED 상태의 예약만 방문/노쇼 처리할 수 있습니다."),
     PAYLOAD_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "RESERVATION-010", "이벤트 payload 직렬화에 실패했습니다."),
     RESERVATION_NOT_CONFIRMABLE(HttpStatus.CONFLICT, "RESERVATION-011", "현재 상태에서는 예약을 확정할 수 없습니다."),
-    RESERVATION_NOT_CHANGEABLE(HttpStatus.CONFLICT, "RESERVATION-012", "CONFIRMED 상태의 예약만 변경할 수 있습니다.");
+    RESERVATION_NOT_CHANGEABLE(HttpStatus.CONFLICT, "RESERVATION-012", "CONFIRMED 상태의 예약만 변경할 수 있습니다."),
+    RESERVATION_SLOT_NOT_CHANGEABLE(HttpStatus.CONFLICT, "RESERVATION-013", "새로운 슬롯의 날짜는 오늘 이후여야 합니다."),
+    RESERVATION_SLOT_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "RESERVATION-014", "변경하려는 슬롯의 예약 가능 인원이 부족합니다."),
+    RESERVATION_SLOT_STORE_MISMATCH(HttpStatus.CONFLICT, "RESERVATION-015", "다른 매장의 슬롯으로는 변경할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

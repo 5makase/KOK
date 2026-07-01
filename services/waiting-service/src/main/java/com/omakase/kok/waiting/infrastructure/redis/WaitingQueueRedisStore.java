@@ -77,9 +77,20 @@ public class WaitingQueueRedisStore {
             local sequenceKey = KEYS[2]
             local ttlSeconds = tonumber(ARGV[1])
             local maxIssuedWaitingNumber = tonumber(ARGV[2])
-            local index = 3
+            local activeUserKeyPattern = ARGV[3]
+            local index = 4
 
             redis.call('DEL', queueKey)
+
+            local cursor = '0'
+            repeat
+                local scanResult = redis.call('SCAN', cursor, 'MATCH', activeUserKeyPattern, 'COUNT', 100)
+                cursor = scanResult[1]
+                local activeUserKeys = scanResult[2]
+                for keyIndex = 1, #activeUserKeys do
+                    redis.call('DEL', activeUserKeys[keyIndex])
+                end
+            until cursor == '0'
 
             while index <= #ARGV do
                 local waitingId = ARGV[index]
@@ -118,6 +129,12 @@ public class WaitingQueueRedisStore {
     private String activeUserKey(UUID storeId, UUID userId, LocalDate date) {
         return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE
                 + userId + ":" + formatDate(date) + WAITING_ACTIVE_USER_KEY_SUFFIX;
+    }
+
+    // 사용자별 진행 중 웨이팅 키 패턴
+    private String activeUserKeyPattern(UUID storeId, LocalDate date) {
+        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE
+                + "*:" + formatDate(date) + WAITING_ACTIVE_USER_KEY_SUFFIX;
     }
 
     // 매장 캐시 키
@@ -210,6 +227,7 @@ public class WaitingQueueRedisStore {
         List<String> args = new java.util.ArrayList<>();
         args.add(String.valueOf(WAITING_KEY_TTL_SECONDS));
         args.add(String.valueOf(maxIssuedWaitingNumber));
+        args.add(activeUserKeyPattern(storeId, waitingDate));
         for (Waiting waiting : waitings) {
             args.add(waiting.getId().toString());
             args.add(activeUserKey(storeId, waiting.getUserId(), waitingDate));

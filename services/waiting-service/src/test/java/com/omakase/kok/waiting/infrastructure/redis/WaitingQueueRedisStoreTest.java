@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -14,6 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -53,15 +55,19 @@ class WaitingQueueRedisStoreTest {
         setField(waiting, "createdAt", waitingDate.atTime(12, 0));
         String queueKey = "waiting:store:" + storeId + ":queue:20260701";
         String sequenceKey = "waiting:store:" + storeId + ":sequence:20260701";
+        String activeUserKeyPattern = "waiting:store:" + storeId + ":user:*:20260701:active";
         String activeUserKey = "waiting:store:" + storeId + ":user:" + userId + ":20260701:active";
 
         waitingQueueRedisStore.restoreQueue(storeId, waitingDate, List.of(waiting), 11L);
 
+        ArgumentCaptor<DefaultRedisScript> scriptCaptor = ArgumentCaptor.forClass(DefaultRedisScript.class);
         verify(redisTemplate).execute(
-                any(DefaultRedisScript.class),
+                scriptCaptor.capture(),
                 eq(List.of(queueKey, sequenceKey)),
-                aryEq(new Object[]{"259200", "11", waitingId.toString(), activeUserKey, "7"})
+                aryEq(new Object[]{"259200", "11", activeUserKeyPattern, waitingId.toString(), activeUserKey, "7"})
         );
+        assertThat(scriptCaptor.getValue().getScriptAsString())
+                .contains("SCAN", "MATCH", "activeUserKeyPattern");
         verify(redisTemplate, never()).expire(anyString(), anyLong(), any());
     }
 }

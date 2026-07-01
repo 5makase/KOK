@@ -818,6 +818,56 @@ class WaitingServiceTest {
         assertThat(response).isEmpty();
     }
 
+    @Test
+    @DisplayName("DB의 WAITING 목록을 기준으로 Redis 대기열을 복구한다")
+    void restoreWaitingQueue_success() {
+        UUID storeId = UUID.randomUUID();
+        LocalDate waitingDate = LocalDate.now();
+        Waiting firstWaiting = waiting(storeId, UUID.randomUUID(), 3L, WaitingStatus.WAITING, null);
+        Waiting secondWaiting = waiting(storeId, UUID.randomUUID(), 5L, WaitingStatus.WAITING, null);
+
+        given(waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
+                eq(storeId),
+                eq(WaitingStatus.WAITING),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(List.of(firstWaiting, secondWaiting));
+
+        var response = waitingService.restoreWaitingQueue(storeId, waitingDate);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getWaitingDate()).isEqualTo(waitingDate);
+        assertThat(response.getRestoredCount()).isEqualTo(2);
+        assertThat(response.getMaxWaitingNumber()).isEqualTo(5L);
+        assertThat(response.getRestoredAt()).isNotNull();
+        then(waitingQueueRedisStore).should().restoreQueue(
+                eq(storeId),
+                eq(waitingDate),
+                eq(List.of(firstWaiting, secondWaiting))
+        );
+    }
+
+    @Test
+    @DisplayName("Redis 대기열 복구에 실패하면 복구 실패 예외를 반환한다")
+    void restoreWaitingQueue_failWhenRedisUnavailable() {
+        UUID storeId = UUID.randomUUID();
+        LocalDate waitingDate = LocalDate.now();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 1L, WaitingStatus.WAITING, null);
+
+        given(waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
+                eq(storeId),
+                eq(WaitingStatus.WAITING),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(List.of(waiting));
+        org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
+                .when(waitingQueueRedisStore).restoreQueue(eq(storeId), eq(waitingDate), eq(List.of(waiting)));
+
+        assertThatThrownBy(() -> waitingService.restoreWaitingQueue(storeId, waitingDate))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_QUEUE_RESTORE_FAILED));
+    }
+
     private WaitingCreateRequest waitingCreateRequest(UUID storeId, Integer peopleCount, String requestMessage) {
         WaitingCreateRequest request = newInstance(WaitingCreateRequest.class);
         ReflectionTestUtils.setField(request, "storeId", storeId);

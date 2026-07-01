@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
+import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
@@ -29,11 +30,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -115,6 +121,56 @@ class ReservationServiceTest {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rLock.isHeldByCurrentThread()).thenReturn(true);
+    }
+
+    private Reservation buildConfirmedReservation(UUID slotId, UUID userId, UUID storeId,
+                                                   LocalDateTime scheduledAt, int size) {
+        Reservation r = Reservation.builder()
+                .slotId(slotId)
+                .userId(userId)
+                .storeId(storeId)
+                .scheduledAt(scheduledAt)
+                .bookerName("홍길동")
+                .bookerPhone("010-1234-5678")
+                .reservationSize(size)
+                .build();
+        ReflectionTestUtils.setField(r, "reservationId", UUID.randomUUID());
+        ReflectionTestUtils.setField(r, "status", ReservationStatus.CONFIRMED);
+        return r;
+    }
+
+    private ChangeReservationRequest buildChangeRequest(Integer reservationSize, UUID newSlotId) {
+        ChangeReservationRequest req = new ChangeReservationRequest();
+        ReflectionTestUtils.setField(req, "reservationSize", reservationSize);
+        ReflectionTestUtils.setField(req, "newSlotId", newSlotId);
+        return req;
+    }
+
+    private RLock lockFor(String key) throws InterruptedException {
+        RLock lock = mock(RLock.class);
+        when(redissonClient.getLock(key)).thenReturn(lock);
+        when(lock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(lock.isHeldByCurrentThread()).thenReturn(true);
+        return lock;
+    }
+
+    private RAtomicLong atomicLongFor(String key) {
+        RAtomicLong atomic = mock(RAtomicLong.class);
+        when(redissonClient.getAtomicLong(key)).thenReturn(atomic);
+        return atomic;
+    }
+
+    private ReservationSlot buildSlot(UUID storeId, LocalDate slotDate, LocalTime slotTime, int maxCapacity) {
+        ReservationSlot slot = ReservationSlot.builder()
+                .storeId(storeId)
+                .slotDate(slotDate)
+                .slotTime(slotTime)
+                .maxCapacity(maxCapacity)
+                .depositRequired(false)
+                .depositAmount(null)
+                .build();
+        ReflectionTestUtils.setField(slot, "slotId", UUID.randomUUID());
+        return slot;
     }
 
     private void givenTransactionExecutes() {
@@ -529,18 +585,262 @@ class ReservationServiceTest {
     class GetMyReservations {
 
         @Test
-        @DisplayName("사용자 ID로 예약 목록을 조회한다")
+        @DisplayName("사용자 ID로 예약 목록을 페이지로 조회한다")
         void success() {
             UUID userId = UUID.randomUUID();
             Reservation r1 = buildReservation(UUID.randomUUID(), userId, UUID.randomUUID());
             Reservation r2 = buildReservation(UUID.randomUUID(), userId, UUID.randomUUID());
+            Pageable pageable = PageRequest.of(0, 10);
 
-            when(reservationRepository.findByUserIdAndDeletedAtIsNull(userId))
-                    .thenReturn(List.of(r1, r2));
+            when(reservationRepository.findMyReservations(eq(userId), isNull(), isNull(), isNull(), eq(pageable)))
+                    .thenReturn(new PageImpl<>(List.of(r1, r2), pageable, 2));
 
-            List<ReservationResponse> result = reservationService.getMyReservations(userId);
+            Page<ReservationResponse> result = reservationService.getMyReservations(userId, null, null, null, pageable);
 
-            assertThat(result).hasSize(2);
+            assertThat(result.getContent()).hasSize(2);
+            assertThat(result.getTotalElements()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("from/to 파라미터를 자정 기준 LocalDateTime 범위로 변환해서 조회한다")
+        void success_convertsDateRangeToDateTime() {
+            UUID userId = UUID.randomUUID();
+            LocalDate from = LocalDate.now();
+            LocalDate to = LocalDate.now().plusDays(3);
+            Pageable pageable = PageRequest.of(0, 10);
+
+            when(reservationRepository.findMyReservations(any(), any(), any(), any(), any()))
+                    .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+            reservationService.getMyReservations(userId, ReservationStatus.CONFIRMED, from, to, pageable);
+
+            verify(reservationRepository).findMyReservations(
+                    userId, ReservationStatus.CONFIRMED,
+                    from.atStartOfDay(), to.plusDays(1).atStartOfDay(),
+                    pageable);
+        }
+    }
+
+    @Nested
+    @DisplayName("getStoreReservations()")
+    class GetStoreReservations {
+
+        @Test
+        @DisplayName("date 파라미터를 하루 범위 LocalDateTime으로 변환해서 조회한다")
+        void success_convertsDateToDayRange() {
+            UUID storeId = UUID.randomUUID();
+            LocalDate date = LocalDate.now().plusDays(1);
+            Pageable pageable = PageRequest.of(0, 10);
+
+            when(reservationRepository.findStoreReservations(any(), any(), any(), any(), any()))
+                    .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+            reservationService.getStoreReservations(storeId, null, date, pageable);
+
+            verify(reservationRepository).findStoreReservations(
+                    storeId, null,
+                    date.atStartOfDay(), date.plusDays(1).atStartOfDay(),
+                    pageable);
+        }
+    }
+
+    @Nested
+    @DisplayName("changeReservation()")
+    class ChangeReservation {
+
+        @Test
+        @DisplayName("newSlotId 없이 인원수만 변경하면 기존 슬롯에서 증감 처리된다")
+        void success_sizeOnly() throws Exception {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+            UUID slotId = UUID.randomUUID();
+
+            Reservation reservation = buildConfirmedReservation(
+                    slotId, userId, storeId, LocalDateTime.now().plusDays(5), 2);
+            ReflectionTestUtils.setField(reservation, "reservationId", reservationId);
+
+            ReservationSlot slot = ReservationSlot.builder()
+                    .storeId(storeId)
+                    .slotDate(LocalDate.now().plusDays(5))
+                    .slotTime(LocalTime.of(18, 0))
+                    .maxCapacity(4)
+                    .depositRequired(false)
+                    .depositAmount(null)
+                    .build();
+            ReflectionTestUtils.setField(slot, "slotId", slotId);
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservation));
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)).thenReturn(Optional.of(slot));
+            givenLockAcquired();
+            when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
+            when(atomicLong.addAndGet(-1L)).thenReturn(1L);
+            givenTransactionExecutes();
+            when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            ReservationResponse response = reservationService.changeReservation(
+                    reservationId, userId, buildChangeRequest(3, null));
+
+            assertThat(response.getReservationSize()).isEqualTo(3);
+            assertThat(response.getSlotId()).isEqualTo(slotId);
+        }
+
+        @Test
+        @DisplayName("newSlotId가 다른 슬롯이면 이중 락을 잡고 두 슬롯 간 인원을 이동한다")
+        void success_slotChange() throws Exception {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+
+            ReservationSlot oldSlot = buildSlot(storeId, LocalDate.now().plusDays(5), LocalTime.of(18, 0), 4);
+            ReservationSlot newSlot = buildSlot(storeId, LocalDate.now().plusDays(6), LocalTime.of(19, 0), 4);
+            UUID oldSlotId = oldSlot.getSlotId();
+            UUID newSlotId = newSlot.getSlotId();
+
+            Reservation reservation = buildConfirmedReservation(
+                    oldSlotId, userId, storeId, LocalDateTime.of(oldSlot.getSlotDate(), oldSlot.getSlotTime()), 2);
+            ReflectionTestUtils.setField(reservation, "reservationId", reservationId);
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservation));
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(oldSlotId)).thenReturn(Optional.of(oldSlot));
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)).thenReturn(Optional.of(newSlot));
+
+            lockFor("reservation:lock:slot:" + oldSlotId);
+            lockFor("reservation:lock:slot:" + newSlotId);
+            atomicLongFor("slot:capacity:" + oldSlotId);
+            RAtomicLong newCapacity = atomicLongFor("slot:capacity:" + newSlotId);
+            when(newCapacity.addAndGet(-2L)).thenReturn(2L);
+
+            givenTransactionExecutes();
+            when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            ReservationResponse response = reservationService.changeReservation(
+                    reservationId, userId, buildChangeRequest(null, newSlotId));
+
+            assertThat(response.getSlotId()).isEqualTo(newSlotId);
+            assertThat(response.getReservationSize()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("타 매장 슬롯으로 변경 시도 시 RESERVATION_SLOT_STORE_MISMATCH 예외가 발생한다")
+        void fail_storeMismatch() {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            UUID otherStoreId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+            UUID oldSlotId = UUID.randomUUID();
+
+            Reservation reservation = buildConfirmedReservation(
+                    oldSlotId, userId, storeId, LocalDateTime.now().plusDays(5), 2);
+            ReflectionTestUtils.setField(reservation, "reservationId", reservationId);
+
+            ReservationSlot newSlot = buildSlot(otherStoreId, LocalDate.now().plusDays(6), LocalTime.of(19, 0), 4);
+            UUID newSlotId = newSlot.getSlotId();
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservation));
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)).thenReturn(Optional.of(newSlot));
+
+            assertThatThrownBy(() -> reservationService.changeReservation(
+                    reservationId, userId, buildChangeRequest(null, newSlotId)))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.RESERVATION_SLOT_STORE_MISMATCH);
+        }
+
+        @Test
+        @DisplayName("신규 슬롯 인원 초과 시 RESERVATION_SLOT_CAPACITY_EXCEEDED 예외가 발생하고 양쪽 Redis가 롤백된다")
+        void fail_newSlotCapacityExceeded() throws Exception {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+
+            ReservationSlot oldSlot = buildSlot(storeId, LocalDate.now().plusDays(5), LocalTime.of(18, 0), 4);
+            ReservationSlot newSlot = buildSlot(storeId, LocalDate.now().plusDays(6), LocalTime.of(19, 0), 1);
+            UUID oldSlotId = oldSlot.getSlotId();
+            UUID newSlotId = newSlot.getSlotId();
+
+            Reservation reservation = buildConfirmedReservation(
+                    oldSlotId, userId, storeId, LocalDateTime.of(oldSlot.getSlotDate(), oldSlot.getSlotTime()), 2);
+            ReflectionTestUtils.setField(reservation, "reservationId", reservationId);
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservation));
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)).thenReturn(Optional.of(newSlot));
+
+            lockFor("reservation:lock:slot:" + oldSlotId);
+            lockFor("reservation:lock:slot:" + newSlotId);
+            RAtomicLong oldCapacity = atomicLongFor("slot:capacity:" + oldSlotId);
+            RAtomicLong newCapacity = atomicLongFor("slot:capacity:" + newSlotId);
+            when(newCapacity.addAndGet(-2L)).thenReturn(-1L);
+
+            assertThatThrownBy(() -> reservationService.changeReservation(
+                    reservationId, userId, buildChangeRequest(null, newSlotId)))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.RESERVATION_SLOT_CAPACITY_EXCEEDED);
+
+            verify(newCapacity).addAndGet(2L);   // 롤백: 신규 슬롯 감소분 원복
+            verify(oldCapacity).addAndGet(-2L);  // 롤백: 기존 슬롯 증가분 원복
+        }
+
+        @Test
+        @DisplayName("새 슬롯 날짜가 오늘 이전이면 RESERVATION_SLOT_NOT_CHANGEABLE 예외가 발생한다")
+        void fail_newSlotNotAfterToday() throws Exception {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+
+            ReservationSlot oldSlot = buildSlot(storeId, LocalDate.now().plusDays(5), LocalTime.of(18, 0), 4);
+            ReservationSlot newSlot = buildSlot(storeId, LocalDate.now(), LocalTime.of(19, 0), 4);
+            UUID oldSlotId = oldSlot.getSlotId();
+            UUID newSlotId = newSlot.getSlotId();
+
+            Reservation reservation = buildConfirmedReservation(
+                    oldSlotId, userId, storeId, LocalDateTime.of(oldSlot.getSlotDate(), oldSlot.getSlotTime()), 2);
+            ReflectionTestUtils.setField(reservation, "reservationId", reservationId);
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservation));
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)).thenReturn(Optional.of(newSlot));
+
+            lockFor("reservation:lock:slot:" + oldSlotId);
+            lockFor("reservation:lock:slot:" + newSlotId);
+            RAtomicLong oldCapacity = atomicLongFor("slot:capacity:" + oldSlotId);
+            RAtomicLong newCapacity = atomicLongFor("slot:capacity:" + newSlotId);
+            when(newCapacity.addAndGet(-2L)).thenReturn(2L);
+            givenTransactionExecutes();
+
+            assertThatThrownBy(() -> reservationService.changeReservation(
+                    reservationId, userId, buildChangeRequest(null, newSlotId)))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.RESERVATION_SLOT_NOT_CHANGEABLE);
+
+            verify(newCapacity).addAndGet(2L);   // 롤백: 신규 슬롯 감소분 원복
+            verify(oldCapacity).addAndGet(-2L);  // 롤백: 기존 슬롯 증가분 원복
+        }
+
+        @Test
+        @DisplayName("다른 사용자의 예약을 변경하려 하면 RESERVATION_FORBIDDEN 예외가 발생한다")
+        void fail_forbidden() {
+            UUID reservationOwnerId = UUID.randomUUID();
+            UUID requesterId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+
+            Reservation reservation = buildReservation(UUID.randomUUID(), reservationOwnerId, UUID.randomUUID());
+            ReflectionTestUtils.setField(reservation, "reservationId", reservationId);
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservation));
+
+            assertThatThrownBy(() -> reservationService.changeReservation(
+                    reservationId, requesterId, buildChangeRequest(3, null)))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.RESERVATION_FORBIDDEN);
         }
     }
 }

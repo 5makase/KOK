@@ -115,14 +115,19 @@ public class Reservation extends BaseEntity {
         this.status = ReservationStatus.NO_SHOW;
     }
 
-    public void change(int reservationSize) {
+    public void change(UUID newSlotId, LocalDateTime newScheduledAt, int newReservationSize) {
         if (this.status != ReservationStatus.CONFIRMED) {
             throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
         }
         if (this.scheduledAt != null && !this.scheduledAt.toLocalDate().isAfter(LocalDate.now())) {
             throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
         }
-        this.reservationSize = reservationSize;
+        if (!newScheduledAt.toLocalDate().isAfter(LocalDate.now())) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_SLOT_NOT_CHANGEABLE);
+        }
+        this.slotId = newSlotId;
+        this.scheduledAt = newScheduledAt;
+        this.reservationSize = newReservationSize;
     }
 
     public boolean isCancellable() {

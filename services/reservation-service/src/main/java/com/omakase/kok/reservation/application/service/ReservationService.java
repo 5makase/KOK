@@ -465,7 +465,21 @@ public class ReservationService {
             throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
         }
 
-        int newSize = request.getReservationSize();
+        UUID targetSlotId = request.getNewSlotId() != null ? request.getNewSlotId() : reservation.getSlotId();
+        boolean slotChanging = !targetSlotId.equals(reservation.getSlotId());
+
+        if (!slotChanging) {
+            int newSize = request.getReservationSize() != null ? request.getReservationSize() : reservation.getReservationSize();
+            return changeReservationSizeOnly(reservationId, newSize);
+        }
+
+        int newSize = request.getReservationSize() != null ? request.getReservationSize() : reservation.getReservationSize();
+        return changeReservationSlot(reservationId, reservation.getSlotId(), targetSlotId, newSize);
+    }
+
+    private ReservationResponse changeReservationSizeOnly(UUID reservationId, int newSize) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
 
         // 슬롯 락을 통해 동시 요청 간 Redis 잔여 인원 불일치 방지
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
@@ -500,7 +514,7 @@ public class ReservationService {
                 return new TransactionTemplate(transactionManager).execute(status -> {
                     Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
                             .orElseThrow();
-                    r.change(newSize);
+                    r.change(r.getSlotId(), r.getScheduledAt(), newSize);
                     ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
                     if (sizeDiff > 0) {
                         s.decreaseCapacity(sizeDiff);
@@ -524,6 +538,100 @@ public class ReservationService {
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
+            }
+        }
+    }
+
+    private ReservationResponse changeReservationSlot(UUID reservationId, UUID oldSlotId, UUID newSlotId, int newSize) {
+        ReservationSlot newSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        Reservation reservationForStoreCheck = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+        if (!newSlot.getStoreId().equals(reservationForStoreCheck.getStoreId())) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_SLOT_STORE_MISMATCH);
+        }
+        if (newSlot.getStatus() != SlotStatus.OPEN) {
+            throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+        }
+
+        // 데드락 방지: 두 슬롯 락을 항상 slotId 오름차순으로 획득
+        UUID first = oldSlotId.compareTo(newSlotId) <= 0 ? oldSlotId : newSlotId;
+        UUID second = first.equals(oldSlotId) ? newSlotId : oldSlotId;
+
+        RLock lockA = redissonClient.getLock(SLOT_LOCK_KEY + first);
+        RLock lockB = redissonClient.getLock(SLOT_LOCK_KEY + second);
+        boolean aLocked = false;
+        boolean bLocked = false;
+        try {
+            aLocked = lockA.tryLock(3, TimeUnit.SECONDS);
+            if (!aLocked) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+            bLocked = lockB.tryLock(3, TimeUnit.SECONDS);
+            if (!bLocked) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+
+            // 락 내에서 fresh row 재조회 → 동시 변경 시 상태/인원이 stale해지는 문제 방지
+            Reservation fresh = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                    .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+            if (fresh.getStatus() != ReservationStatus.CONFIRMED) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+            }
+
+            ReservationSlot freshNewSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)
+                    .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+            if (freshNewSlot.getStatus() != SlotStatus.OPEN) {
+                throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+            }
+
+            int oldSize = fresh.getReservationSize();
+
+            RAtomicLong oldCapacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + oldSlotId);
+            RAtomicLong newCapacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + newSlotId);
+
+            oldCapacityKey.addAndGet(oldSize);
+            long remaining = newCapacityKey.addAndGet(-newSize);
+            if (remaining < 0) {
+                newCapacityKey.addAndGet(newSize);
+                oldCapacityKey.addAndGet(-oldSize);
+                throw new BaseException(ReservationErrorCode.RESERVATION_SLOT_CAPACITY_EXCEEDED);
+            }
+
+            try {
+                return new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                            .orElseThrow();
+                    ReservationSlot newSlotEntity = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId).orElseThrow();
+                    LocalDateTime newScheduledAt = LocalDateTime.of(newSlotEntity.getSlotDate(), newSlotEntity.getSlotTime());
+                    r.change(newSlotId, newScheduledAt, newSize);
+
+                    ReservationSlot oldSlotEntity = slotRepository.findBySlotIdAndDeletedAtIsNull(oldSlotId).orElseThrow();
+                    oldSlotEntity.increaseCapacity(oldSize);
+                    newSlotEntity.decreaseCapacity(newSize);
+
+                    outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
+                    return ReservationResponse.from(r);
+                });
+            } catch (Exception e) {
+                try {
+                    newCapacityKey.addAndGet(newSize);
+                    oldCapacityKey.addAndGet(-oldSize);
+                } catch (Exception redisEx) {
+                    log.error("Redis 잔여 인원 복구 실패 - oldSlotId: {}, newSlotId: {}", oldSlotId, newSlotId, redisEx);
+                }
+                throw e;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (bLocked && lockB.isHeldByCurrentThread()) {
+                lockB.unlock();
+            }
+            if (aLocked && lockA.isHeldByCurrentThread()) {
+                lockA.unlock();
             }
         }
     }

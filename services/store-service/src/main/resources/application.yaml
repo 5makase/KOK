@@ -65,11 +65,11 @@ resilience4j:
         waitDurationInOpenState: 10s             # OPEN 상태 10초 유지 후 HALF-OPEN 시도
         permittedNumberOfCallsInHalfOpenState: 3 # HALF-OPEN 상태에서 3회 테스트 호출
         registerHealthIndicator: true
-        ignoreExceptions:
-          - com.omakase.kok.common.exception.BaseException # 비즈니스 예외는 회로 실패율에 미포함
     instances:
       ownerApprovalClient:
         baseConfig: default
+        ignoreExceptions:
+          - com.omakase.kok.common.exception.BaseException # 비즈니스 예외는 회로 실패율에 미포함
 
 eureka:
   client:

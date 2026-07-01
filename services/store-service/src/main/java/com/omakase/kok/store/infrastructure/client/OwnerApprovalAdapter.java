@@ -27,7 +27,7 @@ public class OwnerApprovalAdapter implements OwnerApprovalPort {
     public boolean isApproved(UUID ownerId) {
         try {
             ApiResponse<OwnerApprovalResponse> response = ownerApprovalClient.getApprovalStatus(ownerId);
-            OwnerApprovalResponse data = response == null ? null : response.getData();
+            OwnerApprovalResponse data = response.getData();
 
             // 응답 자체가 없거나 approved 필드가 null이면 조회 실패로 처리
             if (data == null || data.getApproved() == null) {

@@ -6,6 +6,7 @@ import com.omakase.kok.reservation.application.dto.SlotResponse;
 import com.omakase.kok.reservation.application.dto.UpdateSlotRequest;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
+import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
@@ -13,15 +14,20 @@ import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.infrastructure.client.StoreServiceFeignClient;
 import com.omakase.kok.reservation.infrastructure.client.dto.BusinessHoursValidationResponse;
 import lombok.RequiredArgsConstructor;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -29,11 +35,13 @@ import java.util.UUID;
 public class SlotService {
 
     private static final String SLOT_CAPACITY_KEY = "slot:capacity:";
+    private static final String SLOT_LOCK_KEY = "reservation:lock:slot:";
 
     private final ReservationSlotRepository slotRepository;
     private final ReservationRepository reservationRepository;
     private final RedissonClient redissonClient;
     private final StoreServiceFeignClient storeServiceFeignClient;
+    private final PlatformTransactionManager transactionManager;
 
     @Transactional
     public SlotResponse createSlot(CreateSlotRequest request, UUID ownerId) {
@@ -69,33 +77,44 @@ public class SlotService {
         return SlotResponse.from(slot);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SlotResponse updateSlot(UUID slotId, UpdateSlotRequest request, UUID ownerId) {
-        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
-                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + slotId);
+        try {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
 
-        Integer newMaxCapacity = request.getMaxCapacity();
-        if (newMaxCapacity != null) {
-            int used = slot.getMaxCapacity() - slot.getRemainingCapacity();
-            if (newMaxCapacity < used) {
-                throw new BaseException(SlotErrorCode.SLOT_CAPACITY_BELOW_USED);
+            Integer newMaxCapacity = request.getMaxCapacity();
+            ReservationSlot slot = new TransactionTemplate(transactionManager).execute(status -> {
+                ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
+                        .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+                if (newMaxCapacity != null) {
+                    int used = s.getMaxCapacity() - s.getRemainingCapacity();
+                    if (newMaxCapacity < used) {
+                        throw new BaseException(SlotErrorCode.SLOT_CAPACITY_BELOW_USED);
+                    }
+                }
+
+                s.update(request.getSlotDate(), request.getSlotTime(), newMaxCapacity,
+                        request.getDepositRequired(), request.getDepositAmount());
+                return s;
+            });
+
+            if (newMaxCapacity != null) {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId).set(slot.getRemainingCapacity());
+            }
+
+            return SlotResponse.from(slot);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
             }
         }
-
-        slot.update(request.getSlotDate(), request.getSlotTime(), newMaxCapacity,
-                request.getDepositRequired(), request.getDepositAmount());
-
-        if (newMaxCapacity != null) {
-            int updatedRemaining = slot.getRemainingCapacity();
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId).set(updatedRemaining);
-                }
-            });
-        }
-
-        return SlotResponse.from(slot);
     }
 
     public List<SlotResponse> getAvailableSlots(UUID storeId, LocalDate date) {

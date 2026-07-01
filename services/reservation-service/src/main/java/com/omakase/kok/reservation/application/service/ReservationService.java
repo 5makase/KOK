@@ -72,7 +72,7 @@ public class ReservationService {
 
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + request.getSlotId());
         try {
-            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
 
@@ -310,7 +310,7 @@ public class ReservationService {
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         ReservationResponse response;
         try {
-            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
             response = new TransactionTemplate(transactionManager).execute(status -> {
@@ -387,7 +387,7 @@ public class ReservationService {
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         ReservationResponse response;
         try {
-            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
             response = new TransactionTemplate(transactionManager).execute(status -> {
@@ -470,7 +470,7 @@ public class ReservationService {
         // 슬롯 락을 통해 동시 요청 간 Redis 잔여 인원 불일치 방지
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         try {
-            if (!lock.tryLock(3, 10, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
 

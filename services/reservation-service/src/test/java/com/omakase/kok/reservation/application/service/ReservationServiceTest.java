@@ -113,7 +113,7 @@ class ReservationServiceTest {
 
     private void givenLockAcquired() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(rLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rLock.isHeldByCurrentThread()).thenReturn(true);
     }
 
@@ -181,7 +181,7 @@ class ReservationServiceTest {
             when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
                     .thenReturn(Optional.of(slot));
             when(redissonClient.getLock(anyString())).thenReturn(rLock);
-            when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
+            when(rLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
             when(rLock.isHeldByCurrentThread()).thenReturn(false);
 
             CreateReservationRequest request = buildCreateRequest(slotId, 2, null);

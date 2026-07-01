@@ -122,7 +122,7 @@ public class Reservation extends BaseEntity {
         if (this.scheduledAt != null && !this.scheduledAt.toLocalDate().isAfter(LocalDate.now())) {
             throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
         }
-        if (!newScheduledAt.toLocalDate().isAfter(LocalDate.now())) {
+        if (newScheduledAt == null || !newScheduledAt.toLocalDate().isAfter(LocalDate.now())) {
             throw new BaseException(ReservationErrorCode.RESERVATION_SLOT_NOT_CHANGEABLE);
         }
         this.slotId = newSlotId;

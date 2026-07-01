@@ -490,6 +490,8 @@ class WaitingServiceTest {
         assertThat(response.getWaitingNumber()).isEqualTo(10L);
         assertThat(response.getStatus()).isEqualTo(WaitingStatus.CALLED);
         assertThat(response.getCalledAt()).isNotNull();
+        assertThat(response.getCallExpiresAt()).isEqualTo(response.getCalledAt().plusMinutes(10));
+        assertThat(waiting.getCallExpiresAt()).isEqualTo(waiting.getCalledAt().plusMinutes(10));
 
         then(waitingRepository).should().save(waiting);
         then(waitingQueueRedisStore).should().remove(eq(storeId), eq(userId), eq(waitingId), any(LocalDate.class));
@@ -569,6 +571,7 @@ class WaitingServiceTest {
         Waiting waiting = waiting(storeId, UUID.randomUUID(), 13L, WaitingStatus.CALLED, null);
         ReflectionTestUtils.setField(waiting, "id", waitingId);
         ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now());
+        ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().plusMinutes(1));
 
         given(storeSummaryReader.getStoreSummary(storeId))
                 .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
@@ -604,6 +607,30 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+    }
+
+    @Test
+    @DisplayName("입장 완료 처리는 호출 제한 시간이 지났으면 실패한다")
+    void enterWaiting_failWhenCallExpired() {
+        UUID waitingId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 15L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now().minusMinutes(2));
+        ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().minusMinutes(1));
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> waitingService.enterWaiting(ownerId, "OWNER", waitingId))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_ENTER_EXPIRED));
+
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should(never()).save(any());
     }
 
     @Test
@@ -653,6 +680,71 @@ class WaitingServiceTest {
 
         then(waitingRepository).should(never()).save(any(Waiting.class));
         then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+    }
+
+    @Test
+    @DisplayName("자동 미입장 처리는 호출 만료 시간이 지난 CALLED 웨이팅을 NO_SHOW로 변경한다")
+    void autoNoShowExpiredWaitings_success() {
+        UUID storeId = UUID.randomUUID();
+        UUID waitingId = UUID.randomUUID();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 18L, WaitingStatus.CALLED, null);
+        ReflectionTestUtils.setField(waiting, "id", waitingId);
+        ReflectionTestUtils.setField(waiting, "calledAt", LocalDateTime.now().minusMinutes(11));
+        ReflectionTestUtils.setField(waiting, "callExpiresAt", LocalDateTime.now().minusMinutes(1));
+        waiting.noShow("호출 제한 시간 초과");
+
+        given(waitingRepository.findExpiredCalledWaitingIds(
+                eq(WaitingStatus.CALLED),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 100))
+        )).willReturn(List.of(waitingId));
+        given(waitingRepository.markNoShowIfExpired(
+                eq(waitingId),
+                eq(WaitingStatus.CALLED),
+                eq(WaitingStatus.NO_SHOW),
+                eq("호출 제한 시간 초과"),
+                eq(UUID.fromString("00000000-0000-0000-0000-000000000000")),
+                any(LocalDateTime.class)
+        )).willReturn(1);
+        given(waitingRepository.findById(waitingId)).willReturn(Optional.of(waiting));
+
+        int processedCount = waitingService.autoNoShowExpiredWaitings(100);
+
+        assertThat(processedCount).isEqualTo(1);
+        assertThat(waiting.getStatus()).isEqualTo(WaitingStatus.NO_SHOW);
+        assertThat(waiting.getNoShowReason()).isEqualTo("호출 제한 시간 초과");
+        assertThat(waiting.getNoShowedAt()).isNotNull();
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should().remove(eq(storeId), eq(waiting.getUserId()), eq(waitingId), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should().save(any());
+    }
+
+    @Test
+    @DisplayName("자동 미입장 처리는 조회 후 상태가 바뀐 웨이팅이면 Outbox를 저장하지 않는다")
+    void autoNoShowExpiredWaitings_skipWhenConcurrentOwnerActionWins() {
+        UUID waitingId = UUID.randomUUID();
+
+        given(waitingRepository.findExpiredCalledWaitingIds(
+                eq(WaitingStatus.CALLED),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 100))
+        )).willReturn(List.of(waitingId));
+        given(waitingRepository.markNoShowIfExpired(
+                eq(waitingId),
+                eq(WaitingStatus.CALLED),
+                eq(WaitingStatus.NO_SHOW),
+                eq("호출 제한 시간 초과"),
+                eq(UUID.fromString("00000000-0000-0000-0000-000000000000")),
+                any(LocalDateTime.class)
+        )).willReturn(0);
+
+        int processedCount = waitingService.autoNoShowExpiredWaitings(100);
+
+        assertThat(processedCount).isZero();
+        then(waitingRepository).should(never()).findById(waitingId);
+        then(waitingRepository).should(never()).save(any(Waiting.class));
+        then(waitingQueueRedisStore).should(never()).remove(any(UUID.class), any(UUID.class), any(UUID.class), any(LocalDate.class));
+        then(waitingOutboxEventRepository).should(never()).save(any());
     }
 
     @Test
@@ -724,6 +816,67 @@ class WaitingServiceTest {
         var response = waitingService.getNearTurnWaitings(storeId, 3);
 
         assertThat(response).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DB의 WAITING 목록을 기준으로 Redis 대기열을 복구한다")
+    void restoreWaitingQueue_success() {
+        UUID storeId = UUID.randomUUID();
+        LocalDate waitingDate = LocalDate.now();
+        Waiting firstWaiting = waiting(storeId, UUID.randomUUID(), 3L, WaitingStatus.WAITING, null);
+        Waiting secondWaiting = waiting(storeId, UUID.randomUUID(), 5L, WaitingStatus.WAITING, null);
+
+        given(waitingRepository.findQueueSnapshotByStoreIdAndDate(
+                eq(storeId),
+                eq(WaitingStatus.WAITING),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(List.of(firstWaiting, secondWaiting));
+        given(waitingRepository.findMaxWaitingNumberByStoreIdAndDate(
+                eq(storeId),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(9L);
+
+        var response = waitingService.restoreWaitingQueue(storeId, waitingDate);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getWaitingDate()).isEqualTo(waitingDate);
+        assertThat(response.getRestoredCount()).isEqualTo(2);
+        assertThat(response.getMaxWaitingNumber()).isEqualTo(9L);
+        assertThat(response.getRestoredAt()).isNotNull();
+        then(waitingQueueRedisStore).should().restoreQueue(
+                eq(storeId),
+                eq(waitingDate),
+                eq(List.of(firstWaiting, secondWaiting)),
+                eq(9L)
+        );
+    }
+
+    @Test
+    @DisplayName("Redis 대기열 복구에 실패하면 복구 실패 예외를 반환한다")
+    void restoreWaitingQueue_failWhenRedisUnavailable() {
+        UUID storeId = UUID.randomUUID();
+        LocalDate waitingDate = LocalDate.now();
+        Waiting waiting = waiting(storeId, UUID.randomUUID(), 1L, WaitingStatus.WAITING, null);
+
+        given(waitingRepository.findQueueSnapshotByStoreIdAndDate(
+                eq(storeId),
+                eq(WaitingStatus.WAITING),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(List.of(waiting));
+        given(waitingRepository.findMaxWaitingNumberByStoreIdAndDate(
+                eq(storeId),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(1L);
+        org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
+                .when(waitingQueueRedisStore).restoreQueue(eq(storeId), eq(waitingDate), eq(List.of(waiting)), eq(1L));
+
+        assertThatThrownBy(() -> waitingService.restoreWaitingQueue(storeId, waitingDate))
+                .isInstanceOfSatisfying(WaitingException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_QUEUE_RESTORE_FAILED));
     }
 
     private WaitingCreateRequest waitingCreateRequest(UUID storeId, Integer peopleCount, String requestMessage) {

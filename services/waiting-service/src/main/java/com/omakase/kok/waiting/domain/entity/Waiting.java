@@ -54,6 +54,9 @@ public class Waiting extends BaseEntity {
     @Column(name = "called_at")
     private LocalDateTime calledAt;
 
+    @Column(name = "call_expires_at")
+    private LocalDateTime callExpiresAt;
+
     @Column(name = "entered_at")
     private LocalDateTime enteredAt;
 
@@ -82,20 +85,32 @@ public class Waiting extends BaseEntity {
         this.status = WaitingStatus.WAITING;
     }
 
-    public void call() {
+    public void call(Integer callTimeoutMinutes) {
+        validateCallAllowed();
+        this.status = WaitingStatus.CALLED;
+        this.calledAt = LocalDateTime.now();
+        this.callExpiresAt = this.calledAt.plusMinutes(callTimeoutMinutes);
+    }
+
+    public void validateCallAllowed() {
         if (this.status != WaitingStatus.WAITING) {
             throw new WaitingException(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED);
         }
-        this.status = WaitingStatus.CALLED;
-        this.calledAt = LocalDateTime.now();
     }
 
     public void enter() {
         if (this.status != WaitingStatus.CALLED) {
             throw new WaitingException(WaitingErrorCode.WAITING_ENTER_NOT_ALLOWED);
         }
+        validateEnterNotExpired();
         this.status = WaitingStatus.ENTERED;
         this.enteredAt = LocalDateTime.now();
+    }
+
+    private void validateEnterNotExpired() {
+        if (this.callExpiresAt != null && !LocalDateTime.now().isBefore(this.callExpiresAt)) {
+            throw new WaitingException(WaitingErrorCode.WAITING_ENTER_EXPIRED);
+        }
     }
 
     public void cancel(String cancelReason) {

@@ -2,6 +2,7 @@ package com.omakase.kok.waiting.infrastructure.redis;
 
 import com.omakase.kok.waiting.global.exception.WaitingErrorCode;
 import com.omakase.kok.waiting.global.exception.WaitingException;
+import com.omakase.kok.waiting.domain.entity.Waiting;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -28,6 +29,7 @@ public class WaitingQueueRedisStore {
     private static final String WAITING_ACTIVE_USER_KEY_SUFFIX = ":active";
     private static final String WAITING_STORE_CACHE_KEY_SUFFIX = ":cache";
     private static final Duration WAITING_KEY_TTL = Duration.ofDays(3);
+    private static final long WAITING_KEY_TTL_SECONDS = WAITING_KEY_TTL.toSeconds();
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
     private static final DefaultRedisScript<List> REGISTER_WAITING_SCRIPT = new DefaultRedisScript<>("""
             local queueKey = KEYS[1]
@@ -70,6 +72,44 @@ public class WaitingQueueRedisStore {
 
             return removed
             """, Long.class);
+    private static final DefaultRedisScript<Long> RESTORE_WAITING_QUEUE_SCRIPT = new DefaultRedisScript<>("""
+            local queueKey = KEYS[1]
+            local sequenceKey = KEYS[2]
+            local ttlSeconds = tonumber(ARGV[1])
+            local maxIssuedWaitingNumber = tonumber(ARGV[2])
+            local activeUserKeyPattern = ARGV[3]
+            local index = 4
+
+            redis.call('DEL', queueKey)
+
+            local cursor = '0'
+            repeat
+                local scanResult = redis.call('SCAN', cursor, 'MATCH', activeUserKeyPattern, 'COUNT', 100)
+                cursor = scanResult[1]
+                local activeUserKeys = scanResult[2]
+                for keyIndex = 1, #activeUserKeys do
+                    redis.call('DEL', activeUserKeys[keyIndex])
+                end
+            until cursor == '0'
+
+            while index <= #ARGV do
+                local waitingId = ARGV[index]
+                local activeUserKey = ARGV[index + 1]
+                local waitingNumber = tonumber(ARGV[index + 2])
+
+                redis.call('ZADD', queueKey, waitingNumber, waitingId)
+                redis.call('SET', activeUserKey, waitingId, 'EX', ttlSeconds)
+
+                index = index + 3
+            end
+
+            redis.call('SET', sequenceKey, maxIssuedWaitingNumber, 'EX', ttlSeconds)
+            if maxIssuedWaitingNumber > 0 then
+                redis.call('EXPIRE', queueKey, ttlSeconds)
+            end
+
+            return maxIssuedWaitingNumber
+            """, Long.class);
 
     private String formatDate(LocalDate date) {
         return date.format(DATE_FORMATTER);
@@ -89,6 +129,12 @@ public class WaitingQueueRedisStore {
     private String activeUserKey(UUID storeId, UUID userId, LocalDate date) {
         return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE
                 + userId + ":" + formatDate(date) + WAITING_ACTIVE_USER_KEY_SUFFIX;
+    }
+
+    // 사용자별 진행 중 웨이팅 키 패턴
+    private String activeUserKeyPattern(UUID storeId, LocalDate date) {
+        return WAITING_QUEUE_KEY_PREFIX + storeId + WAITING_ACTIVE_USER_KEY_MIDDLE
+                + "*:" + formatDate(date) + WAITING_ACTIVE_USER_KEY_SUFFIX;
     }
 
     // 매장 캐시 키
@@ -173,6 +219,21 @@ public class WaitingQueueRedisStore {
             return 0L;
         }
         return count;
+    }
+
+    // DB 기준 대기열 복원
+    public void restoreQueue(UUID storeId, LocalDate waitingDate, List<Waiting> waitings, long maxIssuedWaitingNumber) {
+        List<String> keys = List.of(queueKey(storeId, waitingDate), sequenceKey(storeId, waitingDate));
+        List<String> args = new java.util.ArrayList<>();
+        args.add(String.valueOf(WAITING_KEY_TTL_SECONDS));
+        args.add(String.valueOf(maxIssuedWaitingNumber));
+        args.add(activeUserKeyPattern(storeId, waitingDate));
+        for (Waiting waiting : waitings) {
+            args.add(waiting.getId().toString());
+            args.add(activeUserKey(storeId, waiting.getUserId(), waitingDate));
+            args.add(waiting.getWaitingNumber().toString());
+        }
+        redisTemplate.execute(RESTORE_WAITING_QUEUE_SCRIPT, keys, args.toArray());
     }
 
     // 매장 웨이팅 기준값 캐싱

@@ -17,10 +17,11 @@ class WaitingDomainTest {
     @DisplayName("웨이팅은 WAITING 상태에서만 호출할 수 있다")
     void call_onlyWaitingStatus() {
         Waiting waiting = waiting();
-        waiting.call();
+        waiting.call(10);
 
         assertThat(waiting.getCalledAt()).isNotNull();
-        assertThatThrownBy(waiting::call)
+        assertThat(waiting.getCallExpiresAt()).isEqualTo(waiting.getCalledAt().plusMinutes(10));
+        assertThatThrownBy(() -> waiting.call(10))
                 .isInstanceOfSatisfying(WaitingException.class, exception ->
                         assertThat(exception.getErrorCode()).isEqualTo(WaitingErrorCode.WAITING_CALL_NOT_ALLOWED));
     }
@@ -42,7 +43,7 @@ class WaitingDomainTest {
     @DisplayName("웨이팅은 종료 상태에서 취소할 수 없다")
     void cancel_notAllowedAfterEntered() {
         Waiting waiting = waiting();
-        waiting.call();
+        waiting.call(10);
         waiting.enter();
 
         assertThatThrownBy(() -> waiting.cancel("취소 요청"))

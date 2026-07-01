@@ -26,6 +26,12 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:waiting-service-group}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -36,8 +42,13 @@ spring:
         max.in.flight.requests.per.connection: 5
 
 waiting:
+  auto-no-show:
+    cron: ${WAITING_AUTO_NO_SHOW_CRON:0 * * * * *}
+    batch-size: ${WAITING_AUTO_NO_SHOW_BATCH_SIZE:100}
   kafka:
     topic:
+      store-events:
+        name: ${STORE_EVENTS_TOPIC:store.events.v1}
       waiting-events:
         name: ${WAITING_EVENTS_TOPIC:waiting.events.v1}
         partitions: ${WAITING_EVENTS_TOPIC_PARTITIONS:1}

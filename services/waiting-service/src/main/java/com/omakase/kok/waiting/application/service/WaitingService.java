@@ -31,12 +31,14 @@ import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingDetailResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingQueueRestoreResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +48,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -61,6 +64,10 @@ public class WaitingService {
     private static final String WAITING_CALL_NEXT_LOCK_KEY_PREFIX = "waiting:store:";
     private static final String WAITING_CALL_NEXT_LOCK_KEY_SUFFIX = ":call-next:lock";
     private static final long WAITING_CALL_NEXT_LOCK_WAIT_SECONDS = 0L;
+
+    // 자동 미입장
+    private static final String AUTO_NO_SHOW_REASON = "호출 제한 시간 초과";
+    private static final UUID SYSTEM_ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final WaitingRepository waitingRepository;
     private final WaitingOutboxEventRepository waitingOutboxEventRepository;
@@ -179,10 +186,11 @@ public class WaitingService {
             Waiting waiting = waitingRepository.findById(waitingId)
                     .orElseThrow(() -> new WaitingException(WaitingErrorCode.WAITING_CALL_TARGET_NOT_FOUND));
 
-            waiting.call();
+            waiting.validateCallAllowed();
+            Integer callTimeoutMinutes = waitingSettingService.getStoreWaitingValues(storeId).callTimeoutMinutes();
+            waiting.call(callTimeoutMinutes);
             Waiting savedWaiting = waitingRepository.save(waiting);
             scheduleQueueRemovalAfterCommit(savedWaiting);
-            Integer callTimeoutMinutes = waitingSettingService.getStoreWaitingValues(storeId).callTimeoutMinutes();
             saveCalledOutboxEvent(savedWaiting, callTimeoutMinutes);
 
             return WaitingCallResponse.from(savedWaiting);
@@ -226,6 +234,40 @@ public class WaitingService {
         return WaitingNoShowResponse.from(savedWaiting);
     }
 
+    // 호출 제한 시간이 지난 웨이팅을 자동 미입장 처리
+    @Transactional
+    public int autoNoShowExpiredWaitings(int batchSize) {
+        LocalDateTime now = LocalDateTime.now();
+        List<UUID> expiredWaitingIds = waitingRepository.findExpiredCalledWaitingIds(
+                WaitingStatus.CALLED,
+                now,
+                PageRequest.of(0, batchSize)
+        );
+
+        int processedCount = 0;
+        for (UUID waitingId : expiredWaitingIds) {
+            int updatedCount = waitingRepository.markNoShowIfExpired(
+                    waitingId,
+                    WaitingStatus.CALLED,
+                    WaitingStatus.NO_SHOW,
+                    AUTO_NO_SHOW_REASON,
+                    SYSTEM_ACTOR_ID,
+                    now
+            );
+            if (updatedCount != 1) {
+                continue;
+            }
+
+            waitingRepository.findById(waitingId).ifPresent(waiting -> {
+                scheduleQueueRemovalAfterCommit(waiting);
+                saveOutboxEvent(waiting, WaitingEventType.WAITING_NO_SHOW);
+            });
+            processedCount++;
+        }
+
+        return processedCount;
+    }
+
     // 순번 임박 알림 대상 조회
     public List<NearTurnWaitingResponse> getNearTurnWaitings(UUID storeId, int threshold) {
         List<UUID> waitingIds = waitingQueueRedisStore.findNearTurn(storeId, threshold);
@@ -247,6 +289,21 @@ public class WaitingService {
                 })
                 .filter(java.util.Objects::nonNull)
                 .toList();
+    }
+
+    // DB 기준 Redis 대기열 복구
+    public WaitingQueueRestoreResponse restoreWaitingQueue(UUID storeId, LocalDate waitingDate) {
+        LocalDate targetDate = waitingDate != null ? waitingDate : LocalDate.now();
+        List<Waiting> waitings = getWaitingQueueSnapshot(storeId, targetDate);
+        long maxWaitingNumber = getMaxIssuedWaitingNumber(storeId, targetDate);
+        try {
+            waitingQueueRedisStore.restoreQueue(storeId, targetDate, waitings, maxWaitingNumber);
+        } catch (RuntimeException e) {
+            log.error("Failed to restore waiting queue from DB. storeId={}, waitingDate={}", storeId, targetDate, e);
+            throw new WaitingException(WaitingErrorCode.WAITING_QUEUE_RESTORE_FAILED);
+        }
+
+        return WaitingQueueRestoreResponse.of(storeId, targetDate, waitings.size(), maxWaitingNumber);
     }
 
     /**
@@ -372,6 +429,25 @@ public class WaitingService {
         }
     }
 
+    // Redis 복구 기준이 되는 DB 대기열 스냅샷 조회
+    private List<Waiting> getWaitingQueueSnapshot(UUID storeId, LocalDate waitingDate) {
+        return waitingRepository.findQueueSnapshotByStoreIdAndDate(
+                storeId,
+                WaitingStatus.WAITING,
+                startOfDay(waitingDate),
+                startOfNextDay(waitingDate)
+        );
+    }
+
+    // 해당 일자에 발급된 전체 웨이팅 번호 중 최댓값 조회
+    private long getMaxIssuedWaitingNumber(UUID storeId, LocalDate waitingDate) {
+        return waitingRepository.findMaxWaitingNumberByStoreIdAndDate(
+                storeId,
+                startOfDay(waitingDate),
+                startOfNextDay(waitingDate)
+        );
+    }
+
     // 웨이팅 등록용 롤백 훅 예약
     // 트랜잭션 롤백 시 Redis 등록도 함께 롤백
     private void scheduleQueueRollbackOnTransactionFailure(UUID storeId, Waiting waiting) {
@@ -421,6 +497,16 @@ public class WaitingService {
 
     private LocalDate waitingDate(Waiting waiting) {
         return waiting.getCreatedAt() != null ? waiting.getCreatedAt().toLocalDate() : LocalDate.now();
+    }
+
+    // 조회 시작 시각: 해당 날짜 00:00
+    private LocalDateTime startOfDay(LocalDate date) {
+        return date.atStartOfDay();
+    }
+
+    // 조회 종료 시각: 다음 날짜 00:00
+    private LocalDateTime startOfNextDay(LocalDate date) {
+        return date.plusDays(1).atStartOfDay();
     }
 
     /**

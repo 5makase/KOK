@@ -4,9 +4,11 @@ import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.CreateSlotRequest;
 import com.omakase.kok.reservation.application.dto.SlotResponse;
+import com.omakase.kok.reservation.application.dto.UpdateSlotRequest;
 import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
@@ -26,8 +28,11 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RAtomicLong;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -37,6 +42,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.mockito.ArgumentCaptor;
 
@@ -53,6 +59,8 @@ class SlotServiceTest {
     @Mock private RedissonClient redissonClient;
     @Mock private RAtomicLong atomicLong;
     @Mock private StoreServiceFeignClient storeServiceFeignClient;
+    @Mock private PlatformTransactionManager transactionManager;
+    @Mock private RLock lock;
 
     private static final LocalDate SLOT_DATE = LocalDate.of(2026, 7, 1);
 
@@ -60,7 +68,25 @@ class SlotServiceTest {
 
     @BeforeEach
     void setUp() {
-        slotService = new SlotService(slotRepository, reservationRepository, redissonClient, storeServiceFeignClient);
+        slotService = new SlotService(slotRepository, reservationRepository, redissonClient,
+                storeServiceFeignClient, transactionManager);
+    }
+
+    private void givenLockAcquired() throws InterruptedException {
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(lock.isHeldByCurrentThread()).thenReturn(true);
+    }
+
+    private void givenTransactionExecutes() {
+        TransactionStatus txStatus = mock(TransactionStatus.class);
+        when(transactionManager.getTransaction(any())).thenReturn(txStatus);
+    }
+
+    private UpdateSlotRequest buildUpdateRequest(Integer maxCapacity) {
+        UpdateSlotRequest req = new UpdateSlotRequest();
+        ReflectionTestUtils.setField(req, "maxCapacity", maxCapacity);
+        return req;
     }
 
     private void stubValidationOk() {
@@ -234,6 +260,114 @@ class SlotServiceTest {
                     .isInstanceOf(BaseException.class)
                     .extracting(e -> ((BaseException) e).getErrorCode().getCode())
                     .isEqualTo(SlotErrorCode.valueOf(expectedCode).getCode());
+        }
+    }
+
+    @Nested
+    @DisplayName("updateSlot()")
+    class UpdateSlot {
+
+        @Test
+        @DisplayName("정원 변경 시 락 획득 후 검증하고 Redis 잔여 인원을 동기화한다")
+        void success_capacityChange_updatesRedis() throws InterruptedException {
+            UUID slotId = UUID.randomUUID();
+            ReservationSlot slot = buildSlot(UUID.randomUUID());
+            ReflectionTestUtils.setField(slot, "slotId", slotId);
+            ReflectionTestUtils.setField(slot, "remainingCapacity", 3);
+
+            givenLockAcquired();
+            givenTransactionExecutes();
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
+                    .thenReturn(Optional.of(slot));
+            when(redissonClient.getAtomicLong(anyString())).thenReturn(atomicLong);
+
+            UpdateSlotRequest req = buildUpdateRequest(6);
+            SlotResponse response = slotService.updateSlot(slotId, req, UUID.randomUUID());
+
+            assertThat(response.getMaxCapacity()).isEqualTo(6);
+            verify(atomicLong).set(5);
+            verify(lock).unlock();
+        }
+
+        @Test
+        @DisplayName("정원 변경이 없으면 Redis 동기화를 호출하지 않는다")
+        void success_noCapacityChange_skipsRedisSync() throws InterruptedException {
+            UUID slotId = UUID.randomUUID();
+            ReservationSlot slot = buildSlot(UUID.randomUUID());
+            ReflectionTestUtils.setField(slot, "slotId", slotId);
+
+            givenLockAcquired();
+            givenTransactionExecutes();
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
+                    .thenReturn(Optional.of(slot));
+
+            UpdateSlotRequest req = buildUpdateRequest(null);
+            slotService.updateSlot(slotId, req, UUID.randomUUID());
+
+            verify(redissonClient, never()).getAtomicLong(anyString());
+        }
+
+        @Test
+        @DisplayName("락 획득에 실패하면 SLOT_LOCK_FAILED 예외가 발생하고 unlock을 호출하지 않는다")
+        void fail_lockAcquisitionTimeout_throwsSlotLockFailed() throws InterruptedException {
+            UUID slotId = UUID.randomUUID();
+            when(redissonClient.getLock(anyString())).thenReturn(lock);
+            when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
+            when(lock.isHeldByCurrentThread()).thenReturn(false);
+
+            UpdateSlotRequest req = buildUpdateRequest(6);
+
+            assertThatThrownBy(() -> slotService.updateSlot(slotId, req, UUID.randomUUID()))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.SLOT_LOCK_FAILED);
+
+            verify(lock, never()).unlock();
+            verify(slotRepository, never()).findBySlotIdAndDeletedAtIsNull(any());
+        }
+
+        @Test
+        @DisplayName("이미 사용된 인원보다 작게 정원을 줄이면 SLOT_CAPACITY_BELOW_USED 예외가 발생한다")
+        void fail_capacityBelowUsed_throwsException() throws InterruptedException {
+            UUID slotId = UUID.randomUUID();
+            ReservationSlot slot = buildSlot(UUID.randomUUID());
+            ReflectionTestUtils.setField(slot, "slotId", slotId);
+            ReflectionTestUtils.setField(slot, "remainingCapacity", 1);
+
+            givenLockAcquired();
+            givenTransactionExecutes();
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
+                    .thenReturn(Optional.of(slot));
+
+            UpdateSlotRequest req = buildUpdateRequest(2);
+
+            assertThatThrownBy(() -> slotService.updateSlot(slotId, req, UUID.randomUUID()))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(SlotErrorCode.SLOT_CAPACITY_BELOW_USED);
+
+            verify(lock).unlock();
+            verify(redissonClient, never()).getAtomicLong(anyString());
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 슬롯 수정 시 SLOT_NOT_FOUND 예외가 발생한다")
+        void fail_slotNotFound_throwsException() throws InterruptedException {
+            UUID slotId = UUID.randomUUID();
+
+            givenLockAcquired();
+            givenTransactionExecutes();
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
+                    .thenReturn(Optional.empty());
+
+            UpdateSlotRequest req = buildUpdateRequest(6);
+
+            assertThatThrownBy(() -> slotService.updateSlot(slotId, req, UUID.randomUUID()))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(SlotErrorCode.SLOT_NOT_FOUND);
+
+            verify(lock).unlock();
         }
     }
 

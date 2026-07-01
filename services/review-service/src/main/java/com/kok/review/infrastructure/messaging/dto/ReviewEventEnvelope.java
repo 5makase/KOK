@@ -14,7 +14,7 @@ public record ReviewEventEnvelope(
         ReviewEventPayloadType payload
 ) {
     //전체 틀 생성
-    public static ReviewEventEnvelope of(String eventType, ReviewEventPayload payload) {
+    public static ReviewEventEnvelope of(String eventType, ReviewEventPayloadType payload) {
         return new ReviewEventEnvelope(
                 UUID.randomUUID(),
                 eventType,

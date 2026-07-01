@@ -724,6 +724,43 @@ class ReservationServiceTest {
         }
 
         @Test
+        @DisplayName("락 획득 전 조회한 슬롯 정보가 그 사이 다른 요청으로 stale해지면 SLOT_LOCK_FAILED 예외가 발생한다")
+        void fail_staleSlotSnapshotAfterLockAcquired() throws Exception {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            UUID reservationId = UUID.randomUUID();
+
+            ReservationSlot oldSlot = buildSlot(storeId, LocalDate.now().plusDays(5), LocalTime.of(18, 0), 4);
+            ReservationSlot newSlot = buildSlot(storeId, LocalDate.now().plusDays(6), LocalTime.of(19, 0), 4);
+            UUID oldSlotId = oldSlot.getSlotId();
+            UUID newSlotId = newSlot.getSlotId();
+            UUID anotherSlotId = UUID.randomUUID(); // 락 획득 사이에 이미 다른 요청으로 이동해버린 슬롯
+
+            Reservation reservationAtOldSlot = buildConfirmedReservation(
+                    oldSlotId, userId, storeId, LocalDateTime.of(oldSlot.getSlotDate(), oldSlot.getSlotTime()), 2);
+            ReflectionTestUtils.setField(reservationAtOldSlot, "reservationId", reservationId);
+
+            Reservation reservationMovedAway = buildConfirmedReservation(
+                    anotherSlotId, userId, storeId, LocalDateTime.now().plusDays(7), 2);
+            ReflectionTestUtils.setField(reservationMovedAway, "reservationId", reservationId);
+
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId))
+                    .thenReturn(Optional.of(reservationAtOldSlot))   // changeReservation()의 최초 조회 (oldSlotId 스냅샷)
+                    .thenReturn(Optional.of(reservationAtOldSlot))   // changeReservationSlot()의 매장 일치 사전 검증
+                    .thenReturn(Optional.of(reservationMovedAway));  // 락 획득 후 재조회 시점엔 이미 다른 슬롯으로 이동한 상태
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)).thenReturn(Optional.of(newSlot));
+
+            lockFor("reservation:lock:slot:" + oldSlotId);
+            lockFor("reservation:lock:slot:" + newSlotId);
+
+            assertThatThrownBy(() -> reservationService.changeReservation(
+                    reservationId, userId, buildChangeRequest(null, newSlotId)))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.SLOT_LOCK_FAILED);
+        }
+
+        @Test
         @DisplayName("타 매장 슬롯으로 변경 시도 시 RESERVATION_SLOT_STORE_MISMATCH 예외가 발생한다")
         void fail_storeMismatch() {
             UUID userId = UUID.randomUUID();

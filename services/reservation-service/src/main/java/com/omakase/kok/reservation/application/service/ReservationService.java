@@ -585,6 +585,11 @@ public class ReservationService {
             if (fresh.getStatus() != ReservationStatus.CONFIRMED) {
                 throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
             }
+            if (!fresh.getSlotId().equals(oldSlotId)) {
+                // 락 획득 전 조회한 oldSlotId가 그 사이 다른 변경 요청으로 stale해진 경우
+                // (이미 다른 슬롯으로 이동한 예약) 잘못된 슬롯의 인원을 건드리지 않도록 안전하게 실패 처리
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
 
             ReservationSlot freshNewSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)
                     .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));

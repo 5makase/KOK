@@ -45,7 +45,7 @@ public class ReviewOutboxPublisher {
                                                                                             /*get() :브로커가 메세지를 받았는지 확인하는 메서드.
                                                                                             - 5초 안으로 브로커가 메세지를 받았는지 확인이 된다면, markPublished를 실행
                                                                                             - 5초 안으로 못 받았으면 예외를 발생시킴.*/
-                //제대로 올라갔는지 확인이 되면, OutBox의 상태를 PUBLISHED로 변경 .
+                //카프카에 데이터가 제대로 올라갔더라면, 발행 처리한다.
                 event.markPublished();
                 log.info("리뷰 이벤트 발행 완료. type={}, reviewId={}",
                         event.getEventType(), event.getReviewId());

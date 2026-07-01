@@ -51,8 +51,9 @@ public class ReservationController {
             @RequestParam(required = false) LocalDate to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        int safeSize = Math.min(size, 50);
-        Pageable pageable = PageRequest.of(page, safeSize);
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 50));
+        Pageable pageable = PageRequest.of(safePage, safeSize);
         Page<ReservationResponse> result = reservationService.getMyReservations(userId, status, from, to, pageable);
         return ResponseEntity.ok(ApiResponse.success(PageResponse.from(result)));
     }

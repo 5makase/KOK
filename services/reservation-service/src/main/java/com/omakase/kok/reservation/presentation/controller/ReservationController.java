@@ -2,21 +2,26 @@ package com.omakase.kok.reservation.presentation.controller;
 
 import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.common.dto.PageResponse;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
 import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.application.service.ReservationService;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Tag(name = "예약 관리 (사용자)")
@@ -39,9 +44,17 @@ public class ReservationController {
 
     @Operation(summary = "내 예약 목록 조회")
     @GetMapping("/me")
-    public ResponseEntity<ApiResponse<List<ReservationResponse>>> getMyReservations(
-            @RequestHeader(AuthConstants.USER_ID) UUID userId) {
-        return ResponseEntity.ok(ApiResponse.success(reservationService.getMyReservations(userId)));
+    public ResponseEntity<ApiResponse<PageResponse<ReservationResponse>>> getMyReservations(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestParam(required = false) ReservationStatus status,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        int safeSize = Math.min(size, 50);
+        Pageable pageable = PageRequest.of(page, safeSize);
+        Page<ReservationResponse> result = reservationService.getMyReservations(userId, status, from, to, pageable);
+        return ResponseEntity.ok(ApiResponse.success(PageResponse.from(result)));
     }
 
     @Operation(summary = "내 예약 단건 조회")

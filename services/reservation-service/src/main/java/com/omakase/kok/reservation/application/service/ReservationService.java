@@ -28,6 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
@@ -209,10 +211,12 @@ public class ReservationService {
         }
     }
 
-    public List<ReservationResponse> getMyReservations(UUID userId) {
-        return reservationRepository.findByUserIdAndDeletedAtIsNull(userId).stream()
-                .map(ReservationResponse::from)
-                .toList();
+    public Page<ReservationResponse> getMyReservations(UUID userId, ReservationStatus status,
+                                                        LocalDate from, LocalDate to, Pageable pageable) {
+        LocalDateTime fromDateTime = from != null ? from.atStartOfDay() : null;
+        LocalDateTime toDateTime = to != null ? to.plusDays(1).atStartOfDay() : null;
+        return reservationRepository.findMyReservations(userId, status, fromDateTime, toDateTime, pageable)
+                .map(ReservationResponse::from);
     }
 
     public ReservationResponse getMyReservation(UUID reservationId, UUID userId) {
@@ -226,10 +230,12 @@ public class ReservationService {
         return ReservationResponse.from(reservation);
     }
 
-    public List<ReservationResponse> getStoreReservations(UUID storeId) {
-        return reservationRepository.findByStoreIdAndDeletedAtIsNull(storeId).stream()
-                .map(ReservationResponse::from)
-                .toList();
+    public Page<ReservationResponse> getStoreReservations(UUID storeId, ReservationStatus status,
+                                                           LocalDate date, Pageable pageable) {
+        LocalDateTime dateStart = date != null ? date.atStartOfDay() : null;
+        LocalDateTime dateEnd = date != null ? date.plusDays(1).atStartOfDay() : null;
+        return reservationRepository.findStoreReservations(storeId, status, dateStart, dateEnd, pageable)
+                .map(ReservationResponse::from);
     }
 
     public ReservationResponse getStoreReservation(UUID storeId, UUID reservationId) {

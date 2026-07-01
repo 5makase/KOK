@@ -13,7 +13,7 @@ public record ReviewEventPayload(
         BigDecimal rating,          // CREATED, UPDATE만포함, DELETED는 null
         BigDecimal averageRating,
         int reviewCount
-) {
+) implements ReviewEventPayloadType {
     /** REVIEW_CREATED 용 (rating 포함) */
     public static ReviewEventPayload created(UUID reviewId, UUID storeId,
                                              BigDecimal rating,

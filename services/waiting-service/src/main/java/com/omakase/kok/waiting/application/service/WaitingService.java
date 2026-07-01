@@ -31,6 +31,7 @@ import com.omakase.kok.waiting.presentation.dto.response.WaitingCancelResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingDetailResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingEnterResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingNoShowResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingQueueRestoreResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -290,6 +291,24 @@ public class WaitingService {
                 .toList();
     }
 
+    // DB 기준 Redis 대기열 복구
+    public WaitingQueueRestoreResponse restoreWaitingQueue(UUID storeId, LocalDate waitingDate) {
+        LocalDate targetDate = waitingDate != null ? waitingDate : LocalDate.now();
+        List<Waiting> waitings = getWaitingQueueSnapshot(storeId, targetDate);
+        try {
+            waitingQueueRedisStore.restoreQueue(storeId, targetDate, waitings);
+        } catch (RuntimeException e) {
+            log.error("Failed to restore waiting queue from DB. storeId={}, waitingDate={}", storeId, targetDate, e);
+            throw new WaitingException(WaitingErrorCode.WAITING_QUEUE_RESTORE_FAILED);
+        }
+
+        long maxWaitingNumber = waitings.stream()
+                .mapToLong(Waiting::getWaitingNumber)
+                .max()
+                .orElse(0L);
+        return WaitingQueueRestoreResponse.of(storeId, targetDate, waitings.size(), maxWaitingNumber);
+    }
+
     /**
      * Validation
      */
@@ -413,6 +432,16 @@ public class WaitingService {
         }
     }
 
+    // Redis 복구 기준이 되는 DB 대기열 스냅샷 조회
+    private List<Waiting> getWaitingQueueSnapshot(UUID storeId, LocalDate waitingDate) {
+        return waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
+                storeId,
+                WaitingStatus.WAITING,
+                startOfDay(waitingDate),
+                startOfNextDay(waitingDate)
+        );
+    }
+
     // 웨이팅 등록용 롤백 훅 예약
     // 트랜잭션 롤백 시 Redis 등록도 함께 롤백
     private void scheduleQueueRollbackOnTransactionFailure(UUID storeId, Waiting waiting) {
@@ -462,6 +491,16 @@ public class WaitingService {
 
     private LocalDate waitingDate(Waiting waiting) {
         return waiting.getCreatedAt() != null ? waiting.getCreatedAt().toLocalDate() : LocalDate.now();
+    }
+
+    // 조회 시작 시각: 해당 날짜 00:00
+    private LocalDateTime startOfDay(LocalDate date) {
+        return date.atStartOfDay();
+    }
+
+    // 조회 종료 시각: 다음 날짜 00:00
+    private LocalDateTime startOfNextDay(LocalDate date) {
+        return date.plusDays(1).atStartOfDay();
     }
 
     /**

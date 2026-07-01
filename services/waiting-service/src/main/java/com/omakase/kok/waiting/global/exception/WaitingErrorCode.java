@@ -27,7 +27,8 @@ public enum WaitingErrorCode implements ErrorCode {
     WAITING_COUNT_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "WAITING-018", "웨이팅 대기 팀 수가 올바르지 않습니다."),
     WAITING_CALL_LOCK_FAILED(HttpStatus.CONFLICT, "WAITING-019", "다음 순번 호출 처리 중입니다. 잠시 후 다시 시도해주세요."),
     WAITING_STORE_SUMMARY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "WAITING-020", "매장 정보를 조회할 수 없습니다."),
-    WAITING_ENTER_EXPIRED(HttpStatus.BAD_REQUEST, "WAITING-021", "호출 제한 시간이 지나 입장 처리할 수 없습니다.");
+    WAITING_ENTER_EXPIRED(HttpStatus.BAD_REQUEST, "WAITING-021", "호출 제한 시간이 지나 입장 처리할 수 없습니다."),
+    WAITING_QUEUE_RESTORE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "WAITING-022", "Redis 대기열 복구에 실패했습니다.");
 
     private final HttpStatus status;
     private final String code;

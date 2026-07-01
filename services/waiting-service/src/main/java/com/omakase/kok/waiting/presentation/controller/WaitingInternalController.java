@@ -5,6 +5,7 @@ import com.omakase.kok.waiting.application.service.WaitingService;
 import com.omakase.kok.waiting.application.service.WaitingSettingService;
 import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
 import com.omakase.kok.waiting.presentation.dto.response.NearTurnWaitingResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingQueueRestoreResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
 import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +14,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,6 +55,17 @@ public class WaitingInternalController {
             @RequestParam(defaultValue = "3") @Min(1) @Max(50) int threshold
     ) {
         List<NearTurnWaitingResponse> response = waitingService.getNearTurnWaitings(storeId, threshold);
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @Operation(summary = "Redis 웨이팅 대기열 복구", description = "DB의 WAITING 상태 데이터를 기준으로 Redis 대기열을 재구성")
+    @PostMapping("/stores/{storeId}/queue/restore")
+    public ResponseEntity<ApiResponse<WaitingQueueRestoreResponse>> restoreWaitingQueue(
+            @PathVariable UUID storeId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate waitingDate
+    ) {
+        WaitingQueueRestoreResponse response = waitingService.restoreWaitingQueue(storeId, waitingDate);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }

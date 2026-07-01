@@ -49,7 +49,11 @@ public enum StoreErrorCode implements ErrorCode {
     STORE_IMAGE_DUPLICATE_DISPLAY_ORDER(HttpStatus.BAD_REQUEST, "STORE-404", "노출 순서가 중복되었습니다."),
 
     // Outbox
-    PAYLOAD_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "STORE-501", "이벤트 페이로드 직렬화에 실패했습니다.")
+    PAYLOAD_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "STORE-501", "이벤트 페이로드 직렬화에 실패했습니다."),
+
+    // 외부 서비스 연동
+    OWNER_NOT_APPROVED(HttpStatus.FORBIDDEN, "STORE-601", "승인되지 않은 OWNER는 매장을 등록할 수 없습니다."),
+    OWNER_APPROVAL_CHECK_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "STORE-602", "OWNER 승인 상태를 확인할 수 없습니다.")
     ;
 
     private final HttpStatus status;

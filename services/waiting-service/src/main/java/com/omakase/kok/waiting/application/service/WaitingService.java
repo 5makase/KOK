@@ -431,7 +431,7 @@ public class WaitingService {
 
     // Redis 복구 기준이 되는 DB 대기열 스냅샷 조회
     private List<Waiting> getWaitingQueueSnapshot(UUID storeId, LocalDate waitingDate) {
-        return waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
+        return waitingRepository.findQueueSnapshotByStoreIdAndDate(
                 storeId,
                 WaitingStatus.WAITING,
                 startOfDay(waitingDate),
@@ -441,7 +441,7 @@ public class WaitingService {
 
     // 해당 일자에 발급된 전체 웨이팅 번호 중 최댓값 조회
     private long getMaxIssuedWaitingNumber(UUID storeId, LocalDate waitingDate) {
-        return waitingRepository.findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+        return waitingRepository.findMaxWaitingNumberByStoreIdAndDate(
                 storeId,
                 startOfDay(waitingDate),
                 startOfNextDay(waitingDate)

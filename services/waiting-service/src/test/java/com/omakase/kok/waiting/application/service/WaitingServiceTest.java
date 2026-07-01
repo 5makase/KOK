@@ -826,13 +826,13 @@ class WaitingServiceTest {
         Waiting firstWaiting = waiting(storeId, UUID.randomUUID(), 3L, WaitingStatus.WAITING, null);
         Waiting secondWaiting = waiting(storeId, UUID.randomUUID(), 5L, WaitingStatus.WAITING, null);
 
-        given(waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
+        given(waitingRepository.findQueueSnapshotByStoreIdAndDate(
                 eq(storeId),
                 eq(WaitingStatus.WAITING),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         )).willReturn(List.of(firstWaiting, secondWaiting));
-        given(waitingRepository.findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+        given(waitingRepository.findMaxWaitingNumberByStoreIdAndDate(
                 eq(storeId),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
@@ -860,13 +860,13 @@ class WaitingServiceTest {
         LocalDate waitingDate = LocalDate.now();
         Waiting waiting = waiting(storeId, UUID.randomUUID(), 1L, WaitingStatus.WAITING, null);
 
-        given(waitingRepository.findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
+        given(waitingRepository.findQueueSnapshotByStoreIdAndDate(
                 eq(storeId),
                 eq(WaitingStatus.WAITING),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         )).willReturn(List.of(waiting));
-        given(waitingRepository.findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+        given(waitingRepository.findMaxWaitingNumberByStoreIdAndDate(
                 eq(storeId),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)

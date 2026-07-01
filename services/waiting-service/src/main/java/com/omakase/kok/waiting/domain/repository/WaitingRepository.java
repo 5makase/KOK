@@ -18,11 +18,20 @@ public interface WaitingRepository extends JpaRepository<Waiting, UUID> {
     List<Waiting> findByStoreIdAndStatusOrderByWaitingNumberAsc(UUID storeId, WaitingStatus status);
 
     // 매장별 특정 일자 상태 조회
-    List<Waiting> findByStoreIdAndStatusAndCreatedAtBetweenOrderByWaitingNumberAsc(
-            UUID storeId,
-            WaitingStatus status,
-            LocalDateTime startAt,
-            LocalDateTime endAt
+    @Query("""
+            select w
+              from Waiting w
+             where w.storeId = :storeId
+               and w.status = :status
+               and w.createdAt >= :startAt
+               and w.createdAt < :endAt
+             order by w.waitingNumber asc
+            """)
+    List<Waiting> findQueueSnapshotByStoreIdAndDate(
+            @Param("storeId") UUID storeId,
+            @Param("status") WaitingStatus status,
+            @Param("startAt") LocalDateTime startAt,
+            @Param("endAt") LocalDateTime endAt
     );
 
     // 매장별 특정 일자에 발급된 최대 웨이팅 번호 조회
@@ -30,9 +39,10 @@ public interface WaitingRepository extends JpaRepository<Waiting, UUID> {
             select coalesce(max(w.waitingNumber), 0)
               from Waiting w
              where w.storeId = :storeId
-               and w.createdAt between :startAt and :endAt
+               and w.createdAt >= :startAt
+               and w.createdAt < :endAt
             """)
-    Long findMaxWaitingNumberByStoreIdAndCreatedAtBetween(
+    Long findMaxWaitingNumberByStoreIdAndDate(
             @Param("storeId") UUID storeId,
             @Param("startAt") LocalDateTime startAt,
             @Param("endAt") LocalDateTime endAt

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-// 이벤트 payLoad
+// 평점 집계 시, paylaod
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReviewEventPayload(
         UUID reviewId,

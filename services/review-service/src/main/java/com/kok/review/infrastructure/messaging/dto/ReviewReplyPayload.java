@@ -1,7 +1,7 @@
 package com.kok.review.infrastructure.messaging.dto;
 
 import java.util.UUID;
-
+//사장님 답글 시 payload
 public record ReviewReplyPayload(
         UUID reviewId,
         UUID storeId,

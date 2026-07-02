@@ -31,8 +31,10 @@ public class ReviewOutboxAppender {
     public void append(UUID reviewId, String eventType, UUID storeId, ReviewEventPayloadType payload) {
         //ReviewEventEnvelope 생성
         ReviewEventEnvelope envelope = ReviewEventEnvelope.of(eventType, payload);
+
         //ReviewEventEnvelope을 json으로 변환
         String json = serialize(envelope);
+
         //ReviewOutboxEvent를 생성하여 DB에 저장.
         reviewOutboxEventRepository.save(ReviewOutboxEvent.create(reviewId,eventType,json,storeId));
     }

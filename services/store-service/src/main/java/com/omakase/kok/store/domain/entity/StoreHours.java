@@ -99,6 +99,17 @@ public class StoreHours extends BaseEntity {
         this.breakEndTime = breakEndTime;
     }
 
+    // closeTime 영업종료시각 -> 정각 도달 시 마감으로 간주
+    public boolean isOutsideBusinessHours(LocalTime time) {
+        return time.isBefore(openTime) || !time.isBefore(closeTime);
+    }
+
+    // break_start_time / break_end_time - DB 스키마상 각각 독립적으로 NULL 허용
+    public boolean isDuringBreakTime(LocalTime time) {
+        return breakStartTime != null && breakEndTime != null
+            && !time.isBefore(breakStartTime) && time.isBefore(breakEndTime);
+    }
+
     // soft delete된 영업시간 재활성화 (UniqueConstraint 충돌 방지)
     public void restore() {
         clearDeleted();

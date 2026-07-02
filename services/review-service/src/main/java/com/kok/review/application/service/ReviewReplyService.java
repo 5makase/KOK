@@ -90,19 +90,23 @@ public class ReviewReplyService {
      */
     @Transactional
     public void deleteReply(UUID reviewId, UUID userId, String userRole) {
+        //본인 권한 확인
         if (!"OWNER".equals(userRole)) {
             throw new IllegalArgumentException("사장님 권한 아님.");
         }
+        //본인 답글 조회
         ReviewReply reply = reviewReplyRepository.findByReviewId(reviewId);
 
+        //답글 조회 안될 시, 예외 처리
         if(reply == null){
             throw new IllegalArgumentException("답글이 존재하지 않음.");
         }
-
+        //본인 답글인지 확인
         if (!reply.getOwnerId().equals(userId)) {
             throw new IllegalArgumentException("본인 답글 아님.");
         }
-        reply.delete(userId);   // BaseEntity의 soft delete
+        //soft delete 처리
+        reply.delete(userId);
     }
 
 

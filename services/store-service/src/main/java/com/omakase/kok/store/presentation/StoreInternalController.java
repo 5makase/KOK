@@ -42,7 +42,7 @@ public class StoreInternalController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime time
     ) {
-        BusinessHoursValidationResponse result = storeHoursService.checkBusinessHours(storeId, date, time);
-        return ResponseEntity.ok(ApiResponse.success(result));
+        return ResponseEntity.ok(ApiResponse.success(
+                BusinessHoursValidationResponse.from(storeHoursService.checkBusinessHours(storeId, date, time))));
     }
 }

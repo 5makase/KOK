@@ -23,8 +23,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.omakase.kok.store.application.result.StoreHoursValidationResult;
+import com.omakase.kok.store.domain.enums.StoreStatus;
 import java.lang.reflect.Field;
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -419,6 +422,121 @@ class StoreHoursServiceTest {
         assertThat(results).hasSize(2);
         assertThat(results.get(0).isDayOff()).isFalse();
         assertThat(results.get(1).isDayOff()).isTrue();
+    }
+
+    // checkBusinessHours
+
+    @Test
+    @DisplayName("매장이 OPEN 상태가 아니면 STORE_NOT_OPEN 반환")
+    void checkBusinessHours_store_not_open_returns_denied() {
+        // store의 기본 상태는 PREPARING → isAvailableForService() == false
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("STORE_NOT_OPEN");
+    }
+
+    @Test
+    @DisplayName("정기 휴무일이면 DAY_OFF 반환")
+    void checkBusinessHours_day_off_returns_denied() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        StoreHours dayOff = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(dayOff));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0)); // 2026-06-01 is MONDAY
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("DAY_OFF");
+    }
+
+    @Test
+    @DisplayName("영업시간 외 요청이면 OUTSIDE_HOURS 반환")
+    void checkBusinessHours_outside_hours_returns_denied() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(22, 0));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("OUTSIDE_HOURS");
+    }
+
+    @Test
+    @DisplayName("브레이크타임 내 요청이면 BREAK_TIME 반환")
+    void checkBusinessHours_during_break_time_returns_denied() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0),
+                LocalTime.of(14, 0), LocalTime.of(15, 0));
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(14, 30));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("BREAK_TIME");
+    }
+
+    @Test
+    @DisplayName("breakStartTime만 있고 breakEndTime이 null이면 NPE 없이 available 반환 - 회귀 방지")
+    void checkBusinessHours_break_start_only_no_npe() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        // breakEndTime=null - DB 스키마상 두 필드가 독립적으로 NULL 허용
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0),
+                LocalTime.of(14, 0), null);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(14, 30));
+
+        assertThat(result.isAvailable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("정상 영업 중이면 available: true 반환")
+    void checkBusinessHours_during_business_hours_returns_ok() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0));
+
+        assertThat(result.isAvailable()).isTrue();
+        assertThat(result.getReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("해당 요일 영업시간 미등록 시 STORE_HOURS_NOT_FOUND 예외")
+    void checkBusinessHours_hours_not_found_throws() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0)))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_NOT_FOUND);
     }
 
     // helpers

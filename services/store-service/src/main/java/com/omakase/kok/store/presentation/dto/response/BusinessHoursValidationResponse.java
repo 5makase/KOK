@@ -1,12 +1,20 @@
 package com.omakase.kok.store.presentation.dto.response;
 
-public record BusinessHoursValidationResponse(boolean available, String reason) {
+import com.omakase.kok.store.application.result.StoreHoursValidationResult;
+import lombok.Builder;
+import lombok.Getter;
 
-    public static BusinessHoursValidationResponse ok() {
-        return new BusinessHoursValidationResponse(true, null);
-    }
+@Getter
+@Builder
+public class BusinessHoursValidationResponse {
 
-    public static BusinessHoursValidationResponse denied(String reason) {
-        return new BusinessHoursValidationResponse(false, reason);
+    private final boolean available;
+    private final String reason;
+
+    public static BusinessHoursValidationResponse from(StoreHoursValidationResult result) {
+        return BusinessHoursValidationResponse.builder()
+                .available(result.isAvailable())
+                .reason(result.getReason())
+                .build();
     }
 }

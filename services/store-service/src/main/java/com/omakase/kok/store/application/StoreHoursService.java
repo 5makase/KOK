@@ -5,12 +5,12 @@ import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
 import com.omakase.kok.store.application.command.UpdateStoreHoursCommand;
 import com.omakase.kok.store.application.result.StoreHoursResult;
+import com.omakase.kok.store.application.result.StoreHoursValidationResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreHours;
 import com.omakase.kok.store.domain.repository.StoreHoursRepository;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
-import com.omakase.kok.store.presentation.dto.response.BusinessHoursValidationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -112,27 +112,20 @@ public class StoreHoursService {
                 .toList();
     }
 
-    public BusinessHoursValidationResponse checkBusinessHours(UUID storeId, LocalDate date, LocalTime time) {
+    public StoreHoursValidationResult checkBusinessHours(UUID storeId, LocalDate date, LocalTime time) {
         Store store = storeFinder.findActiveOrThrow(storeId);
-        if (!store.isAvailableForService()) {
-            return BusinessHoursValidationResponse.denied("STORE_NOT_OPEN");
-        }
+        if (!store.isAvailableForService()) return StoreHoursValidationResult.denied("STORE_NOT_OPEN");
 
         StoreHours hours = storeHoursRepository.findTodayHours(storeId, date.getDayOfWeek())
                 .orElseThrow(() -> new BaseException(StoreErrorCode.STORE_HOURS_NOT_FOUND));
 
-        if (hours.isDayOff()) {
-            return BusinessHoursValidationResponse.denied("DAY_OFF");
-        }
-        if (time.isBefore(hours.getOpenTime()) || !time.isBefore(hours.getCloseTime())) {
-            return BusinessHoursValidationResponse.denied("OUTSIDE_HOURS");
-        }
-        if (hours.getBreakStartTime() != null
-                && !time.isBefore(hours.getBreakStartTime())
-                && time.isBefore(hours.getBreakEndTime())) {
-            return BusinessHoursValidationResponse.denied("BREAK_TIME");
-        }
-        return BusinessHoursValidationResponse.ok();
+        if (hours.isDayOff()) return StoreHoursValidationResult.denied("DAY_OFF");
+
+        if (hours.isOutsideBusinessHours(time)) return StoreHoursValidationResult.denied("OUTSIDE_HOURS");
+
+        if (hours.isDuringBreakTime(time)) return StoreHoursValidationResult.denied("BREAK_TIME");
+
+        return StoreHoursValidationResult.ok();
     }
 
     private StoreHours findHours(UUID storeId, UUID hoursId) {

@@ -11,6 +11,7 @@ import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
 import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
+import com.omakase.kok.store.application.port.OwnerApprovalPort;
 import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
@@ -74,6 +75,7 @@ class StoreServiceTest {
     @Mock StoreFinder storeFinder;
     @Mock StoreOutboxEventRepository storeOutboxEventRepository;
     @Mock StoreEventFactory storeEventFactory;
+    @Mock OwnerApprovalPort ownerApprovalPort;
     @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
     @Spy ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
@@ -183,12 +185,50 @@ class StoreServiceTest {
     // createStore
 
     @Test
+    @DisplayName("미승인 OWNER 매장 등록 시 403")
+    void createStore_owner_not_approved_throws() {
+        when(ownerApprovalPort.isApproved(ownerId)).thenReturn(false);
+
+        CreateStoreCommand command = CreateStoreCommand.builder()
+            .ownerId(ownerId).categoryId(UUID.randomUUID())
+            .name("테스트 매장").phone(null)
+            .address(new Address("서울", "강남", null, null, null, null))
+            .description(null).maxCapacity(null)
+            .build();
+
+        assertThatThrownBy(() -> storeService.createStore(command))
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.OWNER_NOT_APPROVED);
+    }
+
+    @Test
+    @DisplayName("승인 상태 조회 실패(서킷브레이커, 타임아웃) 시 503 예외 전파")
+    void createStore_approval_check_failed_propagates() {
+        when(ownerApprovalPort.isApproved(ownerId))
+            .thenThrow(new BaseException(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED));
+
+        CreateStoreCommand command = CreateStoreCommand.builder()
+            .ownerId(ownerId).categoryId(UUID.randomUUID())
+            .name("테스트 매장").phone(null)
+            .address(new Address("서울", "강남", null, null, null, null))
+            .description(null).maxCapacity(null)
+            .build();
+
+        assertThatThrownBy(() -> storeService.createStore(command))
+            .isInstanceOf(BaseException.class)
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED);
+    }
+
+    @Test
     @DisplayName("소분류 카테고리로 매장 등록 성공")
     void createStore_with_sub_category_success() {
         UUID categoryId = UUID.randomUUID();
         StoreCategory root = StoreCategory.create("한식", 1, null);
         StoreCategory sub = StoreCategory.create("국밥", 1, root);
 
+        when(ownerApprovalPort.isApproved(ownerId)).thenReturn(true);
         when(storeCategoryRepository.findCategory(categoryId)).thenReturn(java.util.Optional.of(sub));
         when(storeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(storeEventFactory.createStoreCreatedEnvelope(any(UUID.class), any(Store.class)))
@@ -225,6 +265,7 @@ class StoreServiceTest {
         UUID categoryId = UUID.randomUUID();
         StoreCategory root = StoreCategory.create("한식", 1, null); // 대분류
 
+        when(ownerApprovalPort.isApproved(ownerId)).thenReturn(true);
         when(storeCategoryRepository.findCategory(categoryId)).thenReturn(java.util.Optional.of(root));
 
         CreateStoreCommand command = CreateStoreCommand.builder()

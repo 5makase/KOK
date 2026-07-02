@@ -9,6 +9,7 @@ import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.ChangeStoreStatusCommand;
 import com.omakase.kok.store.application.command.CreateStoreCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCommand;
+import com.omakase.kok.store.application.port.OwnerApprovalPort;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
 import com.omakase.kok.store.application.result.StoreResult;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
@@ -67,6 +68,7 @@ public class StoreService {
 
     // 검증
     private final StoreOwnerValidator storeOwnerValidator;
+    private final OwnerApprovalPort ownerApprovalPort;
 
     // Kafka Outbox 이벤트 생성
     private final StoreEventFactory storeEventFactory;
@@ -75,6 +77,11 @@ public class StoreService {
 
     @Transactional
     public StoreResult createStore(CreateStoreCommand command) {
+        // 승인된 OWNER만 매장 등록 가능: user-service 동기 검증
+        if (!ownerApprovalPort.isApproved(command.getOwnerId())) {
+            throw new BaseException(StoreErrorCode.OWNER_NOT_APPROVED); // 미승인 시 403
+        }
+
         StoreCategory category = storeCategoryRepository.findCategory(command.getCategoryId())
                 .orElseThrow(() -> new BaseException(StoreErrorCode.CATEGORY_NOT_FOUND));
 

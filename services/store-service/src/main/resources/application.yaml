@@ -49,6 +49,28 @@ spring:
         # 멱등성 프로듀서 사용 시 권장 설정 (전송 순서 보장 유지)
         max.in.flight.requests.per.connection: 5
 
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 3000  # 연결 타임아웃 3초
+        readTimeout: 5000     # 읽기 타임아웃 5초
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10                    # 최근 10회 호출 기준으로 실패율 계산
+        failureRateThreshold: 50                 # 실패율 50% 초과 시 OPEN
+        waitDurationInOpenState: 10s             # OPEN 상태 10초 유지 후 HALF-OPEN 시도
+        permittedNumberOfCallsInHalfOpenState: 3 # HALF-OPEN 상태에서 3회 테스트 호출
+        registerHealthIndicator: true
+    instances:
+      ownerApprovalClient:
+        baseConfig: default
+        ignoreExceptions:
+          - com.omakase.kok.common.exception.BaseException # 비즈니스 예외는 회로 실패율에 미포함
+
 eureka:
   client:
     service-url:

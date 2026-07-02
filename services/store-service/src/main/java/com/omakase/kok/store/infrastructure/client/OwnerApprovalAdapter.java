@@ -25,27 +25,19 @@ public class OwnerApprovalAdapter implements OwnerApprovalPort {
     @CircuitBreaker(name = "ownerApprovalClient", fallbackMethod = "isApprovedFallback")
     @Override
     public boolean isApproved(UUID ownerId) {
-        try {
-            ApiResponse<OwnerApprovalResponse> response = ownerApprovalClient.getApprovalStatus(ownerId);
-            OwnerApprovalResponse data = response.getData();
+        // 인프라 예외(FeignException·타임아웃)는 CB까지 전파 → 실패율 집계됨
+        ApiResponse<OwnerApprovalResponse> response = ownerApprovalClient.getApprovalStatus(ownerId);
+        OwnerApprovalResponse data = response.getData();
 
-            // 응답 자체가 없거나 approved 필드가 null이면 조회 실패로 처리
-            if (data == null || data.getApproved() == null) {
-                throw new BaseException(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED);
-            }
-            return data.getApproved();
-        } catch (BaseException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("OWNER 승인 상태 조회 실패 - ownerId: {}", ownerId, e);
+        // 응답 형식 오류만 BaseException
+        if (data == null || data.getApproved() == null) {
             throw new BaseException(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED);
         }
+        return data.getApproved();
     }
 
-    // circuit OPEN·타임아웃 등 인프라 장애 시 호출
-    // ignoreExceptions는 실패율 집계만 제외할 뿐 fallback까지 막지 않으므로 BaseException은 방어적으로 재전파
+    // CB OPEN 또는 인프라 장애(FeignException, 타임아웃) 시 호출
     private boolean isApprovedFallback(UUID ownerId, Throwable t) {
-        if (t instanceof BaseException be) throw be;
         log.error("[OwnerApproval][CB] circuit open or timeout - ownerId: {}, cause: {}", ownerId, t.getMessage());
         throw new BaseException(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED);
     }

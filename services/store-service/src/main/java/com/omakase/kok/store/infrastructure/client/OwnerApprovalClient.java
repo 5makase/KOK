@@ -15,5 +15,5 @@ import java.util.UUID;
 public interface OwnerApprovalClient {
 
     @GetMapping("/{userId}/owner-approval")
-    ApiResponse<OwnerApprovalResponse> getApprovalStatus(@PathVariable UUID userId);
+    ApiResponse<OwnerApprovalResponse> getApprovalStatus(@PathVariable("userId") UUID userId);
 }

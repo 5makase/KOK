@@ -77,30 +77,20 @@ class OwnerApprovalAdapterTest {
     }
 
     @Test
-    @DisplayName("FeignException 발생 → OWNER_APPROVAL_CHECK_FAILED")
-    void isApproved_throws_when_feign_exception() {
-        when(ownerApprovalClient.getApprovalStatus(ownerId))
-            .thenThrow(mock(FeignException.class));
+    @DisplayName("FeignException 발생 → CB까지 전파 (단위 테스트: CB 없으므로 raw 예외 그대로)")
+    void isApproved_propagates_feign_exception_to_circuit_breaker() {
+        FeignException feignEx = mock(FeignException.class);
+        when(ownerApprovalClient.getApprovalStatus(ownerId)).thenThrow(feignEx);
 
         assertThatThrownBy(() -> adapter.isApproved(ownerId))
-            .isInstanceOf(BaseException.class)
-            .extracting(e -> ((BaseException) e).getErrorCode())
-            .isEqualTo(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED);
+            .isSameAs(feignEx);
     }
 
-    // fallback (CircuitBreaker가 열리거나 타임아웃 시 호출 - reflection으로 직접 검증)
+    // fallback (CB OPEN·인프라 장애 시 호출 — reflection으로 직접 검증)
+    // BaseException(응답 형식 오류)은 ignoreExceptions에 의해 fallback 호출 안 됨
 
     @Test
-    @DisplayName("fallback - BaseException은 그대로 재전파")
-    void fallback_rethrows_base_exception() {
-        BaseException original = new BaseException(StoreErrorCode.OWNER_APPROVAL_CHECK_FAILED);
-
-        assertThatThrownBy(() -> invokeFallback(ownerId, original))
-            .isSameAs(original);
-    }
-
-    @Test
-    @DisplayName("fallback - 인프라 장애(non-BaseException) → OWNER_APPROVAL_CHECK_FAILED")
+    @DisplayName("fallback - 인프라 장애(FeignException·CB OPEN) → OWNER_APPROVAL_CHECK_FAILED")
     void fallback_wraps_infrastructure_exception() {
         RuntimeException cause = new RuntimeException("circuit open");
 

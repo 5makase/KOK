@@ -1,13 +1,12 @@
 package com.kok.review.presentation.controller;
 
+import com.kok.review.application.service.ReviewReplyService;
 import com.kok.review.application.service.ReviewService;
+import com.kok.review.presentation.DTO1.request.ReviewReplyRequestDto;
 import com.kok.review.presentation.DTO1.request.ReviewSortType;
 import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
-import com.kok.review.presentation.DTO1.response.ReviewDeletedResponseDto;
+import com.kok.review.presentation.DTO1.response.*;
 import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
-import com.kok.review.presentation.DTO1.response.ReviewCreateResponseDto;
-import com.kok.review.presentation.DTO1.response.ReviewGetResponseDto;
-import com.kok.review.presentation.DTO1.response.ReviewUpdateResponseDto;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
 import jakarta.validation.Valid;
@@ -25,6 +24,60 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReviewController {
     private final ReviewService reviewService;
+    private final ReviewReplyService reviewReplyService;
+
+
+    /**
+     * 사장님 답글 작성
+     * @param reviewId
+     * @param userId
+     * @param userRole
+     * @param dto
+     * @return
+     */
+    @PostMapping("/{reviewId}/replies")
+    public ResponseEntity<ApiResponse<ReviewReplyResponseDto>> createReply(
+            @PathVariable UUID reviewId,
+            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader("X-Role") String userRole,
+            @Valid @RequestBody ReviewReplyRequestDto dto) {
+        ReviewReplyResponseDto result = reviewReplyService.createReply(reviewId, userId, userRole, dto);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /**
+     * 사장님 답글 수정
+     * @param reviewId
+     * @param userId
+     * @param userRole
+     * @param dto
+     * @return
+     */
+    @PutMapping("/{reviewId}/replies")
+    public ResponseEntity<ApiResponse<ReviewReplyResponseDto>> updateReply(
+            @PathVariable UUID reviewId,
+            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader("X-Role") String userRole,
+            @Valid @RequestBody ReviewReplyRequestDto dto) {
+        ReviewReplyResponseDto result = reviewReplyService.updateReply(reviewId, userId, userRole, dto);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /**
+     * 사장님 답글 삭제
+     * @param reviewId
+     * @param userId
+     * @param userRole
+     * @return
+     */
+    @PatchMapping("/{reviewId}/replies")
+    public ResponseEntity<ApiResponse<Void>> deleteReply(
+            @PathVariable UUID reviewId,
+            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader("X-Role") String userRole) {
+        reviewReplyService.deleteReply(reviewId, userId, userRole);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 
     /**
      * 내 리뷰 조회

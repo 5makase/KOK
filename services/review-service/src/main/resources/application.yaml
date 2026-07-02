@@ -53,3 +53,28 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}   # Zipkin 주소
+
+feign:
+  circuitbreaker:
+    enabled: true
+  client:
+    config:
+      default:
+        connect-timeout: 1000    # 연결 수립 대기: 1초
+        read-timeout: 2000       # 응답 대기: 2초 (트랜잭션 내 커넥션 점유 상한)
+      store-service:              # @FeignClient(name = "store-client") 와 일치
+        connect-timeout: 1000
+        read-timeout: 2000
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      store-service:
+        register-health-indicator: true          # actuator health에 서킷 상태 노출
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10                   # 최근 10건 기준으로 실패율 판단
+        minimum-number-of-calls: 5                # 최소 5건은 쌓여야 판단 시작 (초기 오탐 방지)
+        failure-rate-threshold: 50                # 실패율 50% 넘으면 OPEN
+        wait-duration-in-open-state: 10s          # OPEN 유지 10초 후 HALF_OPEN
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true

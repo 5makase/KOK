@@ -96,29 +96,7 @@ public class ReservationService {
 
             if (remaining < 0) {
                 capacityKey.addAndGet(request.getReservationSize());
-
-                // Redis 복구 실패로 Redis < DB 불일치가 발생한 경우 재동기화:
-                // DB remaining은 CONFIRMED 기준이고 PAYMENT_PENDING은 반영 안 되어 있으므로
-                // effectiveRemaining = DB remaining - PAYMENT_PENDING 합계로 실제 가용 인원 계산
-                int dbRemaining = slot.getRemainingCapacity();
-                int pendingSize = reservationRepository
-                        .findBySlotIdAndStatusInAndDeletedAtIsNull(
-                                slot.getSlotId(), List.of(ReservationStatus.PAYMENT_PENDING))
-                        .stream().mapToInt(Reservation::getReservationSize).sum();
-                int effectiveRemaining = dbRemaining - pendingSize;
-
-                if (effectiveRemaining >= request.getReservationSize()) {
-                    log.warn("Redis-DB 잔여 인원 불일치 감지 - slotId: {}, redis: {}, effective: {}. 재동기화",
-                            request.getSlotId(), remaining + request.getReservationSize(), effectiveRemaining);
-                    capacityKey.set(effectiveRemaining);
-                    remaining = capacityKey.addAndGet(-request.getReservationSize());
-                    if (remaining < 0) {
-                        capacityKey.addAndGet(request.getReservationSize());
-                        throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
-                    }
-                } else {
-                    throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
-                }
+                throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
             }
 
             if (!slot.isDepositRequired()) {
@@ -195,6 +173,12 @@ public class ReservationService {
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
                         return ReservationResponse.from(reservation);
                     });
+                } catch (BaseException e) {
+                    // 정원 초과는 재시도해도 결과가 같은 결정론적 실패이므로 즉시 중단
+                    if (e.getErrorCode() == ReservationErrorCode.SLOT_CAPACITY_EXCEEDED) {
+                        throw e;
+                    }
+                    lastException = e;
                 } catch (RuntimeException e) {
                     lastException = e;
                 }

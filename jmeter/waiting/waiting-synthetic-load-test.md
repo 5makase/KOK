@@ -12,7 +12,7 @@
 
 - 시간대는 금요일 18:00~19:00 저녁 피크
 - 전체 사용자 중 70%는 특정 인기 매장 storeId=49e778c5-522c-4cfd-86a9-57f5e9b7fab4에 웨이팅 등록을 시도
-- 20%는 일반 매장 5개에 분산되어 웨이팅 등록
+- 20%는 일반 매장 4개에 분산되어 웨이팅 등록
 - 10%는 조회만 하고 등록하지 않음
 - 각 사용자는 서로 다른 userId를 가진다
 - arrivalDelayMs는 사용자가 테스트 시작 후 몇 ms 뒤 행동을 시작하는지 의미한다
@@ -37,7 +37,7 @@ scenarioType은 POPULAR_REGISTER, NORMAL_REGISTER, VIEW_ONLY 중 하나로 생�
 | NORMAL_REGISTER | 20% | 60 | 일반 매장 4개에 분산 등록 후 내 웨이팅 조회 |
 | VIEW_ONLY | 10% | 30 | 등록 없이 내 웨이팅 조회 반복 |
 
-기본 CSV는 아래 매장 5개를 사용한다.
+기본 CSV는 인기 매장 1개와 일반 매장 4개를 사용한다.
 
 | 구분 | storeId | ownerId |
 |---|---|---|
@@ -51,7 +51,7 @@ scenarioType은 POPULAR_REGISTER, NORMAL_REGISTER, VIEW_ONLY 중 하나로 생�
 
 ```bash
 POPULAR_STORE_ID=49e778c5-522c-4cfd-86a9-57f5e9b7fab4 \
-NORMAL_STORE_IDS=store-id-1,store-id-2,store-id-3,store-id-4,store-id-5 \
+NORMAL_STORE_IDS=store-id-1,store-id-2,store-id-3,store-id-4 \
 jmeter/waiting/generate-synthetic-waiting-users.py
 ```
 

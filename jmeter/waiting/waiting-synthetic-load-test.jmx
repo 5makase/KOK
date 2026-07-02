@@ -69,17 +69,6 @@
           </collectionProp>
         </HeaderManager>
         <hashTree/>
-        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Synthetic arrival delay" enabled="true">
-          <stringProp name="cacheKey">true</stringProp>
-          <stringProp name="filename"></stringProp>
-          <stringProp name="parameters"></stringProp>
-          <stringProp name="script">long delay = (vars.get(&apos;arrivalDelayMs&apos;) ?: &apos;0&apos;) as long
-if (delay &gt; 0) {
-    Thread.sleep(delay)
-}</stringProp>
-          <stringProp name="scriptLanguage">groovy</stringProp>
-        </JSR223Sampler>
-        <hashTree/>
         <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Register scenario" enabled="true">
           <stringProp name="IfController.condition">${__groovy(vars.get(&apos;scenarioType&apos;) != &apos;VIEW_ONLY&apos;)}</stringProp>
           <boolProp name="IfController.evaluateAll">false</boolProp>
@@ -111,7 +100,22 @@ if (delay &gt; 0) {
               </collectionProp>
             </elementProp>
           </HTTPSamplerProxy>
-          <hashTree/>
+          <hashTree>
+            <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Synthetic arrival delay" enabled="true">
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script">if (vars.get(&apos;arrivalDelayApplied&apos;) != &apos;true&apos;) {
+    long delay = (vars.get(&apos;arrivalDelayMs&apos;) ?: &apos;0&apos;) as long
+    if (delay &gt; 0) {
+        Thread.sleep(delay)
+    }
+    vars.put(&apos;arrivalDelayApplied&apos;, &apos;true&apos;)
+}</stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PreProcessor>
+            <hashTree/>
+          </hashTree>
         </hashTree>
         <LoopController guiclass="LoopControlPanel" testclass="LoopController" testname="Poll my waitings loop" enabled="true">
           <stringProp name="LoopController.loops">${pollCount}</stringProp>
@@ -133,7 +137,22 @@ if (delay &gt; 0) {
             <stringProp name="HTTPSampler.method">GET</stringProp>
             <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
           </HTTPSamplerProxy>
-          <hashTree/>
+          <hashTree>
+            <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Synthetic arrival delay" enabled="true">
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script">if (vars.get(&apos;arrivalDelayApplied&apos;) != &apos;true&apos;) {
+    long delay = (vars.get(&apos;arrivalDelayMs&apos;) ?: &apos;0&apos;) as long
+    if (delay &gt; 0) {
+        Thread.sleep(delay)
+    }
+    vars.put(&apos;arrivalDelayApplied&apos;, &apos;true&apos;)
+}</stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PreProcessor>
+            <hashTree/>
+          </hashTree>
         </hashTree>
       </hashTree>
     </hashTree>

@@ -4,6 +4,7 @@ import os
 import random
 import uuid
 from pathlib import Path
+from typing import Dict, Union
 
 
 POPULAR_STORE_ID = os.getenv("POPULAR_STORE_ID", "49e778c5-522c-4cfd-86a9-57f5e9b7fab4")
@@ -28,7 +29,7 @@ MESSAGES = [
 ]
 
 
-def row_for(index: int) -> dict[str, str | int]:
+def row_for(index: int) -> Dict[str, Union[str, int]]:
     if index <= 210:
         scenario_type = "POPULAR_REGISTER"
         store_id = POPULAR_STORE_ID

@@ -4,5 +4,6 @@ import java.util.UUID;
 
 public record StoreResponse(
         UUID storeId,
-        String name
+        String sotreName,
+        UUID ownerId
 ) {}

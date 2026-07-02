@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+//"review.events.v1"을 구독한 쪽으로 카프카 이벤트 보내기
 public class ReviewOutboxPublisher {
 
     private static final String TOPIC = "review.events.v1";
@@ -24,7 +25,7 @@ public class ReviewOutboxPublisher {
     private final KafkaTemplate<String, String> kafkaTemplate;
 
     /**
-     * 5초에 한번씩 이 메서드를 실행.
+     * 5초에 한번씩 publishPendingEvents() 메서드 실행
      */
     @Scheduled(fixedDelay = 5000)
     @Transactional
@@ -40,7 +41,7 @@ public class ReviewOutboxPublisher {
         //있으면 전체 루프를 돌려
         for (ReviewOutboxEvent event : pendingEvents) {
             try {
-                // 토픽주소, 파티션키, paylaod 값을 카프카에 올림. 5초 이내로 제대로 올라갔는지 확인도 함.
+                // 카프카에 데이터를 태워 TOPIC 주소로 보낸다.
                 kafkaTemplate.send(TOPIC, event.getStoreId().toString(), event.getPayload()).get(5, TimeUnit.SECONDS);
                                                                                             /*get() :브로커가 메세지를 받았는지 확인하는 메서드.
                                                                                             - 5초 안으로 브로커가 메세지를 받았는지 확인이 된다면, markPublished를 실행

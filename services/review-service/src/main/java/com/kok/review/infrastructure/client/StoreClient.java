@@ -7,8 +7,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.UUID;
 
-@FeignClient(name = "store-service")
+@FeignClient(name = "store-service", fallbackFactory = StoreClientFallbackFactory.class)
 public interface StoreClient {
+    //Store 단일 조회
     @GetMapping("/api/v1/internal/stores/{storeId}")
     StoreResponse getStore(@PathVariable("storeId") UUID storeId);
 }

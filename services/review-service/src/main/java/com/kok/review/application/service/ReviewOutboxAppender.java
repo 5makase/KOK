@@ -17,17 +17,33 @@ public class ReviewOutboxAppender {
     private final ReviewOutboxEventRepository reviewOutboxEventRepository;
     private final ObjectMapper objectMapper;
 
-
+    /**
+     * ReviewEventEnvelope 생성하여 outbox에 추가.
+     * @param reviewId
+     * @param eventType
+     * @param storeId
+     * @param payload
+     */
     public void append(UUID reviewId, String eventType, UUID storeId, ReviewEventPayloadType payload) {
+        //ReviewEventEnvelope 생성
         ReviewEventEnvelope envelope = ReviewEventEnvelope.of(eventType, payload);
+        //ReviewEventEnvelope을 json으로 변환
         String json = serialize(envelope);
+        //ReviewOutboxEvent를 생성하여 DB에 저장.
         reviewOutboxEventRepository.save(ReviewOutboxEvent.create(reviewId,eventType,json,storeId));
     }
 
+    /**
+     *  직렬화
+     * @param envelope 카프카에 태울 데이터 틀
+     * @return
+     */
     private String serialize(ReviewEventEnvelope envelope) {
         try{
+            //카프카에 태울 데이터 틀을 json으로 변환
             return objectMapper.writeValueAsString(envelope);
         }catch (JsonProcessingException e) {
+            //안되면 예외 처리
             throw new IllegalStateException("이벤트 직렬화 실패", e);
         }
     }

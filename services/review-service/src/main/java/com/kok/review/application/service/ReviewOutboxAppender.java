@@ -3,9 +3,12 @@ package com.kok.review.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kok.review.domain.entity.ReviewOutboxEvent;
 import com.kok.review.domain.repository.ReviewOutboxEventRepository;
+import com.kok.review.global.exception.ReviewErrorCode;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventEnvelope;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventPayloadType;
+import com.omakase.kok.common.exception.BaseException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
@@ -13,6 +16,7 @@ import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ReviewOutboxAppender {
     private final ReviewOutboxEventRepository reviewOutboxEventRepository;
     private final ObjectMapper objectMapper;
@@ -44,7 +48,8 @@ public class ReviewOutboxAppender {
             return objectMapper.writeValueAsString(envelope);
         }catch (JsonProcessingException e) {
             //안되면 예외 처리
-            throw new IllegalStateException("이벤트 직렬화 실패", e);
+            log.warn(e.getMessage());
+            throw new BaseException(ReviewErrorCode.REPLY_ALREADY_EXISTS);
         }
     }
 }

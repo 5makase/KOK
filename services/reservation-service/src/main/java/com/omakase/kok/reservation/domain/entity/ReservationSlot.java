@@ -1,7 +1,9 @@
 package com.omakase.kok.reservation.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
+import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
+import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -77,6 +79,9 @@ public class ReservationSlot extends BaseEntity {
     }
 
     public void decreaseCapacity(int size) {
+        if (this.remainingCapacity - size < 0) {
+            throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+        }
         this.remainingCapacity -= size;
         if (this.remainingCapacity <= 0) {
             this.status = SlotStatus.FULL;

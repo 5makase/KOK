@@ -173,6 +173,12 @@ public class ReservationService {
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
                         return ReservationResponse.from(reservation);
                     });
+                } catch (BaseException e) {
+                    // 정원 초과는 재시도해도 결과가 같은 결정론적 실패이므로 즉시 중단
+                    if (e.getErrorCode() == ReservationErrorCode.SLOT_CAPACITY_EXCEEDED) {
+                        throw e;
+                    }
+                    lastException = e;
                 } catch (RuntimeException e) {
                     lastException = e;
                 }

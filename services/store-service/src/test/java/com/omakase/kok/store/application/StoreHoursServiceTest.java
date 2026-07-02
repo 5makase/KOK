@@ -433,7 +433,7 @@ class StoreHoursServiceTest {
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
 
         StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
-                storeId, LocalDate.of(2024, 6, 3), LocalTime.of(12, 0));
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0));
 
         assertThat(result.isAvailable()).isFalse();
         assertThat(result.getReason()).isEqualTo("STORE_NOT_OPEN");
@@ -449,7 +449,7 @@ class StoreHoursServiceTest {
         when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(dayOff));
 
         StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
-                storeId, LocalDate.of(2024, 6, 3), LocalTime.of(12, 0)); // 2024-06-03 is MONDAY
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0)); // 2026-06-01 is MONDAY
 
         assertThat(result.isAvailable()).isFalse();
         assertThat(result.getReason()).isEqualTo("DAY_OFF");
@@ -466,7 +466,7 @@ class StoreHoursServiceTest {
         when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
 
         StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
-                storeId, LocalDate.of(2024, 6, 3), LocalTime.of(22, 0));
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(22, 0));
 
         assertThat(result.isAvailable()).isFalse();
         assertThat(result.getReason()).isEqualTo("OUTSIDE_HOURS");
@@ -484,7 +484,7 @@ class StoreHoursServiceTest {
         when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
 
         StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
-                storeId, LocalDate.of(2024, 6, 3), LocalTime.of(14, 30));
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(14, 30));
 
         assertThat(result.isAvailable()).isFalse();
         assertThat(result.getReason()).isEqualTo("BREAK_TIME");
@@ -503,7 +503,7 @@ class StoreHoursServiceTest {
         when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
 
         StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
-                storeId, LocalDate.of(2024, 6, 3), LocalTime.of(14, 30));
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(14, 30));
 
         assertThat(result.isAvailable()).isTrue();
     }
@@ -519,10 +519,24 @@ class StoreHoursServiceTest {
         when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
 
         StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
-                storeId, LocalDate.of(2024, 6, 3), LocalTime.of(12, 0));
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0));
 
         assertThat(result.isAvailable()).isTrue();
         assertThat(result.getReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("해당 요일 영업시간 미등록 시 STORE_HOURS_NOT_FOUND 예외")
+    void checkBusinessHours_hours_not_found_throws() {
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0)))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_NOT_FOUND);
     }
 
     // helpers

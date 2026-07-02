@@ -99,8 +99,12 @@ public class StoreHours extends BaseEntity {
         this.breakEndTime = breakEndTime;
     }
 
-    // closeTime 영업종료시각 -> 정각 도달 시 마감으로 간주
+    // open_time/close_time: DB 스키마상 NULL 허용 (휴무일은 두 필드 모두 null로 저장)
+    // 영업 종료 시각 정각은 마감으로 판정
     public boolean isOutsideBusinessHours(LocalTime time) {
+        if (openTime == null || closeTime == null) {
+            return true;
+        }
         return time.isBefore(openTime) || !time.isBefore(closeTime);
     }
 

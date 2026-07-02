@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: store-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8002
+
+  # 다른 서비스 추가 시 아래 형식으로 작성
+  # - job_name: user-service
+  #   metrics_path: /actuator/prometheus
+  #   static_configs:
+  #     - targets:
+  #         - host.docker.internal:8001

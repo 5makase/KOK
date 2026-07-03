@@ -32,9 +32,14 @@ public class StoreRankingCacheRedisRepository implements StoreRankingCacheReposi
         String cacheKey = buildKey(size);
         try {
             String json = redisTemplate.opsForValue().get(cacheKey);
-            if (json == null) return Optional.empty();
+            if (json == null) {
+                log.debug("store:ranking 캐시 미스. key={}", cacheKey);
+                return Optional.empty();
+            }
 
             List<StoreRankingResult> results = objectMapper.readValue(json, new TypeReference<>() {});
+            log.debug("store:ranking 캐시 히트. key={}", cacheKey);
+
             return Optional.of(results);
         } catch (JsonProcessingException e) {
             log.warn("랭킹 응답 캐시 역직렬화 실패 - 캐시 미스로 처리. key={}", cacheKey, e);

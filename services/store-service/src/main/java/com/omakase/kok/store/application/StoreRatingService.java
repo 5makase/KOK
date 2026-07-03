@@ -39,6 +39,7 @@ public class StoreRatingService {
         Optional<List<StoreRankingResult>> cached = storeRankingCacheRepository.get(safeSize);
         if (cached.isPresent()) return cached.get();
 
+        // TODO: Redis 전체 장애 시 ZSet도 비어 빈 리스트 반환됨 - DB 직접 조회 fallback 미구현 (보류)
         List<UUID> rankedIds = storeRankingRepository.getTopRanking(safeSize);
         if (rankedIds.isEmpty()) return List.of();
 

@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
+import com.omakase.kok.store.application.cache.StoreRankingCacheRepository;
 import com.omakase.kok.store.application.result.StoreRankingResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
@@ -24,6 +25,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,6 +36,7 @@ class StoreRatingServiceTest {
     @Mock StoreRepository storeRepository;
     @Mock StoreRankingRepository storeRankingRepository;
     @Mock StoreListCacheRepository storeListCacheRepository;
+    @Mock StoreRankingCacheRepository storeRankingCacheRepository;
 
     @InjectMocks
     StoreRatingService storeRatingService;
@@ -54,6 +57,22 @@ class StoreRatingServiceTest {
     // getRanking
 
     @Test
+    @DisplayName("캐시 히트 - ZSet/DB 조회 없이 캐시 결과 반환")
+    void getRanking_cache_hit_returns_without_db_query() {
+        List<StoreRankingResult> cached = List.of(
+                StoreRankingResult.builder().rank(1).name("1위 매장").build()
+        );
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.of(cached));
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getRank()).isEqualTo(1);
+        verify(storeRankingRepository, never()).getTopRanking(any(int.class));
+        verify(storeRepository, never()).findActiveStoresByIds(any());
+    }
+
+    @Test
     @DisplayName("랭킹 조회 - Redis 순서대로 결과 반환")
     void getRanking_returns_in_redis_order() throws Exception {
         UUID id1 = UUID.randomUUID();
@@ -61,6 +80,7 @@ class StoreRatingServiceTest {
         Store store1 = makeOpenStore("1위 매장", id1);
         Store store2 = makeOpenStore("2위 매장", id2);
 
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
         when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of(id1, id2));
         // DB 반환 순서와 무관하게 Redis 순서(id1→id2)대로 정렬되는지 검증
         when(storeRepository.findActiveStoresByIds(List.of(id1, id2))).thenReturn(List.of(store2, store1));
@@ -74,8 +94,24 @@ class StoreRatingServiceTest {
     }
 
     @Test
+    @DisplayName("캐시 미스 후 조회 - 결과를 캐시에 저장")
+    void getRanking_cache_miss_then_stores_to_cache() throws Exception {
+        UUID id1 = UUID.randomUUID();
+        Store store1 = makeOpenStore("1위 매장", id1);
+
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of(id1));
+        when(storeRepository.findActiveStoresByIds(List.of(id1))).thenReturn(List.of(store1));
+
+        storeRatingService.getRanking(5);
+
+        verify(storeRankingCacheRepository).set(eq(5), any());
+    }
+
+    @Test
     @DisplayName("랭킹 데이터 없으면 빈 리스트 반환")
     void getRanking_empty_when_no_data() {
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
         when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of());
 
         List<StoreRankingResult> results = storeRatingService.getRanking(5);
@@ -90,6 +126,7 @@ class StoreRatingServiceTest {
         UUID id1 = UUID.randomUUID();
         Store store1 = makeOpenStore("매장", id1);
 
+        when(storeRankingCacheRepository.get(1)).thenReturn(Optional.empty());
         when(storeRankingRepository.getTopRanking(1)).thenReturn(List.of(id1));
         when(storeRepository.findActiveStoresByIds(List.of(id1))).thenReturn(List.of(store1));
 
@@ -102,6 +139,7 @@ class StoreRatingServiceTest {
     @Test
     @DisplayName("size=100 입력 시 50으로 보정하여 조회")
     void getRanking_size_over_max_clamped_to_fifty() {
+        when(storeRankingCacheRepository.get(50)).thenReturn(Optional.empty());
         when(storeRankingRepository.getTopRanking(50)).thenReturn(List.of());
 
         storeRatingService.getRanking(100);
@@ -116,6 +154,7 @@ class StoreRatingServiceTest {
         UUID deletedId = UUID.randomUUID(); // DB에서 soft delete된 매장
         Store activeStore = makeOpenStore("활성 매장", activeId);
 
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
         when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of(activeId, deletedId));
         when(storeRepository.findActiveStoresByIds(List.of(activeId, deletedId)))
                 .thenReturn(List.of(activeStore)); // deletedId는 반환되지 않음

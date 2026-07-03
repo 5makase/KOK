@@ -13,6 +13,7 @@ import com.kok.review.presentation.DTO1.response.ReviewReplyResponseDto;
 import com.omakase.kok.common.exception.BaseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,7 +58,14 @@ public class ReviewReplyService {
         // ReviewReply 저장
         ReviewReply reviewReply = ReviewReply.create(
                 reviewId, review.getStoreId(), userId, requestDto.getContent());
-        reviewReplyRepository.save(reviewReply);
+
+        //사장의 따닥 방지, 유니크 제약조건을 걸었지만, 500에러보단 409에러를 내보내기 위함.
+        try{
+            reviewReplyRepository.save(reviewReply);
+            reviewReplyRepository.flush();
+        }catch (DataIntegrityViolationException e) {
+            throw new BaseException(ReviewErrorCode.REPLY_ALREADY_EXISTS);
+        }
 
         // REVIEW_REPLY 이벤트 발행 (같은 트랜잭션 Outbox)
         ReviewReplyPayload payload = ReviewReplyPayload.of(

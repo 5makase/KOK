@@ -11,6 +11,7 @@ import com.kok.review.presentation.DTO1.response.ReviewReportResponseDto;
 import com.omakase.kok.common.exception.BaseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,12 +45,12 @@ public class ReviewReportService {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new BaseException(ReviewErrorCode.REVIEW_NOT_FOUND));
 
-        //신고자가 본인 리뷰를 신고하는 경운은 막음.
+        //신고자가 본인 리뷰를 신고하는 경우는 막음.
         if (review.getUserId().equals(reporterId)) {
             throw new BaseException(ReviewErrorCode.CANNOT_REPORT_OWN_REVIEW);
         }
 
-        //신고자가 이미 신고한 리뷰는 막음.
+        //신고자가 이미 신고한 리뷰는 막음. (1차 방어 — 최종 방어는 복합 UNIQUE)
         if (reviewReportRepository.existsByReviewIdAndReporterId(reviewId, reporterId)) {
             throw new BaseException(ReviewErrorCode.DUPLICATE_REPORT);
         }
@@ -59,10 +60,16 @@ public class ReviewReportService {
                 && (dto.getDetail() == null || dto.getDetail().isBlank())) {
             throw new BaseException(ReviewErrorCode.REPORT_DETAIL_REQUIRED);
         }
-        // 신고 접수
+
+        // 신고 접수 — 동시 요청 레이스 시 복합 UNIQUE 위반을 409로 변환
         ReviewReport report = ReviewReport.create(
                 reviewId, reporterId, dto.getReason(), dto.getDetail());
-        reviewReportRepository.save(report);
+        try {
+            reviewReportRepository.save(report);
+            reviewReportRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new BaseException(ReviewErrorCode.DUPLICATE_REPORT);
+        }
 
         return ReviewReportResponseDto.from(report);
     }

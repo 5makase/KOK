@@ -1,5 +1,6 @@
 package com.kok.review.application.service;
 
+import com.kok.review.domain.entity.ReportStatus;
 import com.kok.review.domain.entity.Review;
 import com.kok.review.domain.entity.ReviewReport;
 import com.kok.review.domain.repository.ReviewReportRepository;
@@ -31,7 +32,8 @@ public class ReviewReportAdminService {
      */
     @Transactional
     public void approve(UUID reportId, String userRole) {
-        ReviewReport report = getPendingReport(reportId, userRole);
+        //PENDING 상태의 신고를 가져온다.
+        ReviewReport report = transitionOrThrow(reportId, userRole, ReportStatus.RESOLVED);
 
         Review review = reviewRepository.findById(report.getReviewId())
                 .orElseThrow(() -> new BaseException(ReviewErrorCode.REVIEW_NOT_FOUND));
@@ -53,7 +55,7 @@ public class ReviewReportAdminService {
      */
     @Transactional
     public void reject(UUID reportId, String userRole) {
-        ReviewReport report = getPendingReport(reportId, userRole);
+        ReviewReport report = transitionOrThrow(reportId, userRole, ReportStatus.REJECTED);
 
         // storeId 확보용 조회
         Review review = reviewRepository.findById(report.getReviewId())
@@ -72,21 +74,26 @@ public class ReviewReportAdminService {
      * @param userRole
      * @return
      */
-    private ReviewReport getPendingReport(UUID reportId, String userRole) {
-        //관리자 권한이어야함.
+    private ReviewReport transitionOrThrow(UUID reportId, String userRole, ReportStatus next) {
+        // 관리자 권한이어야 함
         if (!"MASTER".equals(userRole)) {
             throw new BaseException(ReviewErrorCode.NOT_ADMIN_ROLE);
         }
 
-        // 리뷰 신고를 조회 해서
+        // 존재 확인 (없으면 404)
         ReviewReport report = reviewReportRepository.findById(reportId)
                 .orElseThrow(() -> new BaseException(ReviewErrorCode.REPORT_NOT_FOUND));
 
-        // 리뷰 신고가 접수된 상태여야 한다.
-        if (!report.isPending()) {
+        // PENDING 상태인 ReviewReport를 RESOLVED or REJECTED로 변경.
+        int updated = reviewReportRepository.transitionIfPending(reportId, next);
+
+        //변경이 되지 않았더라면,
+        if (updated == 0) {
+            //이미 RESOLVED or REJECTED 처리가 된 ReviewReport인 것임.
             throw new BaseException(ReviewErrorCode.REPORT_ALREADY_PROCESSED);
         }
 
+        //변경된 ReviewReport를 반환
         return report;
     }
 

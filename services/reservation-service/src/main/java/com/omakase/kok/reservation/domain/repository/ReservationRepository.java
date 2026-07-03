@@ -55,4 +55,18 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
                                              @Param("dateStart") LocalDateTime dateStart,
                                              @Param("dateEnd") LocalDateTime dateEnd,
                                              Pageable pageable);
+
+    @Query("""
+        SELECT r.slotId AS slotId, SUM(r.reservationSize) AS pendingSize
+        FROM Reservation r
+        WHERE r.slotId IN :slotIds AND r.status = :status AND r.deletedAt IS NULL
+        GROUP BY r.slotId
+        """)
+    List<SlotPendingSize> sumPendingSizeBySlotIds(@Param("slotIds") List<UUID> slotIds,
+                                                   @Param("status") ReservationStatus status);
+
+    interface SlotPendingSize {
+        UUID getSlotId();
+        Long getPendingSize();
+    }
 }

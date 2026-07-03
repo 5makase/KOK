@@ -32,6 +32,7 @@ import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
+import com.omakase.kok.store.global.util.TransactionUtils;
 import com.omakase.kok.store.infrastructure.kafka.event.StoreCreatedEvent;
 import com.omakase.kok.store.infrastructure.kafka.event.StoreEventEnvelope;
 import com.omakase.kok.store.infrastructure.kafka.event.StoreEventFactory;
@@ -40,8 +41,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -241,18 +240,8 @@ public class StoreService {
     }
     // DB 커밋 완료 후 목록 캐시 무효화 - 롤백 시 불필요한 eviction 방지
     // 매장 데이터를 변경하는 @Transactional 메서드는 반드시 이 메서드를 호출해야 함
-
     private void evictListCacheAfterCommit() {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            storeListCacheRepository.evictAll();
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                storeListCacheRepository.evictAll();
-            }
-        });
+        TransactionUtils.runAfterCommit(storeListCacheRepository::evictAll);
     }
 
     /**

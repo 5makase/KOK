@@ -6,12 +6,11 @@ import com.omakase.kok.store.application.result.StoreRankingResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
+import com.omakase.kok.store.global.util.TransactionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -83,18 +82,9 @@ public class StoreRatingService {
     // reviewCount == 0 이면 랭킹에서 제거, 그 외엔 점수 갱신
     // store:list:* 무효화도 함께 처리 - 평점 변경이 목록 정렬(평점순)에 영향을 주기 때문
     private void registerRankingUpdateOnCommit(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
-        // 트랜잭션 없이 호출되는 경우(테스트 등) 즉시 실행
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            applyRankingUpdate(storeId, averageRating, reviewCount);
-            return;
-        }
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                applyRankingUpdateAndEvictCache(storeId, averageRating, reviewCount);
-            }
-        });
+        TransactionUtils.runAfterCommit(
+                () -> applyRankingUpdateAndEvictCache(storeId, averageRating, reviewCount)
+        );
     }
 
     private void applyRankingUpdate(UUID storeId, BigDecimal averageRating, Integer reviewCount) {

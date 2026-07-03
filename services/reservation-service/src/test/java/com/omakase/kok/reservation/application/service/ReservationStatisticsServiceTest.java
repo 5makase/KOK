@@ -89,13 +89,12 @@ class ReservationStatisticsServiceTest {
                 row(slotA, ReservationStatus.CONFIRMED, LocalDateTime.of(2026, 6, 1, 18, 0)),
                 row(slotB, ReservationStatus.VISITED, LocalDateTime.of(2026, 6, 1, 19, 0)),
                 row(slotC, ReservationStatus.CANCELLED, LocalDateTime.of(2026, 6, 2, 18, 0)),
-                row(slotA, ReservationStatus.NO_SHOW, LocalDateTime.of(2026, 6, 2, 19, 0)),
-                row(slotB, ReservationStatus.PAYMENT_PENDING, LocalDateTime.of(2026, 6, 3, 18, 0))
+                row(slotA, ReservationStatus.NO_SHOW, LocalDateTime.of(2026, 6, 2, 19, 0))
         );
 
         when(redissonClient.<String>getBucket(anyString())).thenReturn(bucket);
         when(bucket.get()).thenReturn(null);
-        when(reservationRepository.findStatsRowsByStoreIdAndScheduledAtBetween(eq(storeId), any(), any()))
+        when(reservationRepository.findStatsRowsByStoreIdAndScheduledAtBetween(eq(storeId), any(), any(), any()))
                 .thenReturn(rows);
         when(slotRepository.findAllById(any()))
                 .thenReturn(List.of(slotWithDeposit(slotA, 10000L), slotWithDeposit(slotB, 20000L)));
@@ -129,7 +128,7 @@ class ReservationStatisticsServiceTest {
 
         when(redissonClient.<String>getBucket(anyString())).thenReturn(bucket);
         when(bucket.get()).thenReturn(null);
-        when(reservationRepository.findStatsRowsByStoreIdAndScheduledAtBetween(eq(storeId), any(), any()))
+        when(reservationRepository.findStatsRowsByStoreIdAndScheduledAtBetween(eq(storeId), any(), any(), any()))
                 .thenReturn(List.of());
 
         ReservationStatisticsResponse response = statisticsService.getStatistics(storeId, from, to);
@@ -140,6 +139,7 @@ class ReservationStatisticsServiceTest {
         assertThat(response.totalDepositAmount()).isZero();
         assertThat(response.dailyStats()).isEmpty();
         verify(slotRepository, never()).findAllById(any());
+        verify(bucket).set(anyString(), eq(Duration.ofHours(1)));
     }
 
     @Test
@@ -161,7 +161,7 @@ class ReservationStatisticsServiceTest {
 
         assertThat(response).isEqualTo(cachedResponse);
         verify(reservationRepository, never())
-                .findStatsRowsByStoreIdAndScheduledAtBetween(any(), any(), any());
+                .findStatsRowsByStoreIdAndScheduledAtBetween(any(), any(), any(), any());
         verify(bucket, never()).set(anyString(), any(Duration.class));
     }
 

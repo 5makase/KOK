@@ -72,10 +72,7 @@ public class ReservationStatisticsService {
         LocalDateTime toDateTime = to.plusDays(1).atStartOfDay();
 
         List<ReservationStatsRow> rows = reservationRepository
-                .findStatsRowsByStoreIdAndScheduledAtBetween(storeId, fromDateTime, toDateTime)
-                .stream()
-                .filter(row -> COUNTED_STATUSES.contains(row.getStatus()))
-                .toList();
+                .findStatsRowsByStoreIdAndScheduledAtBetween(storeId, fromDateTime, toDateTime, COUNTED_STATUSES);
 
         Map<UUID, Long> depositBySlotId = loadDepositAmounts(rows);
 

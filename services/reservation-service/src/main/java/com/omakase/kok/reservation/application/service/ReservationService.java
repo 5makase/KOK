@@ -241,6 +241,10 @@ public class ReservationService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return SlotCapacityRestoreItem.skipped(slotId);
+        } catch (RuntimeException e) {
+            // 슬롯 하나의 실패(예: 복구 도중 삭제됨)로 나머지 슬롯 복구까지 중단되지 않도록 스킵 처리
+            log.error("슬롯 정원 복구 중 예외 발생 - slotId: {}", slotId, e);
+            return SlotCapacityRestoreItem.skipped(slotId);
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();

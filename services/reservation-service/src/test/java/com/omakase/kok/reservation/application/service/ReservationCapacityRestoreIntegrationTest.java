@@ -4,6 +4,7 @@ import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
+import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
@@ -48,6 +49,7 @@ class ReservationCapacityRestoreIntegrationTest {
     @Autowired private ReservationSlotRepository slotRepository;
     @Autowired private ReservationRepository reservationRepository;
     @Autowired private ReservationOutboxEventRepository outboxEventRepository;
+    @Autowired private ReservationIdempotencyKeyRepository idempotencyKeyRepository;
     @Autowired private CapacityDriftDetectionScheduler driftDetectionScheduler;
     @Autowired private RedissonClient redissonClient;
 
@@ -73,6 +75,7 @@ class ReservationCapacityRestoreIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        idempotencyKeyRepository.deleteAll();
         outboxEventRepository.deleteAll();
         reservationRepository.deleteAll();
         slotRepository.deleteAll();
@@ -118,7 +121,7 @@ class ReservationCapacityRestoreIntegrationTest {
                             slot.getSlotId(), 2, "예약자" + idx, "010-0000-00" + String.format("%02d", idx));
                     ready.countDown();
                     start.await();
-                    reservationService.createReservation(request, UUID.randomUUID());
+                    reservationService.createReservation(request, UUID.randomUUID(), UUID.randomUUID().toString());
                     reservationSuccessCount.incrementAndGet();
                 } catch (Exception ignored) {
                     // 정원 초과/락 타임아웃으로 인한 실패는 정상적인 결과이므로 무시

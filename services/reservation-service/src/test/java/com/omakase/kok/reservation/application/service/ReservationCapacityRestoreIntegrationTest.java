@@ -155,9 +155,7 @@ class ReservationCapacityRestoreIntegrationTest {
                 .as("최소 1건 이상의 예약이 성공해야 한다 (경쟁이 실제로 있었음을 보장)")
                 .isGreaterThan(0);
 
-        // 마지막에 한 번 더 복구를 호출해 DB 기준으로 정합성을 재확인한다
-        reservationService.restoreCapacity(slot.getStoreId(), slot.getSlotDate());
-
+        // 복구 호출로 값을 덮어쓰기 전, 동시 실행 구간 자체의 결과가 이미 정합적인지 검증한다
         ReservationSlot updated = slotRepository.findBySlotIdAndDeletedAtIsNull(slot.getSlotId()).orElseThrow();
         long redisRemaining = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).get();
 

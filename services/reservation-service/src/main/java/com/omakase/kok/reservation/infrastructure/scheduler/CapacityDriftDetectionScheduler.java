@@ -59,7 +59,7 @@ public class CapacityDriftDetectionScheduler {
             int driftedCount = 0;
             for (ReservationSlot slot : slots) {
                 long pending = pendingSizeBySlot.getOrDefault(slot.getSlotId(), 0L);
-                long expected = Math.max(0, slot.getRemainingCapacity() - pending);
+                long expected = slot.effectiveRemainingCapacity(pending);
                 long actual = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slot.getSlotId()).get();
 
                 if (actual != expected) {

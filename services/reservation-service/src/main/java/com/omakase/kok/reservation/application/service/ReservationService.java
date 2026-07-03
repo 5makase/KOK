@@ -19,6 +19,7 @@ import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
+import com.omakase.kok.reservation.domain.repository.ReservationRepository.SlotPendingSize;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
@@ -225,11 +226,10 @@ public class ReservationService {
             ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
                     .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
 
-            // DB remainingCapacity는 CONFIRMED 기준이라 PAYMENT_PENDING이 반영되어 있지 않으므로 차감한다.
-            int pendingSize = reservationRepository
-                    .findBySlotIdAndStatusInAndDeletedAtIsNull(slotId, List.of(ReservationStatus.PAYMENT_PENDING))
-                    .stream().mapToInt(Reservation::getReservationSize).sum();
-            long effectiveRemaining = Math.max(0, slot.getRemainingCapacity() - pendingSize);
+            long pendingSize = reservationRepository
+                    .sumPendingSizeBySlotIds(List.of(slotId), ReservationStatus.PAYMENT_PENDING)
+                    .stream().findFirst().map(SlotPendingSize::getPendingSize).orElse(0L);
+            long effectiveRemaining = slot.effectiveRemainingCapacity(pendingSize);
 
             RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId);
             long before = capacityKey.get();

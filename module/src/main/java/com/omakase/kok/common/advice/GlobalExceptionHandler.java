@@ -4,9 +4,11 @@ import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.common.exception.CommonErrorCode;
 import com.omakase.kok.common.exception.ErrorCode;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -32,6 +34,32 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException e) {
         log.warn("[ValidationException] {}", e.getMessage());
+
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(
+                        CommonErrorCode.INVALID_INPUT_VALUE.getStatus().value(),
+                        "[" + CommonErrorCode.INVALID_INPUT_VALUE.getCode() + "] "
+                                + CommonErrorCode.INVALID_INPUT_VALUE.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolationException(ConstraintViolationException e) {
+        log.warn("[ConstraintViolationException] {}", e.getMessage());
+
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(
+                        CommonErrorCode.INVALID_INPUT_VALUE.getStatus().value(),
+                        "[" + CommonErrorCode.INVALID_INPUT_VALUE.getCode() + "] "
+                                + CommonErrorCode.INVALID_INPUT_VALUE.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingRequestHeaderException(MissingRequestHeaderException e) {
+        log.warn("[MissingRequestHeaderException] {}", e.getMessage());
 
         return ResponseEntity
                 .badRequest()

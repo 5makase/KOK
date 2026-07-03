@@ -37,9 +37,10 @@ public class ReservationController {
     @PostMapping
     public ResponseEntity<ApiResponse<ReservationResponse>> createReservation(
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @RequestBody @Valid CreateReservationRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created(reservationService.createReservation(request, userId)));
+                .body(ApiResponse.created(reservationService.createReservation(request, userId, idempotencyKey)));
     }
 
     @Operation(summary = "내 예약 목록 조회")

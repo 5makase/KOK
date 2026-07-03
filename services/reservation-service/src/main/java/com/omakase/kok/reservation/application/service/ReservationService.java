@@ -10,6 +10,7 @@ import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse;
 import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse.SlotCapacityRestoreItem;
 import com.omakase.kok.reservation.domain.entity.Reservation;
+import com.omakase.kok.reservation.domain.entity.ReservationIdempotencyKey;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.EventType;
@@ -17,6 +18,7 @@ import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
+import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository.SlotPendingSize;
@@ -58,17 +60,61 @@ public class ReservationService {
 
     private static final String SLOT_CAPACITY_KEY = "slot:capacity:";
     private static final String SLOT_LOCK_KEY = "reservation:lock:slot:";
+    private static final String IDEMPOTENCY_LOCK_KEY = "reservation:idempotency:lock:";
 
     private final ReservationRepository reservationRepository;
     private final ReservationSlotRepository slotRepository;
     private final ReservationOutboxEventRepository outboxEventRepository;
+    private final ReservationIdempotencyKeyRepository idempotencyKeyRepository;
     private final RedissonClient redissonClient;
     private final PaymentFeignClient paymentFeignClient;
     private final PlatformTransactionManager transactionManager;
     private final ObjectMapper objectMapper;
 
+    // 같은 Idempotency-Key로 재전송된 요청은 실제 예약 로직을 다시 타지 않고 최초 시도의 결과를 그대로 반환한다.
+    // 매핑은 Reservation이 실제 저장된 시점(결제 실패로 이후 취소되더라도)에만 남기므로, 아무 것도 생성되기 전에
+    // 실패한 요청(SLOT_UNAVAILABLE, SLOT_CAPACITY_EXCEEDED 등)은 같은 키로 재시도해도 처음부터 다시 처리된다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ReservationResponse createReservation(CreateReservationRequest request, UUID userId) {
+    public ReservationResponse createReservation(CreateReservationRequest request, UUID userId, String idempotencyKey) {
+        ReservationResponse existing = findExistingResponseByIdempotencyKey(userId, idempotencyKey);
+        if (existing != null) {
+            return existing;
+        }
+
+        // 같은 슬롯을 대상으로 한 재전송은 기존 slot 락으로도 직렬화되지만, 앞선 시도의 결제 처리가
+        // slot 락 대기시간(3초)보다 길어지면 재전송 쪽이 SLOT_LOCK_FAILED라는 잘못된 에러를 받는다.
+        // 이를 막기 위해 idempotency 키 전용 락을 slot 락보다 바깥쪽에서 먼저 건다.
+        RLock idempotencyLock = redissonClient.getLock(IDEMPOTENCY_LOCK_KEY + userId + ":" + idempotencyKey);
+        try {
+            if (!idempotencyLock.tryLock(0, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+            }
+
+            // 락 대기 중 다른 스레드가 이미 처리를 끝냈을 수 있으므로 재확인
+            existing = findExistingResponseByIdempotencyKey(userId, idempotencyKey);
+            if (existing != null) {
+                return existing;
+            }
+
+            return doCreateReservation(request, userId, idempotencyKey);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+        } finally {
+            if (idempotencyLock.isHeldByCurrentThread()) {
+                idempotencyLock.unlock();
+            }
+        }
+    }
+
+    private ReservationResponse findExistingResponseByIdempotencyKey(UUID userId, String idempotencyKey) {
+        return idempotencyKeyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
+                .flatMap(mapping -> reservationRepository.findByReservationIdAndDeletedAtIsNull(mapping.getReservationId()))
+                .map(ReservationResponse::from)
+                .orElse(null);
+    }
+
+    private ReservationResponse doCreateReservation(CreateReservationRequest request, UUID userId, String idempotencyKey) {
         // 락 획득 전 빠른 사전 검사 (최적화용)
         var preCheckSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
                 .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
@@ -109,6 +155,8 @@ public class ReservationService {
                         Reservation reservation = buildReservation(request, userId, slot);
                         reservation.confirm();
                         reservationRepository.save(reservation);
+                        idempotencyKeyRepository.save(ReservationIdempotencyKey.builder()
+                                .userId(userId).idempotencyKey(idempotencyKey).reservationId(reservation.getReservationId()).build());
                         ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId()).orElseThrow();
                         s.decreaseCapacity(request.getReservationSize());
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
@@ -125,6 +173,8 @@ public class ReservationService {
                 reservationId = new TransactionTemplate(transactionManager).execute(status -> {
                     Reservation reservation = buildReservation(request, userId, slot);
                     reservationRepository.save(reservation);
+                    idempotencyKeyRepository.save(ReservationIdempotencyKey.builder()
+                            .userId(userId).idempotencyKey(idempotencyKey).reservationId(reservation.getReservationId()).build());
                     return reservation.getReservationId();
                 });
             } catch (Exception e) {

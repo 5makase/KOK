@@ -16,7 +16,10 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "p_reservation_slots")
+@Table(
+    name = "p_reservation_slots",
+    indexes = @Index(name = "idx_reservation_slots_status_date", columnList = "status, slot_date, deleted_at")
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ReservationSlot extends BaseEntity {
 

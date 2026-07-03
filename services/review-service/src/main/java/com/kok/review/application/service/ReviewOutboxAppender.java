@@ -3,9 +3,12 @@ package com.kok.review.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kok.review.domain.entity.ReviewOutboxEvent;
 import com.kok.review.domain.repository.ReviewOutboxEventRepository;
+import com.kok.review.global.exception.ReviewErrorCode;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventEnvelope;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventPayloadType;
+import com.omakase.kok.common.exception.BaseException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
@@ -13,6 +16,7 @@ import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ReviewOutboxAppender {
     private final ReviewOutboxEventRepository reviewOutboxEventRepository;
     private final ObjectMapper objectMapper;
@@ -20,15 +24,17 @@ public class ReviewOutboxAppender {
     /**
      * ReviewEventEnvelope 생성하여 outbox에 추가.
      * @param reviewId
-     * @param eventType
+     * @param eventType REVIEW_REPORT_RESULT or REVIEW_REPLY
      * @param storeId
-     * @param payload
+     * @param payload ReviewReportResultPayload, ReviewReplyPayload, ReviewEventPayload
      */
     public void append(UUID reviewId, String eventType, UUID storeId, ReviewEventPayloadType payload) {
         //ReviewEventEnvelope 생성
         ReviewEventEnvelope envelope = ReviewEventEnvelope.of(eventType, payload);
+
         //ReviewEventEnvelope을 json으로 변환
         String json = serialize(envelope);
+
         //ReviewOutboxEvent를 생성하여 DB에 저장.
         reviewOutboxEventRepository.save(ReviewOutboxEvent.create(reviewId,eventType,json,storeId));
     }
@@ -44,7 +50,8 @@ public class ReviewOutboxAppender {
             return objectMapper.writeValueAsString(envelope);
         }catch (JsonProcessingException e) {
             //안되면 예외 처리
-            throw new IllegalStateException("이벤트 직렬화 실패", e);
+            log.warn(e.getMessage());
+            throw new BaseException(ReviewErrorCode.EVENT_SERIALIZATION_FAILED,e);
         }
     }
 }

@@ -1,12 +1,11 @@
 package com.kok.review.presentation.controller;
 
 import com.kok.review.application.service.ReviewReplyService;
+import com.kok.review.application.service.ReviewReportAdminService;
+import com.kok.review.application.service.ReviewReportService;
 import com.kok.review.application.service.ReviewService;
-import com.kok.review.presentation.DTO1.request.ReviewReplyRequestDto;
-import com.kok.review.presentation.DTO1.request.ReviewSortType;
-import com.kok.review.presentation.DTO1.request.ReviewUpdateRequestDto;
+import com.kok.review.presentation.DTO1.request.*;
 import com.kok.review.presentation.DTO1.response.*;
-import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
 import jakarta.validation.Valid;
@@ -25,7 +24,55 @@ import java.util.UUID;
 public class ReviewController {
     private final ReviewService reviewService;
     private final ReviewReplyService reviewReplyService;
+    private final ReviewReportService reviewReportService;
+    private final ReviewReportAdminService reviewReportAdminService;
 
+    /**
+     * 리뷰 신고 (USER)
+     * @param reviewId
+     * @param userId
+     * @param userRole
+     * @param dto
+     * @return
+     */
+    @PostMapping("/{reviewId}/reports")
+    public ResponseEntity<ApiResponse<ReviewReportResponseDto>> reportReview(
+            @PathVariable UUID reviewId,
+            @RequestHeader("X-User-Id") UUID userId,
+            @RequestHeader("X-Role") String userRole,
+            @Valid @RequestBody ReviewReportRequestDto dto) {
+        ReviewReportResponseDto result =
+                reviewReportService.report(reviewId, userId, userRole, dto);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /**
+     * 신고 승인
+     * @param reportId 신고ID
+     * @param userRole
+     * @return
+     */
+    @PatchMapping("/reports/{reportId}/approve")
+    public ResponseEntity<ApiResponse<Void>> approveReport(
+            @PathVariable UUID reportId,
+            @RequestHeader("X-Role") String userRole) {
+        reviewReportAdminService.approve(reportId, userRole);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
+     * 신고 거부
+     * @param reportId 신고ID
+     * @param userRole
+     * @return
+     */
+    @PatchMapping("/reports/{reportId}/reject")
+    public ResponseEntity<ApiResponse<Void>> rejectReport(
+            @PathVariable UUID reportId,
+            @RequestHeader("X-Role") String userRole) {
+        reviewReportAdminService.reject(reportId, userRole);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 
     /**
      * 사장님 답글 작성

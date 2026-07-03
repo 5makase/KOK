@@ -13,6 +13,7 @@ import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationIdempotencyKey;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
 import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
@@ -281,6 +282,28 @@ class ReservationServiceTest {
                     .isEqualTo(SlotErrorCode.SLOT_NOT_FOUND);
 
             // 아무 것도 생성되지 않았으므로 idempotency 매핑도 남지 않는다
+            verify(idempotencyKeyRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("슬롯이 OPEN 상태가 아니면 SLOT_UNAVAILABLE 예외가 발생하고 idempotency 매핑이 남지 않는다")
+        void fail_slotUnavailable() throws Exception {
+            UUID storeId = UUID.randomUUID();
+            ReservationSlot slot = buildOpenSlot(storeId, false);
+            ReflectionTestUtils.setField(slot, "status", SlotStatus.CLOSED);
+            UUID slotId = slot.getSlotId();
+
+            when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
+                    .thenReturn(Optional.of(slot));
+            givenLockAcquired();
+
+            CreateReservationRequest request = buildCreateRequest(slotId, 2, null);
+
+            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID(), UUID.randomUUID().toString()))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.SLOT_UNAVAILABLE);
+
             verify(idempotencyKeyRepository, never()).save(any());
         }
 

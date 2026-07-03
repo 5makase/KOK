@@ -34,7 +34,21 @@ public enum ReviewErrorCode implements ErrorCode {
     EVENT_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "REVIEW-500-001", "이벤트 직렬화에 실패했습니다."),
 
     // ===== 503 SERVICE_UNAVAILABLE : 외부 서비스 장애 =====
-    STORE_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "REVIEW-503-001", "매장 서비스가 일시적으로 응답하지 않아 요청을 처리할 수 없습니다.");
+    STORE_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "REVIEW-503-001", "매장 서비스가 일시적으로 응답하지 않아 요청을 처리할 수 없습니다."),
+
+    // 403
+    NOT_ADMIN_ROLE(HttpStatus.FORBIDDEN, "REVIEW-403-007", "관리자 권한이 없습니다."),
+    CANNOT_REPORT_OWN_REVIEW(HttpStatus.FORBIDDEN, "REVIEW-403-006", "본인이 작성한 리뷰는 신고할 수 없습니다."),
+
+    // 404
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REVIEW-404-005", "신고 내역이 존재하지 않습니다."),
+
+    // 409
+    DUPLICATE_REPORT(HttpStatus.CONFLICT, "REVIEW-409-003", "이미 신고한 리뷰입니다."),
+    REPORT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "REVIEW-409-004", "이미 처리된 신고입니다."),
+
+    // 400
+    REPORT_DETAIL_REQUIRED(HttpStatus.BAD_REQUEST, "REVIEW-400-003", "기타 사유는 상세 입력이 필요합니다.");
 
     private final HttpStatus status;
     private final String code;

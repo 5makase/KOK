@@ -50,6 +50,7 @@ public class ReviewOutboxPublisher {
                 event.markPublished();
                 log.info("리뷰 이벤트 발행 완료. type={}, reviewId={}",
                         event.getEventType(), event.getReviewId());
+
             } catch (InterruptedException e) { /*Interrupted 예외가 발생되는 경우 : 발행 대기(get) 중에 스레드 종료 신호가 온 경우.
                                                 - (예: 서버 종료/재배포 시 스케줄러 스레드를 정리하려고 인터럽트를 보냄)
                                                 - 발행 실패가 아니라 정상적인 종료 절차이므로, markFailed가 아니라 인터럽트 상태만 복원하고 루프를 빠져나간다. .*/

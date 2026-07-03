@@ -76,4 +76,9 @@ public class Review extends BaseEntity {
         this.content = dto.getContent();
         return this;
     }
+
+    //신고 승인으로부터, 블라인드 처리
+    public void blind() {
+        this.isVisible = false;
+    }
 }

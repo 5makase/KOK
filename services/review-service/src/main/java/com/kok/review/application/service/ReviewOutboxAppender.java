@@ -24,9 +24,9 @@ public class ReviewOutboxAppender {
     /**
      * ReviewEventEnvelope 생성하여 outbox에 추가.
      * @param reviewId
-     * @param eventType
+     * @param eventType REVIEW_REPORT_RESULT or REVIEW_REPLY
      * @param storeId
-     * @param payload
+     * @param payload ReviewReportResultPayload, ReviewReplyPayload, ReviewEventPayload
      */
     public void append(UUID reviewId, String eventType, UUID storeId, ReviewEventPayloadType payload) {
         //ReviewEventEnvelope 생성

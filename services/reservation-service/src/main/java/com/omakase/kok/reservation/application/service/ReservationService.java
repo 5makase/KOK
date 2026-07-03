@@ -239,21 +239,26 @@ public class ReservationService {
                 return SlotCapacityRestoreItem.skipped(slotId);
             }
 
-            ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
-                    .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
-
-            long pendingSize = reservationRepository
-                    .sumPendingSizeBySlotIds(List.of(slotId), ReservationStatus.PAYMENT_PENDING)
-                    .stream().findFirst().map(SlotPendingSize::getPendingSize).orElse(0L);
-            long effectiveRemaining = slot.effectiveRemainingCapacity(pendingSize);
+            // 반드시 명시적 트랜잭션으로 새로 읽어야 한다. 락 보호 구간 밖에서 시작된 커넥션을 그대로
+            // 재사용하는 암묵적 트랜잭션(Spring Data 리포지토리 기본 트랜잭션)에 의존하면, 락을 놓친
+            // 이전 홀더의 커밋이 아직 반영되지 않은 오래된 스냅샷을 읽을 수 있다.
+            CapacitySnapshot snapshot = new TransactionTemplate(transactionManager).execute(status -> {
+                ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
+                        .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+                long pendingSize = reservationRepository
+                        .sumPendingSizeBySlotIds(List.of(slotId), ReservationStatus.PAYMENT_PENDING)
+                        .stream().findFirst().map(SlotPendingSize::getPendingSize).orElse(0L);
+                return new CapacitySnapshot(slot.getRemainingCapacity(), pendingSize,
+                        slot.effectiveRemainingCapacity(pendingSize));
+            });
 
             RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId);
             long before = capacityKey.get();
-            capacityKey.set(effectiveRemaining);
+            capacityKey.set(snapshot.effectiveRemaining());
 
             log.warn("슬롯 정원 Redis 값 복구 - slotId: {}, before: {}, after: {}, dbRemaining: {}, pending: {}",
-                    slotId, before, effectiveRemaining, slot.getRemainingCapacity(), pendingSize);
-            return SlotCapacityRestoreItem.restored(slotId, before, effectiveRemaining);
+                    slotId, before, snapshot.effectiveRemaining(), snapshot.dbRemaining(), snapshot.pendingSize());
+            return SlotCapacityRestoreItem.restored(slotId, before, snapshot.effectiveRemaining());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return SlotCapacityRestoreItem.skipped(slotId);
@@ -266,6 +271,9 @@ public class ReservationService {
                 lock.unlock();
             }
         }
+    }
+
+    private record CapacitySnapshot(int dbRemaining, long pendingSize, long effectiveRemaining) {
     }
 
     public Page<ReservationResponse> getMyReservations(UUID userId, ReservationStatus status,

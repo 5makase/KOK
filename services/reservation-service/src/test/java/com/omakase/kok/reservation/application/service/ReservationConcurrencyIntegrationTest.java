@@ -5,6 +5,7 @@ import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
+import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
@@ -48,6 +49,7 @@ class ReservationConcurrencyIntegrationTest {
     @Autowired private ReservationSlotRepository slotRepository;
     @Autowired private ReservationRepository reservationRepository;
     @Autowired private ReservationOutboxEventRepository outboxEventRepository;
+    @Autowired private ReservationIdempotencyKeyRepository idempotencyKeyRepository;
     @Autowired private RedissonClient redissonClient;
 
     @MockBean private PaymentFeignClient paymentFeignClient;
@@ -72,6 +74,7 @@ class ReservationConcurrencyIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        idempotencyKeyRepository.deleteAll();
         outboxEventRepository.deleteAll();
         reservationRepository.deleteAll();
         slotRepository.deleteAll();
@@ -100,7 +103,7 @@ class ReservationConcurrencyIntegrationTest {
                             slot.getSlotId(), 1, "예약자" + idx, "010-0000-00" + String.format("%02d", idx));
                     ready.countDown();
                     start.await();
-                    reservationService.createReservation(request, UUID.randomUUID());
+                    reservationService.createReservation(request, UUID.randomUUID(), UUID.randomUUID().toString());
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();
@@ -153,7 +156,7 @@ class ReservationConcurrencyIntegrationTest {
 
             // 예약 생성 (size=2) → DB remainingCapacity=2, Redis=2
             CreateReservationRequest req = buildRequest(slot.getSlotId(), reservationSize, "취소테스터", "010-9999-9999");
-            ReservationResponse created = reservationService.createReservation(req, userId);
+            ReservationResponse created = reservationService.createReservation(req, userId, UUID.randomUUID().toString());
 
             ReservationSlot afterCreate = slotRepository.findBySlotIdAndDeletedAtIsNull(slot.getSlotId()).orElseThrow();
             assertThat(afterCreate.getRemainingCapacity()).isEqualTo(4 - reservationSize);

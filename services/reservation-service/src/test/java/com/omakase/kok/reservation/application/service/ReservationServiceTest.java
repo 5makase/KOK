@@ -10,10 +10,12 @@ import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
 import com.omakase.kok.reservation.domain.entity.Reservation;
+import com.omakase.kok.reservation.domain.entity.ReservationIdempotencyKey;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
+import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
@@ -57,6 +59,7 @@ class ReservationServiceTest {
     @Mock private ReservationRepository reservationRepository;
     @Mock private ReservationSlotRepository slotRepository;
     @Mock private ReservationOutboxEventRepository outboxEventRepository;
+    @Mock private ReservationIdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private RedissonClient redissonClient;
     @Mock private PaymentFeignClient paymentFeignClient;
     @Mock private PlatformTransactionManager transactionManager;
@@ -74,6 +77,7 @@ class ReservationServiceTest {
                 reservationRepository,
                 slotRepository,
                 outboxEventRepository,
+                idempotencyKeyRepository,
                 redissonClient,
                 paymentFeignClient,
                 transactionManager,
@@ -189,6 +193,7 @@ class ReservationServiceTest {
             UUID storeId = UUID.randomUUID();
             ReservationSlot slot = buildOpenSlot(storeId, false);
             UUID slotId = slot.getSlotId();
+            String idempotencyKey = UUID.randomUUID().toString();
 
             when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
                     .thenReturn(Optional.of(slot));
@@ -204,32 +209,86 @@ class ReservationServiceTest {
             when(outboxEventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             CreateReservationRequest request = buildCreateRequest(slotId, 2, null);
-            ReservationResponse response = reservationService.createReservation(request, userId);
+            ReservationResponse response = reservationService.createReservation(request, userId, idempotencyKey);
 
             assertThat(response.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
             verify(reservationRepository).save(any(Reservation.class));
             verify(outboxEventRepository).save(any());
+            verify(idempotencyKeyRepository).save(any(ReservationIdempotencyKey.class));
             verify(paymentFeignClient, never()).createPayment(any());
         }
 
         @Test
+        @DisplayName("이미 처리된 Idempotency-Key로 재요청하면 실제 로직 없이 기존 응답을 그대로 반환한다")
+        void success_returnsExistingResponseForSameIdempotencyKey() {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            String idempotencyKey = UUID.randomUUID().toString();
+            Reservation existingReservation = buildConfirmedReservation(
+                    UUID.randomUUID(), userId, storeId, LocalDateTime.now().plusDays(5), 2);
+
+            ReservationIdempotencyKey mapping = ReservationIdempotencyKey.builder()
+                    .userId(userId).idempotencyKey(idempotencyKey).reservationId(existingReservation.getReservationId())
+                    .build();
+            when(idempotencyKeyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey))
+                    .thenReturn(Optional.of(mapping));
+            when(reservationRepository.findByReservationIdAndDeletedAtIsNull(existingReservation.getReservationId()))
+                    .thenReturn(Optional.of(existingReservation));
+
+            CreateReservationRequest request = buildCreateRequest(UUID.randomUUID(), 2, null);
+            ReservationResponse response = reservationService.createReservation(request, userId, idempotencyKey);
+
+            assertThat(response.getReservationId()).isEqualTo(existingReservation.getReservationId());
+            verifyNoInteractions(slotRepository);
+            verify(redissonClient, never()).getLock(anyString());
+        }
+
+        @Test
+        @DisplayName("같은 Idempotency-Key로 처리 중인 요청이 있으면 IDEMPOTENCY_KEY_IN_PROGRESS 예외가 발생한다")
+        void fail_idempotencyKeyInProgress() throws Exception {
+            UUID userId = UUID.randomUUID();
+            UUID storeId = UUID.randomUUID();
+            String idempotencyKey = UUID.randomUUID().toString();
+            ReservationSlot slot = buildOpenSlot(storeId, false);
+
+            when(redissonClient.getLock(anyString())).thenReturn(rLock);
+            when(rLock.tryLock(0, TimeUnit.SECONDS)).thenReturn(false);
+            when(rLock.isHeldByCurrentThread()).thenReturn(false);
+
+            CreateReservationRequest request = buildCreateRequest(slot.getSlotId(), 2, null);
+
+            assertThatThrownBy(() -> reservationService.createReservation(request, userId, idempotencyKey))
+                    .isInstanceOf(BaseException.class)
+                    .extracting(e -> ((BaseException) e).getErrorCode())
+                    .isEqualTo(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+
+            verifyNoInteractions(slotRepository);
+        }
+
+        @Test
         @DisplayName("슬롯이 존재하지 않으면 SLOT_NOT_FOUND 예외가 발생한다")
-        void fail_slotNotFound() {
+        void fail_slotNotFound() throws Exception {
             UUID slotId = UUID.randomUUID();
             when(slotRepository.findBySlotIdAndDeletedAtIsNull(slotId))
                     .thenReturn(Optional.empty());
+            givenLockAcquired();
 
             CreateReservationRequest request = buildCreateRequest(slotId, 2, null);
 
-            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID()))
+            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID(), UUID.randomUUID().toString()))
                     .isInstanceOf(BaseException.class)
                     .extracting(e -> ((BaseException) e).getErrorCode())
                     .isEqualTo(SlotErrorCode.SLOT_NOT_FOUND);
+
+            // 아무 것도 생성되지 않았으므로 idempotency 매핑도 남지 않는다
+            verify(idempotencyKeyRepository, never()).save(any());
         }
 
         @Test
         @DisplayName("분산락 획득 실패 시 SLOT_LOCK_FAILED 예외가 발생한다")
         void fail_lockFailed() throws Exception {
+            UUID userId = UUID.randomUUID();
+            String idempotencyKey = UUID.randomUUID().toString();
             UUID storeId = UUID.randomUUID();
             ReservationSlot slot = buildOpenSlot(storeId, false);
             UUID slotId = slot.getSlotId();
@@ -239,10 +298,12 @@ class ReservationServiceTest {
             when(redissonClient.getLock(anyString())).thenReturn(rLock);
             when(rLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
             when(rLock.isHeldByCurrentThread()).thenReturn(false);
+            // idempotency 락은 성공시켜, 검증하려는 slot 락 실패 경로를 타도록 한다
+            lockFor("reservation:idempotency:lock:" + userId + ":" + idempotencyKey);
 
             CreateReservationRequest request = buildCreateRequest(slotId, 2, null);
 
-            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID()))
+            assertThatThrownBy(() -> reservationService.createReservation(request, userId, idempotencyKey))
                     .isInstanceOf(BaseException.class)
                     .extracting(e -> ((BaseException) e).getErrorCode())
                     .isEqualTo(ReservationErrorCode.SLOT_LOCK_FAILED);
@@ -272,12 +333,13 @@ class ReservationServiceTest {
 
             CreateReservationRequest request = buildCreateRequest(slotId, 2, null);
 
-            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID()))
+            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID(), UUID.randomUUID().toString()))
                     .isInstanceOf(BaseException.class)
                     .extracting(e -> ((BaseException) e).getErrorCode())
                     .isEqualTo(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
 
             verify(atomicLong).addAndGet(2L);
+            verify(idempotencyKeyRepository, never()).save(any());
         }
 
         @Test
@@ -293,7 +355,7 @@ class ReservationServiceTest {
 
             CreateReservationRequest request = buildCreateRequest(slotId, 2, null);
 
-            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID()))
+            assertThatThrownBy(() -> reservationService.createReservation(request, UUID.randomUUID(), UUID.randomUUID().toString()))
                     .isInstanceOf(BaseException.class)
                     .extracting(e -> ((BaseException) e).getErrorCode())
                     .isEqualTo(ReservationErrorCode.PAYMENT_METHOD_REQUIRED);

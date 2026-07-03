@@ -47,9 +47,13 @@ public class StoreRatingService {
         Map<UUID, Store> storeMap = storeRepository.findActiveStoresByIds(rankedIds)
                 .stream().collect(Collectors.toMap(Store::getStoreId, s -> s));
 
-        List<StoreRankingResult> results = IntStream.range(0, rankedIds.size())
-                .filter(i -> storeMap.containsKey(rankedIds.get(i)))
-                .mapToObj(i -> StoreRankingResult.of(i + 1, storeMap.get(rankedIds.get(i))))
+        // storeMap에 없는(비활성/삭제) 매장을 먼저 걸러낸 뒤 rank를 매겨야 앞순위 결측 시에도 1위부터 연속됨
+        List<UUID> activeRankedIds = rankedIds.stream()
+                .filter(storeMap::containsKey)
+                .toList();
+
+        List<StoreRankingResult> results = IntStream.range(0, activeRankedIds.size())
+                .mapToObj(i -> StoreRankingResult.of(i + 1, storeMap.get(activeRankedIds.get(i))))
                 .toList();
 
         // Cache Miss: 조회 결과 캐싱

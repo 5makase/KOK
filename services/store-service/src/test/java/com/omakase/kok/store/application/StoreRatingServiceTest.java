@@ -165,6 +165,24 @@ class StoreRatingServiceTest {
         assertThat(results.get(0).getRank()).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("Redis 1위가 DB에 없으면 다음 매장이 1위로 당겨짐")
+    void getRanking_renumbers_ranks_when_leading_store_missing_in_db() throws Exception {
+        UUID deletedId = UUID.randomUUID(); // Redis 1위지만 DB에서 soft delete된 매장
+        UUID activeId = UUID.randomUUID();
+        Store activeStore = makeOpenStore("2위였던 매장", activeId);
+
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of(deletedId, activeId));
+        when(storeRepository.findActiveStoresByIds(List.of(deletedId, activeId)))
+                .thenReturn(List.of(activeStore)); // deletedId는 반환되지 않음
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getRank()).isEqualTo(1); // 2가 아닌 1로 당겨져야 함
+    }
+
     // updateRating
 
     @Test

@@ -9,7 +9,8 @@ import java.util.Optional;
 // 키: store:ranking:response:{size}, TTL 5분, 평점 변경 이벤트 afterCommit 시 무효화
 public interface StoreRankingCacheRepository {
 
-    // Redis 장애 시 Optional.empty() 반환 → DB 조회로 fallback
+    // Redis 장애 시 Optional.empty() 반환 → 호출부(StoreRatingService)에서 ZSet 기반 조회로 fallback
+    // 주의: ZSet도 Redis 의존이라 Redis 전체 장애 시엔 함께 비어짐. DB 직접 조회 fallback은 미구현(TODO)
     Optional<List<StoreRankingResult>> get(int size);
 
     void set(int size, List<StoreRankingResult> results);

@@ -50,6 +50,7 @@ public class StoreRepositoryImpl implements StoreRepository {
 
     @Override
     public List<Store> findActiveStoresByIds(List<UUID> storeIds) {
-        return storeJpaRepository.findByStoreIdInAndDeletedAtIsNull(storeIds);
+        // 랭킹 응답 캐시 miss 시 호출 - category를 함께 로딩해 N+1 방지
+        return storeJpaRepository.findActiveStoresByIdsWithCategory(storeIds);
     }
 }

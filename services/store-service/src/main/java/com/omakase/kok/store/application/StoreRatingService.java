@@ -1,16 +1,16 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.store.application.cache.StoreListCacheRepository;
+import com.omakase.kok.store.application.cache.StoreRankingCacheRepository;
 import com.omakase.kok.store.application.result.StoreRankingResult;
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
+import com.omakase.kok.store.global.util.TransactionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -28,23 +28,37 @@ public class StoreRatingService {
     private final StoreRepository storeRepository;
     private final StoreRankingRepository storeRankingRepository;
     private final StoreListCacheRepository storeListCacheRepository;
+    private final StoreRankingCacheRepository storeRankingCacheRepository;
 
     // @Transactional: store.getCategory()가 LAZY이므로 트랜잭션 범위 필수
     @Transactional(readOnly = true)
     public List<StoreRankingResult> getRanking(int size) {
         int safeSize = Math.min(Math.max(size, 1), 50);
+
+        // Cache Hit: 응답 전체 캐싱 → ZSet/DB 조회 없이 반환
+        Optional<List<StoreRankingResult>> cached = storeRankingCacheRepository.get(safeSize);
+        if (cached.isPresent()) return cached.get();
+
+        // TODO: Redis 전체 장애 시 ZSet도 비어 빈 리스트 반환됨 - DB 직접 조회 fallback 미구현 (보류)
         List<UUID> rankedIds = storeRankingRepository.getTopRanking(safeSize);
-        if (rankedIds.isEmpty()) {
-            return List.of();
-        }
+        if (rankedIds.isEmpty()) return List.of();
+
         // Redis 순서(rank)를 보존하기 위해 Map으로 조회 후 rankedIds 순서대로 재정렬
         Map<UUID, Store> storeMap = storeRepository.findActiveStoresByIds(rankedIds)
                 .stream().collect(Collectors.toMap(Store::getStoreId, s -> s));
 
-        return IntStream.range(0, rankedIds.size())
-                .filter(i -> storeMap.containsKey(rankedIds.get(i)))
-                .mapToObj(i -> StoreRankingResult.of(i + 1, storeMap.get(rankedIds.get(i))))
+        // storeMap에 없는(비활성/삭제) 매장을 먼저 걸러낸 뒤 rank를 매겨야 앞순위 결측 시에도 1위부터 연속됨
+        List<UUID> activeRankedIds = rankedIds.stream()
+                .filter(storeMap::containsKey)
                 .toList();
+
+        List<StoreRankingResult> results = IntStream.range(0, activeRankedIds.size())
+                .mapToObj(i -> StoreRankingResult.of(i + 1, storeMap.get(activeRankedIds.get(i))))
+                .toList();
+
+        // Cache Miss: 조회 결과 캐싱
+        storeRankingCacheRepository.set(safeSize, results);
+        return results;
     }
 
     @Transactional
@@ -71,26 +85,11 @@ public class StoreRatingService {
     }
 
     // reviewCount == 0 이면 랭킹에서 제거, 그 외엔 점수 갱신
-    // store:list:* 는 TTL(5분) 만료에 위임
+    // store:list:* 무효화도 함께 처리 - 평점 변경이 목록 정렬(평점순)에 영향을 주기 때문
     private void registerRankingUpdateOnCommit(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            applyRankingUpdate(storeId, averageRating, reviewCount);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    applyRankingUpdate(storeId, averageRating, reviewCount);
-                    log.debug("store:ranking 갱신 완료. storeId={}, reviewCount={}", storeId, reviewCount);
-                } catch (RuntimeException e) {
-                    // TODO (고도화/도전기능) Spring Batch로 DB ↔ Redis 랭킹 주기적 재동기화 시 복구
-                    log.warn("store:ranking 갱신 실패. storeId={}, averageRating={}", storeId, averageRating, e);
-                }
-                // 평점 변경 시 목록 캐시 무효화 - 랭킹과 동일하게 afterCommit() 기준으로 통일
-                storeListCacheRepository.evictAll();
-            }
-        });
+        TransactionUtils.runAfterCommit(
+                () -> applyRankingUpdateAndEvictCache(storeId, averageRating, reviewCount)
+        );
     }
 
     private void applyRankingUpdate(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
@@ -100,6 +99,21 @@ public class StoreRatingService {
             storeRankingRepository.remove(storeId);
         } else {
             storeRankingRepository.updateScore(storeId, averageRating);
+        }
+    }
+
+    private void applyRankingUpdateAndEvictCache(UUID storeId, BigDecimal averageRating, Integer reviewCount) {
+        try {
+            applyRankingUpdate(storeId, averageRating, reviewCount);
+            log.debug("store:ranking 갱신 완료. storeId={}, reviewCount={}", storeId, reviewCount);
+        } catch (RuntimeException e) {
+            // TODO (고도화/도전기능) Spring Batch로 DB ↔ Redis 랭킹 주기적 재동기화 시 복구
+            log.warn("store:ranking 갱신 실패. storeId={}, averageRating={}", storeId, averageRating, e);
+        } finally {
+            // ZSet(순위) 갱신 성공/실패와 무관하게 응답 캐시 무효화
+            // 실패 시에도 stale 캐시를 남기면 잘못된 순위가 그대로 서빙되기 때문
+            storeRankingCacheRepository.evictAll();
+            storeListCacheRepository.evictAll();
         }
     }
 }

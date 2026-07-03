@@ -246,7 +246,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"storeId\": \"\",\n  \"slotDate\": \"2026-06-24\",\n  \"slotTime\": \"19:00\",\n  \"maxCapacity\": 1,\n  \"depositRequired\": false,\n  \"depositAmount\": null\n}",
+              "raw": "{\n  \"storeId\": \"\",\n  \"slotDate\": \"\",\n  \"slotTime\": \"19:00\",\n  \"maxCapacity\": 1,\n  \"depositRequired\": false,\n  \"depositAmount\": null\n}",
               "options": { "raw": { "language": "json" } }
             }
           }

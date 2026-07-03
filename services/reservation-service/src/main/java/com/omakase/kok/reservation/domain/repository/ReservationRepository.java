@@ -69,4 +69,20 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
         UUID getSlotId();
         Long getPendingSize();
     }
+
+    @Query("""
+        SELECT r.slotId AS slotId, r.status AS status, r.scheduledAt AS scheduledAt
+        FROM Reservation r
+        WHERE r.storeId = :storeId AND r.deletedAt IS NULL
+          AND r.scheduledAt >= :from AND r.scheduledAt < :to
+        """)
+    List<ReservationStatsRow> findStatsRowsByStoreIdAndScheduledAtBetween(@Param("storeId") UUID storeId,
+                                                                           @Param("from") LocalDateTime from,
+                                                                           @Param("to") LocalDateTime to);
+
+    interface ReservationStatsRow {
+        UUID getSlotId();
+        ReservationStatus getStatus();
+        LocalDateTime getScheduledAt();
+    }
 }

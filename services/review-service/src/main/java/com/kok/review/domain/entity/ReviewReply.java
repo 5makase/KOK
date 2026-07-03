@@ -17,7 +17,7 @@ import java.util.UUID;
         uniqueConstraints = @UniqueConstraint(
                 name = "uq_reply_review_id",
                 columnNames = "review_id"))
-@SQLRestriction("delete_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ReviewReply extends BaseEntity {
     @Id

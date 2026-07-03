@@ -51,7 +51,7 @@ public class ReviewOutboxAppender {
         }catch (JsonProcessingException e) {
             //안되면 예외 처리
             log.warn(e.getMessage());
-            throw new BaseException(ReviewErrorCode.REPLY_ALREADY_EXISTS);
+            throw new BaseException(ReviewErrorCode.EVENT_SERIALIZATION_FAILED,e);
         }
     }
 }

@@ -1,15 +1,10 @@
 package com.kok.review.application.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.kok.review.domain.entity.ReviewOutboxEvent;
 import com.kok.review.domain.entity.ReviewRatingSummary;
-import com.kok.review.domain.repository.ReviewOutboxEventRepository;
 import com.kok.review.domain.repository.ReviewRatingSummaryRepository;
-import com.kok.review.global.exception.ReviewErrorCode;              // 추가
-import com.kok.review.infrastructure.messaging.dto.ReviewEventEnvelope;
+import com.kok.review.global.exception.ReviewErrorCode;
 import com.kok.review.infrastructure.messaging.dto.ReviewEventPayload;
-import com.omakase.kok.common.exception.BaseException;               // 추가
+import com.omakase.kok.common.exception.BaseException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,8 +16,7 @@ import java.util.UUID;
 public class ReviewRatingService {
 
     private final ReviewRatingSummaryRepository reviewRatingSummaryRepository;
-    private final ReviewOutboxEventRepository reviewOutboxEventRepository;
-    private final ObjectMapper objectMapper;
+    private final ReviewOutboxAppender reviewOutboxAppender;
 
     /**
      * 리뷰 수정 시, 별점
@@ -49,7 +43,7 @@ public class ReviewRatingService {
                 summary.getReviewCount());
 
         // OutBox 테이블에 저장
-        saveOutbox(reviewId, "REVIEW_UPDATED", payload);
+        reviewOutboxAppender.append(reviewId, "REVIEW_UPDATED", storeId, payload);
     }
 
     /**
@@ -75,7 +69,7 @@ public class ReviewRatingService {
                 summary.getReviewCount());
 
         //OutBox 테이블에 저장
-        saveOutbox(reviewId, "REVIEW_CREATED", payload);
+        reviewOutboxAppender.append(reviewId, "REVIEW_CREATED", storeId, payload);
     }
 
     /**
@@ -102,7 +96,7 @@ public class ReviewRatingService {
                 summary.getReviewCount());
 
         //Outbox 테이블에 저장
-        saveOutbox(reviewId, "REVIEW_DELETED", payload);
+        reviewOutboxAppender.append(reviewId, "REVIEW_DELETED", storeId, payload);
     }
 
     /**
@@ -113,32 +107,6 @@ public class ReviewRatingService {
     private ReviewRatingSummary getOrCreateSummary(UUID storeId) {
         return reviewRatingSummaryRepository.findById(storeId)
                 .orElseGet(() -> ReviewRatingSummary.init(storeId));
-    }
-
-    /**
-     * OutBox 테이블에 저장
-     * @param reviewId
-     * @param eventType
-     * @param payload
-     */
-    private void saveOutbox(UUID reviewId, String eventType, ReviewEventPayload payload) {
-        ReviewEventEnvelope envelope = ReviewEventEnvelope.of(eventType, payload);
-        String json = serialize(envelope);
-        reviewOutboxEventRepository.save(
-                ReviewOutboxEvent.create(reviewId, eventType, json, payload.storeId()));
-    }
-
-    /**
-     *  직렬화
-     * @param envelope
-     * @return
-     */
-    private String serialize(ReviewEventEnvelope envelope) {
-        try {
-            return objectMapper.writeValueAsString(envelope);
-        } catch (JsonProcessingException e) {
-            throw new BaseException(ReviewErrorCode.EVENT_SERIALIZATION_FAILED, e); // cause 보존
-        }
     }
 
     /**

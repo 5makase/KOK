@@ -43,6 +43,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -198,6 +199,10 @@ public class ReservationService {
         }
     }
 
+    // 슬롯별로 락을 순차 획득하며 처리하므로, slotDate 미지정 시 매장의 열린 슬롯이 매우 많으면
+    // 관리자 요청 스레드가 오래 블록될 수 있다. 한 번에 처리할 슬롯 수에 상한을 둔다.
+    private static final int MAX_SLOTS_PER_RESTORE = 200;
+
     // Redis 장애로 유실된 slot:capacity:{slotId}를 DB 기준으로 복구한다.
     // 골든 패스(createReservation 등)에서는 절대 호출되지 않고, 관리자 전용 내부 API에서만 호출된다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -206,6 +211,17 @@ public class ReservationService {
                 ? slotRepository.findByStoreIdAndStatusAndSlotDateAndDeletedAtIsNull(storeId, SlotStatus.OPEN, slotDate)
                 : slotRepository.findByStoreIdAndStatusAndSlotDateGreaterThanEqualAndDeletedAtIsNull(
                         storeId, SlotStatus.OPEN, LocalDate.now());
+
+        if (slots.size() > MAX_SLOTS_PER_RESTORE) {
+            log.warn("복구 대상 슬롯이 {}건으로 상한({}건)을 초과해 날짜가 이른 슬롯부터 {}건만 처리 - storeId: {}. " +
+                            "나머지는 slotDate를 지정해 재호출 필요",
+                    slots.size(), MAX_SLOTS_PER_RESTORE, MAX_SLOTS_PER_RESTORE, storeId);
+            slots = slots.stream()
+                    .sorted(Comparator.comparing(ReservationSlot::getSlotDate)
+                            .thenComparing(ReservationSlot::getSlotTime))
+                    .limit(MAX_SLOTS_PER_RESTORE)
+                    .toList();
+        }
 
         List<SlotCapacityRestoreItem> items = slots.stream()
                 .map(slot -> restoreSingleSlotCapacity(slot.getSlotId()))

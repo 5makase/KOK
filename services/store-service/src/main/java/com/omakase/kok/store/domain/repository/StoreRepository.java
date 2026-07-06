@@ -27,4 +27,7 @@ public interface StoreRepository {
 
     // 랭킹 조회용 - storeId 목록으로 활성 매장 일괄 조회
     List<Store> findActiveStoresByIds(List<UUID> storeIds);
+
+    // 랭킹에 노출될 수 있는 매장 전체를 평점이 높은 순서로 조회: Redis 장애 시, DB로 재구성하기 위한 용도
+    List<Store> findAllRankableStores();
 }

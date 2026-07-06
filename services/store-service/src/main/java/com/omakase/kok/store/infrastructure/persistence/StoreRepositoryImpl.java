@@ -2,6 +2,7 @@ package com.omakase.kok.store.infrastructure.persistence;
 
 import com.omakase.kok.store.domain.entity.Store;
 import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import lombok.RequiredArgsConstructor;
@@ -52,5 +53,10 @@ public class StoreRepositoryImpl implements StoreRepository {
     public List<Store> findActiveStoresByIds(List<UUID> storeIds) {
         // 랭킹 응답 캐시 miss 시 호출 - category를 함께 로딩해 N+1 방지
         return storeJpaRepository.findActiveStoresByIdsWithCategory(storeIds);
+    }
+
+    @Override
+    public List<Store> findAllRankableStores() {
+        return storeJpaRepository.findRankableStoresWithCategory(StoreStatus.OPEN);
     }
 }

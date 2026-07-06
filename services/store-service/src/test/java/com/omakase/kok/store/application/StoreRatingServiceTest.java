@@ -183,6 +183,73 @@ class StoreRatingServiceTest {
         assertThat(results.get(0).getRank()).isEqualTo(1); // 2가 아닌 1로 당겨져야 함
     }
 
+    @Test
+    @DisplayName("ZSet이 비어있지만 Redis는 정상이고 재구성 가드를 획득하면 DB로 재구성 후 캐싱")
+    void getRanking_recovers_from_db_and_rebuilds_when_lock_acquired() {
+        Store store1 = makeOpenStore("1위 매장");
+
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of());
+        when(storeRepository.findAllRankableStores()).thenReturn(List.of(store1));
+        when(storeRankingRepository.tryAcquireRebuildLock()).thenReturn(true);
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getRank()).isEqualTo(1);
+        verify(storeRankingRepository).rebuildAll(any());
+        verify(storeRankingCacheRepository).set(eq(5), any());
+    }
+
+    @Test
+    @DisplayName("ZSet이 비어있는데 재구성 가드를 못 잡으면 재구성/캐싱 없이 DB 응답만 반환")
+    void getRanking_skips_rebuild_and_caching_when_lock_not_acquired() {
+        Store store1 = makeOpenStore("1위 매장");
+
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of());
+        when(storeRepository.findAllRankableStores()).thenReturn(List.of(store1));
+        when(storeRankingRepository.tryAcquireRebuildLock()).thenReturn(false);
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).hasSize(1);
+        verify(storeRankingRepository, never()).rebuildAll(any());
+        verify(storeRankingCacheRepository, never()).set(eq(5), any());
+    }
+
+    @Test
+    @DisplayName("ZSet이 비어있고 DB에도 랭킹 가능 매장이 없으면 재구성 시도 없이 빈 리스트 반환")
+    void getRanking_returns_empty_when_zset_empty_and_no_rankable_stores_in_db() {
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of());
+        when(storeRepository.findAllRankableStores()).thenReturn(List.of());
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).isEmpty();
+        verify(storeRankingRepository, never()).tryAcquireRebuildLock();
+        verify(storeRankingRepository, never()).rebuildAll(any());
+        verify(storeRankingCacheRepository, never()).set(eq(5), any());
+    }
+
+    @Test
+    @DisplayName("ZSet 조회 자체가 예외를 던지면(Redis 다운) 재구성 시도 없이 DB 직접 조회로 응답")
+    void getRanking_falls_back_to_db_without_rebuild_when_redis_throws() {
+        Store store1 = makeOpenStore("1위 매장");
+
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenThrow(new RuntimeException("Redis 연결 실패"));
+        when(storeRepository.findTopRankableStores(5)).thenReturn(List.of(store1));
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).hasSize(1);
+        verify(storeRankingRepository, never()).tryAcquireRebuildLock();
+        verify(storeRankingRepository, never()).rebuildAll(any());
+        verify(storeRankingCacheRepository, never()).set(eq(5), any());
+    }
+
     // updateRating
 
     @Test

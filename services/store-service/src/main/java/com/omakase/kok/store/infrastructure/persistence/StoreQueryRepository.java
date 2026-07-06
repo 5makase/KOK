@@ -59,6 +59,34 @@ public class StoreQueryRepository {
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
 
+    // ZSet 재구성용 - 랭킹 대상 전체를 평점 내림차순 조회 (category fetch join으로 N+1 방지)
+    public List<Store> findRankableStores(StoreStatus status) {
+        QStore store = QStore.store;
+        return queryFactory.selectFrom(store)
+                .join(store.category).fetchJoin()
+                .where(isRankable(store, status))
+                .orderBy(store.averageRating.desc())
+                .fetch();
+    }
+
+    // Redis 자체가 응답 불가할 때 이번 응답(상위 limit개)만 만들면 되는 경우 사용
+    public List<Store> findTopRankableStores(StoreStatus status, int limit) {
+        QStore store = QStore.store;
+        return queryFactory.selectFrom(store)
+                .join(store.category).fetchJoin()
+                .where(isRankable(store, status))
+                .orderBy(store.averageRating.desc())
+                .limit(limit)
+                .fetch();
+    }
+
+    // Store.isRankable()과 반드시 같은 기준을 유지해야 하는 조건 - 위 두 메서드가 공유해 중복 제거
+    private BooleanExpression isRankable(QStore store, StoreStatus status) {
+        return store.deletedAt.isNull()
+                .and(store.status.eq(status))
+                .and(store.reviewCount.gt(0));
+    }
+
     private BooleanExpression[] buildWhere(QStore store, QStoreAmenity amenity,
                                             StoreSearchCondition condition) {
         return new BooleanExpression[]{

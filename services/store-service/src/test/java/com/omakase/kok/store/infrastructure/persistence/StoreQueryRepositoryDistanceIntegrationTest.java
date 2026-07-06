@@ -9,9 +9,9 @@ import com.omakase.kok.store.domain.vo.Address;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
@@ -26,17 +26,18 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Haversine DISTANCE 정렬 통합 테스트 - PostgreSQL 전용
- * 실행 전제: docker compose up -d postgres
+ * Haversine DISTANCE 정렬 통합 테스트 - PostgreSQL 전용 (순수 SQL 수식이라 PostGIS 확장 불필요)
+ * CI(.github/workflows/ci.yml의 postgres 서비스, 계정 user/password)에서만 자동 실행됨
+ * 로컬에서 직접 돌리려면 docker-compose postgres를 띄우고 TEST_PG_USERNAME/PASSWORD를 맞게 지정 & CI=true 환경변수를 주고 실행
  */
-@Disabled("로컬 전용 통합 테스트 - PostgreSQL 필요(Haversine), CI 환경 미구성으로 skip (로컬에서 수동 실행)")
+@EnabledIfEnvironmentVariable(named = "CI", matches = "true")
 @SpringBootTest
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:postgresql://localhost:5432/kok_db",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
-        "spring.datasource.username=postgres",
-        "spring.datasource.password=postgres",
+        "spring.datasource.username=${TEST_PG_USERNAME:postgres}",
+        "spring.datasource.password=${TEST_PG_PASSWORD:postgres}",
         "spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
         "spring.jpa.hibernate.ddl-auto=create"
 })

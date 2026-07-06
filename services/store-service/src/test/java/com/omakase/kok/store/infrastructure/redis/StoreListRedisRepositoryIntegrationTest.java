@@ -34,10 +34,13 @@ class StoreListRedisRepositoryIntegrationTest {
     private StoreSearchCondition condition;
     private PageRequest pageable;
 
+    // 이전 실행이 비정상 종료되거나 수동 테스트로 store:list:*에 데이터가 남았을 때
+    // 첫 테스트가 그 잔여 데이터 때문에 실패할 수 있어, 테스트 픽스처 초기화와 함께 Redis도 정리한다
     @BeforeEach
     void setUp() {
         condition = StoreSearchCondition.builder().sido("서울").sigungu("강남구").build();
         pageable = PageRequest.of(0, 20);
+        cleanUp();
     }
 
     @AfterEach

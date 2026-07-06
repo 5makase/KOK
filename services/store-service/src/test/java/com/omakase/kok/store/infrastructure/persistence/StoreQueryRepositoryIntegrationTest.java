@@ -12,7 +12,6 @@ import com.omakase.kok.store.domain.vo.Address;
 import com.omakase.kok.store.global.config.QueryDslConfig;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +35,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @AutoConfigureTestDatabase(replace = NONE): application-test.yml의 H2 datasource 사용
  * DISTANCE 정렬 + withinRadius 복합 테스트는 PostgreSQL 전용 파일(StoreQueryRepositoryDistanceIntegrationTest) 참고
  */
-@Disabled("로컬 전용 통합 테스트 - CI 환경 DB 미구성으로 skip (로컬에서 수동 실행)")
 @DataJpaTest
 @Import({QueryDslConfig.class, JpaConfig.class})
 @ActiveProfiles("test")

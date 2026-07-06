@@ -128,6 +128,45 @@ class StoreTest {
         assertThat(store.isAvailableForService()).isTrue();
     }
 
+    @Test
+    @DisplayName("isRankable() - 영업 중이고 리뷰가 있으면 true")
+    void is_rankable_when_open_and_has_reviews() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.updateRating(new BigDecimal("4.50"), 3);
+
+        assertThat(store.isRankable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("isRankable() - 영업 중이 아니면 리뷰가 있어도 false")
+    void is_not_rankable_when_not_open() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        store.updateRating(new BigDecimal("4.50"), 3); // 여전히 PREPARING 상태
+
+        assertThat(store.isRankable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("isRankable() - 리뷰가 없으면 영업 중이어도 false")
+    void is_not_rankable_when_no_reviews() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+
+        assertThat(store.isRankable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("isRankable() - 삭제된 매장은 영업 중이고 리뷰가 있어도 false")
+    void is_not_rankable_when_deleted() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.updateRating(new BigDecimal("4.50"), 3);
+        store.delete(ownerId);
+
+        assertThat(store.isRankable()).isFalse();
+    }
+
     private Address address() {
         return new Address("서울특별시", "강남구", "테헤란로 123", null, null, null);
     }

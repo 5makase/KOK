@@ -146,4 +146,9 @@ public class Store extends BaseEntity {
     public boolean isAvailableForService() {
         return this.status == StoreStatus.OPEN;
     }
+
+    // 랭킹에 노출될 자격이 있는지 확인 (삭제되지 않았고, 영업 중이며, 리뷰가 하나 이상 있어야 함)
+    public boolean isRankable() {
+        return !isDeleted() && isAvailableForService() && reviewCount > 0;
+    }
 }

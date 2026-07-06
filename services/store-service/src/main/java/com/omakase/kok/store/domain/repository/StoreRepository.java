@@ -27,4 +27,10 @@ public interface StoreRepository {
 
     // 랭킹 조회용 - storeId 목록으로 활성 매장 일괄 조회
     List<Store> findActiveStoresByIds(List<UUID> storeIds);
+
+    // 랭킹에 노출될 수 있는 매장 전체를 평점이 높은 순서로 조회: ZSet 재구성처럼 전체가 필요할 때 사용
+    List<Store> findAllRankableStores();
+
+    // 상위 limit개만 조회: Redis 자체가 응답 불가할 때, 일회성 응답만 만들면 되는 경우 사용
+    List<Store> findTopRankableStores(int limit);
 }

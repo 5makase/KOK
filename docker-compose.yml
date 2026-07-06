@@ -92,6 +92,20 @@ services:
     networks:
       - kok-network
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: kok-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    networks:
+      - kok-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   zipkin:
     image: openzipkin/zipkin:3
     container_name: kok-zipkin

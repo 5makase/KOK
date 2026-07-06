@@ -22,4 +22,7 @@ public interface ReservationSlotRepository extends JpaRepository<ReservationSlot
 
     List<ReservationSlot> findByStoreIdAndStatusAndSlotDateAndDeletedAtIsNull(
             UUID storeId, SlotStatus status, LocalDate slotDate);
+
+    List<ReservationSlot> findByStatusAndSlotDateGreaterThanEqualAndDeletedAtIsNull(
+            SlotStatus status, LocalDate from);
 }

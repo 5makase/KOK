@@ -7,7 +7,10 @@ import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
 import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
 import com.omakase.kok.reservation.application.dto.ReservationResponse;
+import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse;
+import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse.SlotCapacityRestoreItem;
 import com.omakase.kok.reservation.domain.entity.Reservation;
+import com.omakase.kok.reservation.domain.entity.ReservationIdempotencyKey;
 import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
 import com.omakase.kok.reservation.domain.entity.ReservationSlot;
 import com.omakase.kok.reservation.domain.enums.EventType;
@@ -15,8 +18,10 @@ import com.omakase.kok.reservation.domain.enums.ReservationStatus;
 import com.omakase.kok.reservation.domain.enums.SlotStatus;
 import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
 import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
+import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
 import com.omakase.kok.reservation.domain.repository.ReservationRepository;
+import com.omakase.kok.reservation.domain.repository.ReservationRepository.SlotPendingSize;
 import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
 import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
 import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
@@ -40,6 +45,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,17 +60,61 @@ public class ReservationService {
 
     private static final String SLOT_CAPACITY_KEY = "slot:capacity:";
     private static final String SLOT_LOCK_KEY = "reservation:lock:slot:";
+    private static final String IDEMPOTENCY_LOCK_KEY = "reservation:idempotency:lock:";
 
     private final ReservationRepository reservationRepository;
     private final ReservationSlotRepository slotRepository;
     private final ReservationOutboxEventRepository outboxEventRepository;
+    private final ReservationIdempotencyKeyRepository idempotencyKeyRepository;
     private final RedissonClient redissonClient;
     private final PaymentFeignClient paymentFeignClient;
     private final PlatformTransactionManager transactionManager;
     private final ObjectMapper objectMapper;
 
+    // 같은 Idempotency-Key로 재전송된 요청은 실제 예약 로직을 다시 타지 않고 최초 시도의 결과를 그대로 반환한다.
+    // 매핑은 Reservation이 실제 저장된 시점(결제 실패로 이후 취소되더라도)에만 남기므로, 아무 것도 생성되기 전에
+    // 실패한 요청(SLOT_UNAVAILABLE, SLOT_CAPACITY_EXCEEDED 등)은 같은 키로 재시도해도 처음부터 다시 처리된다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ReservationResponse createReservation(CreateReservationRequest request, UUID userId) {
+    public ReservationResponse createReservation(CreateReservationRequest request, UUID userId, String idempotencyKey) {
+        ReservationResponse existing = findExistingResponseByIdempotencyKey(userId, idempotencyKey);
+        if (existing != null) {
+            return existing;
+        }
+
+        // 같은 슬롯을 대상으로 한 재전송은 기존 slot 락으로도 직렬화되지만, 앞선 시도의 결제 처리가
+        // slot 락 대기시간(3초)보다 길어지면 재전송 쪽이 SLOT_LOCK_FAILED라는 잘못된 에러를 받는다.
+        // 이를 막기 위해 idempotency 키 전용 락을 slot 락보다 바깥쪽에서 먼저 건다.
+        RLock idempotencyLock = redissonClient.getLock(IDEMPOTENCY_LOCK_KEY + userId + ":" + idempotencyKey);
+        try {
+            if (!idempotencyLock.tryLock(0, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+            }
+
+            // 락 대기 중 다른 스레드가 이미 처리를 끝냈을 수 있으므로 재확인
+            existing = findExistingResponseByIdempotencyKey(userId, idempotencyKey);
+            if (existing != null) {
+                return existing;
+            }
+
+            return doCreateReservation(request, userId, idempotencyKey);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+        } finally {
+            if (idempotencyLock.isHeldByCurrentThread()) {
+                idempotencyLock.unlock();
+            }
+        }
+    }
+
+    private ReservationResponse findExistingResponseByIdempotencyKey(UUID userId, String idempotencyKey) {
+        return idempotencyKeyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
+                .flatMap(mapping -> reservationRepository.findByReservationIdAndDeletedAtIsNull(mapping.getReservationId()))
+                .map(ReservationResponse::from)
+                .orElse(null);
+    }
+
+    private ReservationResponse doCreateReservation(CreateReservationRequest request, UUID userId, String idempotencyKey) {
         // 락 획득 전 빠른 사전 검사 (최적화용)
         var preCheckSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
                 .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
@@ -105,6 +155,8 @@ public class ReservationService {
                         Reservation reservation = buildReservation(request, userId, slot);
                         reservation.confirm();
                         reservationRepository.save(reservation);
+                        idempotencyKeyRepository.save(ReservationIdempotencyKey.builder()
+                                .userId(userId).idempotencyKey(idempotencyKey).reservationId(reservation.getReservationId()).build());
                         ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId()).orElseThrow();
                         s.decreaseCapacity(request.getReservationSize());
                         outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
@@ -121,6 +173,8 @@ public class ReservationService {
                 reservationId = new TransactionTemplate(transactionManager).execute(status -> {
                     Reservation reservation = buildReservation(request, userId, slot);
                     reservationRepository.save(reservation);
+                    idempotencyKeyRepository.save(ReservationIdempotencyKey.builder()
+                            .userId(userId).idempotencyKey(idempotencyKey).reservationId(reservation.getReservationId()).build());
                     return reservation.getReservationId();
                 });
             } catch (Exception e) {
@@ -193,6 +247,83 @@ public class ReservationService {
                 lock.unlock();
             }
         }
+    }
+
+    // 슬롯별로 락을 순차 획득하며 처리하므로, slotDate 미지정 시 매장의 열린 슬롯이 매우 많으면
+    // 관리자 요청 스레드가 오래 블록될 수 있다. 한 번에 처리할 슬롯 수에 상한을 둔다.
+    private static final int MAX_SLOTS_PER_RESTORE = 200;
+
+    // Redis 장애로 유실된 slot:capacity:{slotId}를 DB 기준으로 복구한다.
+    // 골든 패스(createReservation 등)에서는 절대 호출되지 않고, 관리자 전용 내부 API에서만 호출된다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public SlotCapacityRestoreResponse restoreCapacity(UUID storeId, LocalDate slotDate) {
+        List<ReservationSlot> slots = slotDate != null
+                ? slotRepository.findByStoreIdAndStatusAndSlotDateAndDeletedAtIsNull(storeId, SlotStatus.OPEN, slotDate)
+                : slotRepository.findByStoreIdAndStatusAndSlotDateGreaterThanEqualAndDeletedAtIsNull(
+                        storeId, SlotStatus.OPEN, LocalDate.now());
+
+        if (slots.size() > MAX_SLOTS_PER_RESTORE) {
+            log.warn("복구 대상 슬롯이 {}건으로 상한({}건)을 초과해 날짜가 이른 슬롯부터 {}건만 처리 - storeId: {}. " +
+                            "나머지는 slotDate를 지정해 재호출 필요",
+                    slots.size(), MAX_SLOTS_PER_RESTORE, MAX_SLOTS_PER_RESTORE, storeId);
+            slots = slots.stream()
+                    .sorted(Comparator.comparing(ReservationSlot::getSlotDate)
+                            .thenComparing(ReservationSlot::getSlotTime))
+                    .limit(MAX_SLOTS_PER_RESTORE)
+                    .toList();
+        }
+
+        List<SlotCapacityRestoreItem> items = slots.stream()
+                .map(slot -> restoreSingleSlotCapacity(slot.getSlotId()))
+                .toList();
+        return SlotCapacityRestoreResponse.of(storeId, slotDate, items);
+    }
+
+    private SlotCapacityRestoreItem restoreSingleSlotCapacity(UUID slotId) {
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + slotId);
+        try {
+            // 이 락을 잡고 있는 동안은 create/cancel/change 어느 경로도 이 슬롯의 capacityKey를
+            // 건드릴 수 없으므로, 재설정이 동시 요청의 차감을 덮어쓰는 일이 없다.
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                log.warn("슬롯 락 획득 실패로 정원 복구 스킵 - slotId: {}", slotId);
+                return SlotCapacityRestoreItem.skipped(slotId);
+            }
+
+            // 반드시 명시적 트랜잭션으로 새로 읽어야 한다. 락 보호 구간 밖에서 시작된 커넥션을 그대로
+            // 재사용하는 암묵적 트랜잭션(Spring Data 리포지토리 기본 트랜잭션)에 의존하면, 락을 놓친
+            // 이전 홀더의 커밋이 아직 반영되지 않은 오래된 스냅샷을 읽을 수 있다.
+            CapacitySnapshot snapshot = new TransactionTemplate(transactionManager).execute(status -> {
+                ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
+                        .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+                long pendingSize = reservationRepository
+                        .sumPendingSizeBySlotIds(List.of(slotId), ReservationStatus.PAYMENT_PENDING)
+                        .stream().findFirst().map(SlotPendingSize::getPendingSize).orElse(0L);
+                return new CapacitySnapshot(slot.getRemainingCapacity(), pendingSize,
+                        slot.effectiveRemainingCapacity(pendingSize));
+            });
+
+            RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId);
+            long before = capacityKey.get();
+            capacityKey.set(snapshot.effectiveRemaining());
+
+            log.warn("슬롯 정원 Redis 값 복구 - slotId: {}, before: {}, after: {}, dbRemaining: {}, pending: {}",
+                    slotId, before, snapshot.effectiveRemaining(), snapshot.dbRemaining(), snapshot.pendingSize());
+            return SlotCapacityRestoreItem.restored(slotId, before, snapshot.effectiveRemaining());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return SlotCapacityRestoreItem.skipped(slotId);
+        } catch (RuntimeException e) {
+            // 슬롯 하나의 실패(예: 복구 도중 삭제됨)로 나머지 슬롯 복구까지 중단되지 않도록 스킵 처리
+            log.error("슬롯 정원 복구 중 예외 발생 - slotId: {}", slotId, e);
+            return SlotCapacityRestoreItem.skipped(slotId);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    private record CapacitySnapshot(int dbRemaining, long pendingSize, long effectiveRemaining) {
     }
 
     public Page<ReservationResponse> getMyReservations(UUID userId, ReservationStatus status,

@@ -5,6 +5,7 @@ import com.kok.review.domain.entity.ReviewEligibility;
 import com.kok.review.domain.entity.ReviewImage;
 import com.kok.review.domain.repository.ReviewImageRepository;
 import com.kok.review.domain.repository.ReviewRepository;
+import com.kok.review.global.exception.ReviewErrorCode;              // 추가
 import com.kok.review.infrastructure.client.StoreClient;
 import com.kok.review.infrastructure.client.UserClient;
 import com.kok.review.infrastructure.client.dto.StoreResponse;
@@ -17,6 +18,7 @@ import com.kok.review.presentation.DTO1.request.ReviewRequestDto;
 import com.kok.review.presentation.DTO1.response.ReviewCreateResponseDto;
 import com.kok.review.presentation.DTO1.response.ReviewGetResponseDto;
 import com.kok.review.presentation.DTO1.response.ReviewUpdateResponseDto;
+import com.omakase.kok.common.exception.BaseException;               // 추가
 import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -102,10 +104,10 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public ReviewGetResponseDto getReview(UUID reviewId){
         //reviewId로 Review를 조회한다.
-        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("조회되는 리뷰가 없음."));
+        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new BaseException(ReviewErrorCode.REVIEW_NOT_FOUND));
 
         //review.reservationId로 ReviewEligibility(리뷰 권한 테이블) 조회
-        ReviewEligibility reviewEligibility = reviewEligibilityRepository.findById(review.getReservationId()).orElseThrow(()-> new IllegalArgumentException("적재된 권한이 없음."));
+        ReviewEligibility reviewEligibility = reviewEligibilityRepository.findById(review.getReservationId()).orElseThrow(()-> new BaseException(ReviewErrorCode.ELIGIBILITY_NOT_FOUND));
 
         //reviewId로 ReviewImage를 조회한다.
         List<ReviewImage> reviewImageList =  reviewImageRepository.findByReviewReviewId(reviewId);
@@ -148,17 +150,17 @@ public class ReviewService {
                                                 ReviewUpdateRequestDto dto, String userRole) {
         // 리뷰 존재 확인
         Review review = reviewRepository.findById(reviewId)
-                .orElseThrow(() -> new IllegalArgumentException("리뷰 없음."));
+                .orElseThrow(() -> new BaseException(ReviewErrorCode.REVIEW_NOT_FOUND));
 
         // 권한 확인
         if (!userRole.equals("USER")) {
-            throw new IllegalArgumentException("사용자 권한 아님.");
+            throw new BaseException(ReviewErrorCode.NOT_USER_ROLE);
         }
         // 작성자 본인 확인
         if (!review.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("본인 아님.");
+            throw new BaseException(ReviewErrorCode.NOT_REVIEW_AUTHOR);
         }
-        // 평점 재집계용: 덮어쓰기 전에 기존 별점 확보
+        // 자기가 작성한 리뷰의 별점을 추출
         BigDecimal oldRating = review.getRating();
 
         // 리뷰 본문/별점 수정
@@ -178,9 +180,10 @@ public class ReviewService {
             reviewImageRepository.saveAll(newImages);
         }
 
-
-        // 평점 재집계 + REVIEW_UPDATED 이벤트 (별점이 실제로 바뀐 경우에만)
+        //기존의 별점(oldRating)과 전달받은 별점(dto.rating)이 다를 경우.
+        //즉, 별점의 변경이 생길 경우
         if (dto.getRating().compareTo(oldRating) != 0) {
+            // 바뀐 평점으로 반영하여 OutBox에 싣는 메서드를 호출
             reviewRatingService.applyUpdated(
                     review.getReviewId(), review.getStoreId(), oldRating, dto.getRating());
         }
@@ -195,7 +198,7 @@ public class ReviewService {
      */
     @Retryable(
             retryFor = { OptimisticLockingFailureException.class,/*낙관적 락 버전 충돌 시 발생되는 예외*/
-                         DataIntegrityViolationException.class/*DB 제약 조건 위반 시 발생되는 예외*/ },
+                    DataIntegrityViolationException.class/*DB 제약 조건 위반 시 발생되는 예외*/ },
             maxAttempts = 3,
             backoff = @Backoff(delay = 100,multiplier = 2.0, random = true))
     @Transactional
@@ -203,21 +206,21 @@ public class ReviewService {
         // 적재된 권한 조회
         ReviewEligibility reviewEligibility = reviewEligibilityRepository
                 .findById(dto.getReservationId())
-                .orElseThrow(() -> new IllegalArgumentException("적재된 권한이 없음."));
+                .orElseThrow(() -> new BaseException(ReviewErrorCode.ELIGIBILITY_NOT_FOUND));
 
         // 예약자와 리뷰 작성자가 동일한지
         if (!reviewEligibility.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("리뷰 작성자와 동일하지 않음.");
+            throw new BaseException(ReviewErrorCode.ELIGIBILITY_USER_MISMATCH);
         }
 
         // 예약했던 가게가 맞는지
         if (!reviewEligibility.getStoreId().equals(dto.getStoreId())) {
-            throw new IllegalArgumentException("리뷰 작성할 가게와 동일하지 않음.");
+            throw new BaseException(ReviewErrorCode.ELIGIBILITY_STORE_MISMATCH);
         }
 
         // 중복 리뷰 확인 (1차 방어 — 최종 방어는 Review.reservation_id UNIQUE 제약)
         if (reviewEligibility.isUsed()) {
-            throw new IllegalArgumentException("중복된 리뷰");
+            throw new BaseException(ReviewErrorCode.DUPLICATE_REVIEW);
         }
 
         // 리뷰 저장 (이미지가 FK로 참조하므로 먼저 저장)
@@ -256,11 +259,11 @@ public class ReviewService {
     @Transactional
     public ReviewDeletedResponseDto deleteReview(UUID reviewId, UUID userId) {
         // 리뷰 조회 (@SQLRestriction 으로 이미 삭제된 리뷰는 조회되지 않음 → 재삭제 자동 방지)
-        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new IllegalArgumentException("존재하지 않은 리뷰"));
+        Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new BaseException(ReviewErrorCode.REVIEW_NOT_FOUND));
 
         // 작성자 본인 확인
         if (!review.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("본인 아님");
+            throw new BaseException(ReviewErrorCode.NOT_REVIEW_AUTHOR);
         }
 
         // 연관 이미지 함께 soft delete

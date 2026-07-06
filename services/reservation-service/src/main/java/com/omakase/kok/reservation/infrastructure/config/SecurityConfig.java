@@ -25,7 +25,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/actuator/health", "/actuator/info", "/actuator/prometheus",
-                                "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**"
+                                "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
+                                "/api/v1/internal/**"
                         ).permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(new HeaderAuthenticationFilter(),

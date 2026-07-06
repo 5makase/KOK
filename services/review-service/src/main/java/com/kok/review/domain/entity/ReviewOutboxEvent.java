@@ -61,12 +61,13 @@ public class ReviewOutboxEvent {
         this.createdAt = LocalDateTime.now();
     }
 
+    //ReviewOutboxEvent 생성
     public static ReviewOutboxEvent create(UUID reviewId, String eventType, String payload, UUID storeId) {
         return ReviewOutboxEvent.builder()
                 .reviewId(reviewId)
                 .storeId(storeId)
                 .eventType(eventType)
-                .payload(payload)
+                .payload(payload)  //이벤트 타입과 찐 데이터가 담겨 있음.
                 .build();
     }
 

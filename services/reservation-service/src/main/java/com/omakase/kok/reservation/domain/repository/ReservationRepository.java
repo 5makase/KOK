@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,4 +56,36 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
                                              @Param("dateStart") LocalDateTime dateStart,
                                              @Param("dateEnd") LocalDateTime dateEnd,
                                              Pageable pageable);
+
+    @Query("""
+        SELECT r.slotId AS slotId, SUM(r.reservationSize) AS pendingSize
+        FROM Reservation r
+        WHERE r.slotId IN :slotIds AND r.status = :status AND r.deletedAt IS NULL
+        GROUP BY r.slotId
+        """)
+    List<SlotPendingSize> sumPendingSizeBySlotIds(@Param("slotIds") List<UUID> slotIds,
+                                                   @Param("status") ReservationStatus status);
+
+    interface SlotPendingSize {
+        UUID getSlotId();
+        Long getPendingSize();
+    }
+
+    @Query("""
+        SELECT r.slotId AS slotId, r.status AS status, r.scheduledAt AS scheduledAt
+        FROM Reservation r
+        WHERE r.storeId = :storeId AND r.deletedAt IS NULL
+          AND r.scheduledAt >= :from AND r.scheduledAt < :to
+          AND r.status IN :statuses
+        """)
+    List<ReservationStatsRow> findStatsRowsByStoreIdAndScheduledAtBetween(@Param("storeId") UUID storeId,
+                                                                           @Param("from") LocalDateTime from,
+                                                                           @Param("to") LocalDateTime to,
+                                                                           @Param("statuses") Collection<ReservationStatus> statuses);
+
+    interface ReservationStatsRow {
+        UUID getSlotId();
+        ReservationStatus getStatus();
+        LocalDateTime getScheduledAt();
+    }
 }

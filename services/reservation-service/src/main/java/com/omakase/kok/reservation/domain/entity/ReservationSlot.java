@@ -16,7 +16,10 @@ import java.util.UUID;
 
 @Getter
 @Entity
-@Table(name = "p_reservation_slots")
+@Table(
+    name = "p_reservation_slots",
+    indexes = @Index(name = "idx_reservation_slots_status_date", columnList = "status, slot_date, deleted_at")
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ReservationSlot extends BaseEntity {
 
@@ -76,6 +79,12 @@ public class ReservationSlot extends BaseEntity {
 
     public void cancel() {
         this.status = SlotStatus.CANCELLED;
+    }
+
+    // PAYMENT_PENDING은 remainingCapacity(CONFIRMED 기준)에 반영되어 있지 않으므로 차감해야
+    // Redis 잔여 인원과 맞춰야 할 실제 가용 인원이 된다. 정원 복구/드리프트 감지가 공통으로 사용.
+    public long effectiveRemainingCapacity(long pendingSize) {
+        return Math.max(0, this.remainingCapacity - pendingSize);
     }
 
     public void decreaseCapacity(int size) {

@@ -63,7 +63,7 @@ public class ReviewRatingSummary {
 
     //리뷰 추가 시 집계 반영
     public void addRating(int scaledRating) {
-        // 정수로 바뀐 개별 평점을, 총 평점 합계에 더하기
+        //예: scaledRating(15(1.5))를 별점 합계에 합산
         this.ratingSum += scaledRating;
         // 리뷰 개수도 1 증가
         this.reviewCount += 1;
@@ -85,13 +85,20 @@ public class ReviewRatingSummary {
         if (this.ratingSum < 0) this.ratingSum = 0;
     }
 
-    //평균 평점을 DECIMAL(3,2)로 반환
+    //총 별점 합계를 평균 계산하여 반환
     public BigDecimal getAverageRating() {
+        //reviewCount(리뷰개수)가 0이라면
         if (reviewCount == 0) {
+            //0.00으로 반환
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        return BigDecimal.valueOf(ratingSum)
-                .divide(BigDecimal.valueOf(10L * reviewCount), 2, RoundingMode.HALF_UP);
+        //reviewCount(리뷰개수)가 1이상이라면,
+        return BigDecimal.valueOf(ratingSum) /*ratingSum을 BigDecimal객체로 변환*/
+
+                .divide(/*ratingSum 나누기 (10L * reviewCount)을 계산하여 평점 평균을 계산*/
+                        BigDecimal.valueOf(10L * reviewCount),
+                        2,/*소수점 2자리까지 표현하는데*/
+                        RoundingMode.HALF_UP);/*잘리는 부분은 반올림하여 계산한다.*/
     }
 
     // 개별 별점을 1~5점으로 반올림해서, 그 점수 개수를 1 올리거나(추가) 내림(삭제)

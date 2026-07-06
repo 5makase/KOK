@@ -4,6 +4,8 @@ import com.omakase.kok.aiops.common.exception.AiOpsErrorCode;
 import com.omakase.kok.aiops.common.exception.BaseException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -26,7 +28,8 @@ public class ApiKeyInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         String provided = request.getHeader(API_KEY_HEADER);
-        if (provided == null || !provided.equals(apiKey)) {
+        if (provided == null
+                || !MessageDigest.isEqual(provided.getBytes(StandardCharsets.UTF_8), apiKey.getBytes(StandardCharsets.UTF_8))) {
             throw new BaseException(AiOpsErrorCode.INVALID_API_KEY);
         }
         return true;

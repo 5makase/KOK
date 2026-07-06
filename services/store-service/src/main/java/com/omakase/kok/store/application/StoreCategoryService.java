@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.CreateStoreCategoryCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCategoryCommand;
 import com.omakase.kok.store.application.result.StoreCategoryResult;
@@ -8,6 +9,7 @@ import com.omakase.kok.store.domain.entity.StoreCategory;
 import com.omakase.kok.store.domain.repository.StoreCategoryRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
+import com.omakase.kok.store.global.util.TransactionUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ public class StoreCategoryService {
 
     private final StoreCategoryRepository storeCategoryRepository;
     private final StoreRepository storeRepository;
+    private final StoreListCacheRepository storeListCacheRepository;
 
     @Transactional
     public StoreCategoryResult createCategory(CreateStoreCategoryCommand command) {
@@ -53,6 +56,8 @@ public class StoreCategoryService {
         validateNoDuplicate(newName, newSortOrder, category.getParent(), category.getCategoryId());
 
         category.update(command.getName(), command.getSortOrder());
+        // 카테고리명은 매장 목록 캐시(StoreResult.category)에 그대로 스냅샷돼 있음 -> 변경사항 반영을 위해 무효화
+        evictListCacheAfterCommit();
         return StoreCategoryResult.from(category);
     }
 
@@ -89,6 +94,11 @@ public class StoreCategoryService {
         return storeCategoryRepository.findAllCategories().stream()
                 .map(StoreCategoryResult::withChildren)
                 .toList();
+    }
+
+    // DB 커밋 완료 후 목록 캐시 무효화
+    private void evictListCacheAfterCommit() {
+        TransactionUtils.runAfterCommit(storeListCacheRepository::evictAll);
     }
 
 }

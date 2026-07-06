@@ -50,6 +50,9 @@ jobs:
         env:
           JWT_SECRET: dGVzdC1zZWNyZXQta2V5LWZvci1jaS1vbmx5LW5vdC1mb3ItcHJvZHVjdGlvbg==
           SLACK_BOT_TOKEN: xoxb-dummy-token-for-ci
+          # StoreQueryRepositoryDistanceIntegrationTest용 - 위 postgres 서비스 계정과 일치시킴
+          TEST_PG_USERNAME: user
+          TEST_PG_PASSWORD: password
 
       - name: 테스트 결과 리포트 저장
         uses: actions/upload-artifact@v4

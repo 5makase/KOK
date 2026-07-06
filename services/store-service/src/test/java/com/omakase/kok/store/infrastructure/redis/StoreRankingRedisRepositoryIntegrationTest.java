@@ -1,6 +1,7 @@
 package com.omakase.kok.store.infrastructure.redis;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,11 @@ class StoreRankingRedisRepositoryIntegrationTest {
 
     @Autowired StoreRankingRedisRepository repository;
     @Autowired RedisTemplate<String, String> redisTemplate;
+
+    @BeforeEach
+    void setUp() {
+        cleanUp();
+    }
 
     @AfterEach
     void cleanUp() {

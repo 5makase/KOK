@@ -3,6 +3,7 @@ package com.omakase.kok.store.infrastructure.kafka;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.redisson.Redisson;
@@ -37,6 +38,12 @@ class StoreOutboxPublisherLockIntegrationTest {
     @AfterAll
     static void shutdownRedisson() {
         redissonClient.shutdown();
+    }
+
+    // 이전 실행이 비정상 종료돼 락이 남아있으면 첫 테스트가 tryLock에 전부 실패해 죽을 수 있어, 시작 전에 동일하게 강제 해제
+    @BeforeEach
+    void setUp() {
+        cleanUp();
     }
 
     @AfterEach

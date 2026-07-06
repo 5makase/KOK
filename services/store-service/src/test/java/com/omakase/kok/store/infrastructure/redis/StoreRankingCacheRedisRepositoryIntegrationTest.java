@@ -2,6 +2,7 @@ package com.omakase.kok.store.infrastructure.redis;
 
 import com.omakase.kok.store.application.result.StoreRankingResult;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,13 @@ class StoreRankingCacheRedisRepositoryIntegrationTest {
 
     @Autowired StoreRankingCacheRedisRepository repository;
     @Autowired RedisTemplate<String, String> redisTemplate;
+
+    // 이전 실행이 비정상 종료되거나 수동 테스트로 store:ranking:response:*에 데이터가 남았을 때
+    // 첫 테스트가 그 잔여 데이터 때문에 실패할 수 있어, 시작 전에도 동일하게 정리한다
+    @BeforeEach
+    void setUp() {
+        cleanUp();
+    }
 
     @AfterEach
     void cleanUp() {

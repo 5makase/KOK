@@ -3,6 +3,7 @@ package com.omakase.kok.aiops.prometheus;
 import com.omakase.kok.aiops.prometheus.dto.PromResponse;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -11,8 +12,19 @@ public class PrometheusClient {
 
     private final RestClient restClient;
 
-    public PrometheusClient(@Value("${prometheus.base-url}") String baseUrl) {
-        this.restClient = RestClient.create(baseUrl);
+    public PrometheusClient(
+            @Value("${prometheus.base-url}") String baseUrl,
+            @Value("${prometheus.connect-timeout-ms:1000}") int connectTimeout,
+            @Value("${prometheus.read-timeout-ms:5000}") int readTimeout
+    ) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeout);
+        factory.setReadTimeout(readTimeout);
+
+        this.restClient = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(factory)
+                .build();
     }
 
     /**

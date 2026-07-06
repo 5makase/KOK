@@ -1,5 +1,6 @@
 package com.omakase.kok.aiops.promql;
 
+import com.omakase.kok.aiops.prometheus.MetricConventions;
 import com.omakase.kok.aiops.prometheus.PrometheusClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
@@ -21,12 +22,12 @@ public class NlToPromQL {
                 .system("""
                         너는 PromQL 전문가다. 사용자의 질문을 PromQL 한 줄로 변환하라.
                         우리 메트릭 규칙:
-                        - 서비스 구분은 job 레이블로 한다 (예: job="waiting-service"). service 레이블은 존재하지 않는다.
+                        - %s
                         - HTTP: http_server_requests_seconds_count{job, status, uri}
                         - 지연시간 히스토그램: http_server_requests_seconds_bucket
                         - p99는 histogram_quantile(0.99, sum(rate(...bucket[5m])) by (le))
                         실행은 하지 말고 쿼리와 이유만 채워라.
-                        """)
+                        """.formatted(MetricConventions.JOB_LABEL_RULE))
                 .user(question)
                 .call()
                 .entity(PromQLPlan.class);

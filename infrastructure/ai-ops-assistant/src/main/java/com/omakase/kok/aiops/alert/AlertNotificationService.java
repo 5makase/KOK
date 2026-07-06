@@ -1,7 +1,6 @@
 package com.omakase.kok.aiops.alert;
 
 import com.omakase.kok.aiops.slack.SlackClient;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -11,14 +10,21 @@ import org.springframework.stereotype.Service;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AlertNotificationService {
 
     private final AlertAnalyzer alertAnalyzer;
     private final SlackClient slackClient;
+    private final String alertChannelId;
 
-    @Value("${slack.alert-channel-id}")
-    private String alertChannelId;
+    public AlertNotificationService(
+            AlertAnalyzer alertAnalyzer,
+            SlackClient slackClient,
+            @Value("${slack.alert-channel-id}") String alertChannelId
+    ) {
+        this.alertAnalyzer = alertAnalyzer;
+        this.slackClient = slackClient;
+        this.alertChannelId = alertChannelId;
+    }
 
     public String analyzeAndNotify(String service) {
         String summary = alertAnalyzer.analyze(service);

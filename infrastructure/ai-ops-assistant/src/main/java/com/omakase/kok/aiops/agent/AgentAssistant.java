@@ -1,5 +1,6 @@
 package com.omakase.kok.aiops.agent;
 
+import com.omakase.kok.aiops.prometheus.MetricConventions;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -19,8 +20,8 @@ public class AgentAssistant {
                 .system("""
                         너는 SRE 보조다. 답하기 위해 메트릭이 필요하면 제공된 도구를 사용하라.
                         여러 번 조회해도 좋다. 모든 결론은 조회한 수치를 근거로 제시하라.
-                        job 레이블로 서비스를 구분한다 (service 레이블은 없다).
-                        """)
+                        %s
+                        """.formatted(MetricConventions.JOB_LABEL_RULE))
                 .user(question)
                 .tools(tools)
                 .call()

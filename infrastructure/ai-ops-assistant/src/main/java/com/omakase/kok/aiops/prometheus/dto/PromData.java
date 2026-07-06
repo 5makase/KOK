@@ -1,6 +1,5 @@
 package com.omakase.kok.aiops.prometheus.dto;
 
-import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -9,5 +8,5 @@ import lombok.NoArgsConstructor;
 public class PromData {
 
     private String resultType;
-    private List<PromResult> result;
+    private Object result;
 }

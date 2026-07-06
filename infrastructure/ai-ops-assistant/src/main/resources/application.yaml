@@ -10,7 +10,7 @@ spring:
         api-key: ${GEMINI_API_KEY}
         chat:
           options:
-            model: gemini-3.5-flash
+            model: gemini-2.5-flash
 
 prometheus:
   base-url: ${PROMETHEUS_BASE_URL:http://localhost:9090}

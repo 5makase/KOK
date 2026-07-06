@@ -156,7 +156,7 @@ class StoreCategoryServiceTest {
 
         assertThat(result.getName()).isEqualTo("중식");
             // 카테고리명이 매장 목록 캐시(StoreResult.category)에 스냅샷돼 있으므로 변경 시 무효화되어야 함
-        verify(storeListCacheRepository).evictAll();
+        verify(storeListCacheRepository).evictAllAfterCommit();
     }
 
     @Test

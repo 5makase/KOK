@@ -81,7 +81,7 @@ class StoreAmenityServiceTest {
         assertThat(result.getAmenities().get(0).getAmenityType()).isEqualTo(AmenityType.WIFI.name());
         assertThat(existing.isDeleted()).isTrue();
         // 편의시설 구성이 바뀌면 매장 목록 캐시(검색 필터 조건)도 무효화되어야 함
-        verify(storeListCacheRepository).evictAll();
+        verify(storeListCacheRepository).evictAllAfterCommit();
     }
 
     @Test
@@ -168,7 +168,7 @@ class StoreAmenityServiceTest {
 
         assertThat(amenity.isDeleted()).isTrue();
         assertThat(amenity.getDeletedBy()).isEqualTo(ownerId);
-        verify(storeListCacheRepository).evictAll();
+        verify(storeListCacheRepository).evictAllAfterCommit();
     }
 
     @Test

@@ -11,7 +11,6 @@ import com.omakase.kok.store.domain.enums.AmenityType;
 import com.omakase.kok.store.domain.repository.StoreAmenityRepository;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
-import com.omakase.kok.store.global.util.TransactionUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,7 +70,7 @@ public class StoreAmenityService {
 
         storeAmenityRepository.saveAll(toSave);
         // 캐시된 결과가 새 편의시설 구성을 반영하도록 무효화
-        evictListCacheAfterCommit();
+        storeListCacheRepository.evictAllAfterCommit();
 
         List<StoreAmenityResult> activeAmenities = toSave.stream()
                 .filter(a -> !a.isDeleted())
@@ -94,7 +93,7 @@ public class StoreAmenityService {
             throw new BaseException(StoreErrorCode.AMENITY_ALREADY_DELETED);
         }
         amenity.delete(requesterId);
-        evictListCacheAfterCommit();
+        storeListCacheRepository.evictAllAfterCommit();
     }
 
     public List<StoreAmenityResult> getAmenities(UUID storeId) {
@@ -108,11 +107,6 @@ public class StoreAmenityService {
     private StoreAmenity findAmenity(UUID storeId, UUID amenityId) {
         return storeAmenityRepository.findAmenity(storeId, amenityId)
                 .orElseThrow(() -> new BaseException(StoreErrorCode.AMENITY_NOT_FOUND));
-    }
-
-    // DB 커밋 완료 후 목록 캐시 무효화 -> 롤백 시 불필요한 eviction 방지
-    private void evictListCacheAfterCommit() {
-        TransactionUtils.runAfterCommit(storeListCacheRepository::evictAll);
     }
 
 }

@@ -1,6 +1,9 @@
 package com.omakase.kok.aiops.alert;
 
+import com.omakase.kok.aiops.common.exception.AiOpsErrorCode;
+import com.omakase.kok.aiops.common.exception.BaseException;
 import com.omakase.kok.aiops.prometheus.PrometheusClient;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -13,10 +16,14 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AlertAnalyzer {
 
+    private static final Pattern SERVICE_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]+$");
+
     private final ChatClient chatClient;
     private final PrometheusClient prometheus;
 
     public String analyze(String service) {
+        validateServiceName(service);
+
         String context = """
                 [모니터링 대상 여부(up)] %s
                 [지연시간 p99] %s
@@ -42,5 +49,11 @@ public class AlertAnalyzer {
                 .user("서비스: %s\n%s".formatted(service, context))
                 .call()
                 .content();
+    }
+
+    private void validateServiceName(String service) {
+        if (service == null || !SERVICE_NAME_PATTERN.matcher(service).matches()) {
+            throw new BaseException(AiOpsErrorCode.INVALID_SERVICE_NAME);
+        }
     }
 }

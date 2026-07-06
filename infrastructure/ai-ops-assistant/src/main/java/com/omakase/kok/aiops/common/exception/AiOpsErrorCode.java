@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 public enum AiOpsErrorCode implements ErrorCode {
 
     INVALID_API_KEY(HttpStatus.UNAUTHORIZED, "AIOPS-001", "유효하지 않은 API 키입니다."),
+    INVALID_SERVICE_NAME(HttpStatus.BAD_REQUEST, "AIOPS-002", "유효하지 않은 서비스명입니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AIOPS-999", "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;

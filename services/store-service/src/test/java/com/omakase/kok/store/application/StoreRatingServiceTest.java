@@ -336,8 +336,8 @@ class StoreRatingServiceTest {
         StoreCategory category = StoreCategory.create("한식", 1, null);
         Store closedStore = Store.create(UUID.randomUUID(), category, "휴무 매장", null,
                 new Address("서울", "강남구", null, null, null, null), null, null);
-        closedStore.changeStatus(StoreStatus.OPEN, UUID.randomUUID());
-        closedStore.changeStatus(StoreStatus.CLOSED, UUID.randomUUID());
+        closedStore.changeStatus(StoreStatus.OPEN, 7, UUID.randomUUID());
+        closedStore.changeStatus(StoreStatus.CLOSED, 7, UUID.randomUUID());
 
         when(storeRepository.findById(storeId)).thenReturn(Optional.of(closedStore));
 

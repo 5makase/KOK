@@ -57,6 +57,11 @@ public class StoreRepositoryImpl implements StoreRepository {
 
     @Override
     public List<Store> findAllRankableStores() {
-        return storeJpaRepository.findRankableStoresWithCategory(StoreStatus.OPEN);
+        return storeQueryRepository.findRankableStores(StoreStatus.OPEN);
+    }
+
+    @Override
+    public List<Store> findTopRankableStores(int limit) {
+        return storeQueryRepository.findTopRankableStores(StoreStatus.OPEN, limit);
     }
 }

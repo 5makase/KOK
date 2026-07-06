@@ -219,13 +219,28 @@ class StoreRatingServiceTest {
     }
 
     @Test
+    @DisplayName("ZSet이 비어있고 DB에도 랭킹 가능 매장이 없으면 재구성 시도 없이 빈 리스트 반환")
+    void getRanking_returns_empty_when_zset_empty_and_no_rankable_stores_in_db() {
+        when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
+        when(storeRankingRepository.getTopRanking(5)).thenReturn(List.of());
+        when(storeRepository.findAllRankableStores()).thenReturn(List.of());
+
+        List<StoreRankingResult> results = storeRatingService.getRanking(5);
+
+        assertThat(results).isEmpty();
+        verify(storeRankingRepository, never()).tryAcquireRebuildLock();
+        verify(storeRankingRepository, never()).rebuildAll(any());
+        verify(storeRankingCacheRepository, never()).set(eq(5), any());
+    }
+
+    @Test
     @DisplayName("ZSet 조회 자체가 예외를 던지면(Redis 다운) 재구성 시도 없이 DB 직접 조회로 응답")
     void getRanking_falls_back_to_db_without_rebuild_when_redis_throws() {
         Store store1 = makeOpenStore("1위 매장");
 
         when(storeRankingCacheRepository.get(5)).thenReturn(Optional.empty());
         when(storeRankingRepository.getTopRanking(5)).thenThrow(new RuntimeException("Redis 연결 실패"));
-        when(storeRepository.findAllRankableStores()).thenReturn(List.of(store1));
+        when(storeRepository.findTopRankableStores(5)).thenReturn(List.of(store1));
 
         List<StoreRankingResult> results = storeRatingService.getRanking(5);
 

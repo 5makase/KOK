@@ -30,8 +30,7 @@ public class StoreRatingService {
     private final StoreListCacheRepository storeListCacheRepository;
     private final StoreRankingCacheRepository storeRankingCacheRepository;
 
-    // 인기 매장 랭킹 조회: Redis(응답 캐시 → 순위 데이터) 응답
-    // Redis 장애 시, DB를 직접 조회해 랭킹 API 자체는 계속 정상 동작하도록 한다
+    // Redis 장애 시에도 DB로 fallback해 API 자체는 계속 응답하도록
     // @Transactional: store.getCategory()가 LAZY이므로 트랜잭션 범위 필수
     @Transactional(readOnly = true)
     public List<StoreRankingResult> getRanking(int size) {
@@ -54,8 +53,7 @@ public class StoreRatingService {
         // 2-2) Redis는 정상 응답했지만 빈 배열[] 응답(데이터 유실) -> DB 기준으로 Redis까지 재구성
         if (rankedIds.isEmpty()) return rebuildRankingFromDb(safeSize);
 
-        // 3) 정상 케이스 -> 순위(매장 ID) 목록으로 매장 상세 정보를 조회해 응답 생성
-        // Redis 순서(rank)를 보존하기 위해 Map으로 조회 후 rankedIds 순서대로 재정렬
+        // 3) 정상 케이스 -> Redis 순서(rank)를 보존하기 위해 Map으로 조회 후 rankedIds 순서대로 재정렬
         Map<UUID, Store> storeMap = storeRepository.findActiveStoresByIds(rankedIds)
                 .stream().collect(Collectors.toMap(Store::getStoreId, s -> s));
 
@@ -91,9 +89,9 @@ public class StoreRatingService {
         return results;
     }
 
-    // Redis 장애 시 DB 조회
+    // Redis 장애 시 DB 조회 - 이번 응답(상위 safeSize 개)만 만들면 되므로 전체를 긁지 않고 개수 제한 조회
     private List<StoreRankingResult> readRankingFromDbOnly(int safeSize) {
-        return buildTopResults(storeRepository.findAllRankableStores(), safeSize);
+        return buildTopResults(storeRepository.findTopRankableStores(safeSize), safeSize);
     }
 
     private List<StoreRankingResult> buildTopResults(List<Store> rankableStores, int safeSize) {
@@ -111,8 +109,7 @@ public class StoreRatingService {
             return;
         }
         Store store = storeOpt.get();
-        // soft delete(deletedAt != null) 또는 OPEN이 아닌 매장은 평점 갱신 skip
-        // deleteStore()는 status 변경 없이 deletedAt만 세팅하므로 isDeleted() 별도 체크 필요
+        // deleteStore()는 status 변경 없이 deletedAt만 세팅하므로, OPEN 여부와 별개로 isDeleted()도 확인해야 함
         if (store.isDeleted() || !store.isAvailableForService()) {
             log.info("비활성 매장 평점 갱신 skip. storeId={}", storeId);
             return;
@@ -131,7 +128,6 @@ public class StoreRatingService {
         );
     }
 
-    // rankable(=Store.isRankable())이 false면 랭킹에서 제거, true면 점수 갱신
     private void applyRankingUpdate(UUID storeId, BigDecimal averageRating, boolean rankable) {
         if (rankable) {
             storeRankingRepository.updateScore(storeId, averageRating);

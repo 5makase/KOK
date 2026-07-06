@@ -46,13 +46,13 @@ public class StoreRatingService {
             // 2) 캐시가 없으면 순위(매장 ID 목록) 조회
             rankedIds = storeRankingRepository.getTopRanking(safeSize);
         } catch (RuntimeException e) {
-            // 2-1) Redis에 연결 자체가 안 되는 상황 -> DB 응답
+            // 2-1) Redis에 연결 자체가 안 되는 상황 -> DB만 조회, Redis 재구성은 시도하지 않음
             log.warn("store:ranking 조회 실패 - DB 직접 조회로 응답. size={}", safeSize, e);
-            return buildRankingFromDb(safeSize);
+            return readRankingFromDbOnly(safeSize);
         }
 
-        // 2-2) Redis는 정상 응답했지만 빈 배열[] 응답(데이터 유실) -> DB 기준 복구
-        if (rankedIds.isEmpty()) return recoverRankingFromDb(safeSize);
+        // 2-2) Redis는 정상 응답했지만 빈 배열[] 응답(데이터 유실) -> DB 기준으로 Redis까지 재구성
+        if (rankedIds.isEmpty()) return rebuildRankingFromDb(safeSize);
 
         // 3) 정상 케이스 -> 순위(매장 ID) 목록으로 매장 상세 정보를 조회해 응답 생성
         // Redis 순서(rank)를 보존하기 위해 Map으로 조회 후 rankedIds 순서대로 재정렬
@@ -73,9 +73,9 @@ public class StoreRatingService {
         return results;
     }
 
-    // Redis의 순위 데이터가 통째로 비어있을 때
-    // DB에서 순위를 다시 계산해 응답을 만들고, 그중 한 요청만 Redis에 순위 데이터를 다시 채워 넣는다.
-    private List<StoreRankingResult> recoverRankingFromDb(int safeSize) {
+    // Redis의 순위 데이터가 통째로 비어있을 때(Redis 자체는 정상 응답한 상태) 호출된다.
+    // DB에서 순위를 다시 계산해 응답을 만들고, 그중 한 요청만 Redis에 순위 데이터를 다시 채워 넣는다(재구성).
+    private List<StoreRankingResult> rebuildRankingFromDb(int safeSize) {
         List<Store> rankableStores = storeRepository.findAllRankableStores();
         if (rankableStores.isEmpty()) return List.of();
 
@@ -91,8 +91,8 @@ public class StoreRatingService {
         return results;
     }
 
-    // Redis 장애 -> DB 조회
-    private List<StoreRankingResult> buildRankingFromDb(int safeSize) {
+    // Redis 장애 시 DB 조회
+    private List<StoreRankingResult> readRankingFromDbOnly(int safeSize) {
         return buildTopResults(storeRepository.findAllRankableStores(), safeSize);
     }
 

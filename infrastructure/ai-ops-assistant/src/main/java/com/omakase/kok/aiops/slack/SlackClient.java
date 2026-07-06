@@ -1,6 +1,5 @@
 package com.omakase.kok.aiops.slack;
 
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -10,6 +9,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.Map;
 
 /**
  * 지정된 채널에 알람 분석 결과를 게시하는 Slack 봇 클라이언트 (chat.postMessage만 지원)
@@ -32,7 +33,7 @@ public class SlackClient {
 
     public void postMessage(String channelId, String message) {
         HttpEntity<Map<String, String>> request = new HttpEntity<>(
-                Map.of("channel", channelId, "text", message),
+                Map.of("channel", channelId, "text", escapeSlackText(message)),
                 createAuthHeaders()
         );
 
@@ -44,6 +45,12 @@ public class SlackClient {
         if (body == null || !Boolean.TRUE.equals(body.get("ok"))) {
             throw new IllegalStateException("chat.postMessage 실패: error=" + (body != null ? body.get("error") : "null"));
         }
+    }
+
+    private String escapeSlackText(String text) {
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     private HttpHeaders createAuthHeaders() {

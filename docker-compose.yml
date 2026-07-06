@@ -97,10 +97,12 @@ services:
     container_name: kok-prometheus
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
+      - kok-prometheus-data:/prometheus
     networks:
       - kok-network
     extra_hosts:
@@ -111,20 +113,6 @@ services:
     container_name: kok-zipkin
     ports:
       - "${ZIPKIN_PORT:-9411}:9411"
-    networks:
-      - kok-network
-
-  prometheus:
-    image: prom/prometheus:v2.53.0
-    container_name: kok-prometheus
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-    volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - kok-prometheus-data:/prometheus
     networks:
       - kok-network
 

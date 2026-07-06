@@ -67,9 +67,9 @@ class StoreTest {
     @DisplayName("changeStatus(PERMANENTLY_CLOSED) 시 soft delete 동시 처리")
     void change_status_permanently_closed_deletes() {
         Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
-        store.changeStatus(StoreStatus.OPEN, ownerId); // PREPARING → OPEN
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId); // PREPARING → OPEN
 
-        store.changeStatus(StoreStatus.PERMANENTLY_CLOSED, ownerId);
+        store.changeStatus(StoreStatus.PERMANENTLY_CLOSED, 0, ownerId);
 
         assertThat(store.getStatus()).isEqualTo(StoreStatus.PERMANENTLY_CLOSED);
         assertThat(store.isDeleted()).isTrue();
@@ -80,10 +80,31 @@ class StoreTest {
     void change_status_invalid_transition_throws() {
         Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
         // PREPARING 상태에서 CLOSED 전이 불가
-        assertThatThrownBy(() -> store.changeStatus(StoreStatus.CLOSED, ownerId))
+        assertThatThrownBy(() -> store.changeStatus(StoreStatus.CLOSED, 0, ownerId))
                 .isInstanceOf(BaseException.class)
                 .extracting(e -> ((BaseException) e).getErrorCode())
                 .isEqualTo(StoreErrorCode.INVALID_STORE_STATUS_TRANSITION);
+    }
+
+    @Test
+    @DisplayName("OPEN 전환 시 영업시간이 7일치 미만이면 예외")
+    void change_status_open_with_insufficient_hours_throws() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+
+        assertThatThrownBy(() -> store.changeStatus(StoreStatus.OPEN, 6, ownerId))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
+    }
+
+    @Test
+    @DisplayName("OPEN 전환 시 영업시간이 7일치 이상이면 성공")
+    void change_status_open_with_sufficient_hours_succeeds() {
+        Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
+
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+
+        assertThat(store.getStatus()).isEqualTo(StoreStatus.OPEN);
     }
 
     @Test
@@ -124,7 +145,7 @@ class StoreTest {
 
         assertThat(store.isAvailableForService()).isFalse(); // PREPARING
 
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         assertThat(store.isAvailableForService()).isTrue();
     }
 
@@ -132,7 +153,7 @@ class StoreTest {
     @DisplayName("isRankable() - 영업 중이고 리뷰가 있으면 true")
     void is_rankable_when_open_and_has_reviews() {
         Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         store.updateRating(new BigDecimal("4.50"), 3);
 
         assertThat(store.isRankable()).isTrue();
@@ -151,7 +172,7 @@ class StoreTest {
     @DisplayName("isRankable() - 리뷰가 없으면 영업 중이어도 false")
     void is_not_rankable_when_no_reviews() {
         Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
 
         assertThat(store.isRankable()).isFalse();
     }
@@ -160,7 +181,7 @@ class StoreTest {
     @DisplayName("isRankable() - 삭제된 매장은 영업 중이고 리뷰가 있어도 false")
     void is_not_rankable_when_deleted() {
         Store store = Store.create(ownerId, category, "이름", null, address(), null, null);
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         store.updateRating(new BigDecimal("4.50"), 3);
         store.delete(ownerId);
 

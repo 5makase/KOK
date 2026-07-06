@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.CreateStoreCategoryCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCategoryCommand;
 import com.omakase.kok.store.application.result.StoreCategoryResult;
@@ -22,6 +23,7 @@ public class StoreCategoryService {
 
     private final StoreCategoryRepository storeCategoryRepository;
     private final StoreRepository storeRepository;
+    private final StoreListCacheRepository storeListCacheRepository;
 
     @Transactional
     public StoreCategoryResult createCategory(CreateStoreCategoryCommand command) {
@@ -53,6 +55,8 @@ public class StoreCategoryService {
         validateNoDuplicate(newName, newSortOrder, category.getParent(), category.getCategoryId());
 
         category.update(command.getName(), command.getSortOrder());
+        // 카테고리명은 매장 목록 캐시(StoreResult.category)에 그대로 스냅샷돼 있음 -> 변경사항 반영을 위해 무효화
+        storeListCacheRepository.evictAllAfterCommit();
         return StoreCategoryResult.from(category);
     }
 

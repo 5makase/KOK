@@ -137,7 +137,7 @@ class StoreQueryRepositoryIntegrationTest {
         Store deleted = openStore("삭제된가게", "서울", "강남구", GANGNAM_LAT, GANGNAM_LNG);
         persist(deleted);
         // PERMANENTLY_CLOSED 전이 시 soft delete(deletedAt) 자동 설정
-        deleted.changeStatus(StoreStatus.PERMANENTLY_CLOSED, ownerId);
+        deleted.changeStatus(StoreStatus.PERMANENTLY_CLOSED, 0, ownerId);
         em.flush();
 
         Page<Store> result = repository.search(
@@ -158,7 +158,7 @@ class StoreQueryRepositoryIntegrationTest {
         persist(openStore("일식가게", "서울", "강남구", GANGNAM_LAT, GANGNAM_LNG));
         Store otherStore = Store.create(ownerId, other, "중식가게", null,
                 new Address("서울", "강남구", null, null, GANGNAM_LAT, GANGNAM_LNG), null, 50);
-        otherStore.changeStatus(StoreStatus.OPEN, ownerId);
+        otherStore.changeStatus(StoreStatus.OPEN, 7, ownerId);
         persist(otherStore);
 
         Page<Store> result = repository.search(
@@ -189,7 +189,7 @@ class StoreQueryRepositoryIntegrationTest {
         persist(openStore("일식가게", "서울", "강남구", GANGNAM_LAT, GANGNAM_LNG));
         Store otherStore = Store.create(ownerId, other, "중식가게", null,
                 new Address("서울", "강남구", null, null, GANGNAM_LAT, GANGNAM_LNG), null, 50);
-        otherStore.changeStatus(StoreStatus.OPEN, ownerId);
+        otherStore.changeStatus(StoreStatus.OPEN, 7, ownerId);
         persist(otherStore);
 
         Page<Store> result = repository.search(
@@ -332,7 +332,7 @@ class StoreQueryRepositoryIntegrationTest {
         Store store = Store.create(ownerId, category, name, null,
                 new Address(sido, sigungu, null, null, lat, lng), null, 50);
         // PREPARING → OPEN
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         return store;
     }
 

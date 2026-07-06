@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.command.CreateStoreCategoryCommand;
 import com.omakase.kok.store.application.command.UpdateStoreCategoryCommand;
 import com.omakase.kok.store.application.result.StoreCategoryResult;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,6 +35,7 @@ class StoreCategoryServiceTest {
 
     @Mock StoreCategoryRepository storeCategoryRepository;
     @Mock StoreRepository storeRepository;
+    @Mock StoreListCacheRepository storeListCacheRepository;
 
     @InjectMocks
     StoreCategoryService storeCategoryService;
@@ -152,6 +155,8 @@ class StoreCategoryServiceTest {
         StoreCategoryResult result = storeCategoryService.updateCategory(command);
 
         assertThat(result.getName()).isEqualTo("중식");
+            // 카테고리명이 매장 목록 캐시(StoreResult.category)에 스냅샷돼 있으므로 변경 시 무효화되어야 함
+        verify(storeListCacheRepository).evictAllAfterCommit();
     }
 
     @Test

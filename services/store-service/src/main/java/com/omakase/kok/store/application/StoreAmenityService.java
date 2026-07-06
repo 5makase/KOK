@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.application.result.StoreAmenityResult;
@@ -29,6 +30,7 @@ public class StoreAmenityService {
     private final StoreAmenityRepository storeAmenityRepository;
     private final StoreFinder storeFinder;
     private final StoreOwnerValidator storeOwnerValidator;
+    private final StoreListCacheRepository storeListCacheRepository;
 
     @Transactional
     public StoreAmenityResult.Bulk syncAmenities(AddStoreAmenityCommand command, String role) {
@@ -67,6 +69,8 @@ public class StoreAmenityService {
                 });
 
         storeAmenityRepository.saveAll(toSave);
+        // 캐시된 결과가 새 편의시설 구성을 반영하도록 무효화
+        storeListCacheRepository.evictAllAfterCommit();
 
         List<StoreAmenityResult> activeAmenities = toSave.stream()
                 .filter(a -> !a.isDeleted())
@@ -89,6 +93,7 @@ public class StoreAmenityService {
             throw new BaseException(StoreErrorCode.AMENITY_ALREADY_DELETED);
         }
         amenity.delete(requesterId);
+        storeListCacheRepository.evictAllAfterCommit();
     }
 
     public List<StoreAmenityResult> getAmenities(UUID storeId) {

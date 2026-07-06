@@ -1,5 +1,6 @@
 package com.omakase.kok.aiops.promql;
 
+import com.omakase.kok.aiops.common.dto.ApiResponse;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +16,8 @@ public class QueryController {
     private final NlToPromQL nlToPromQL;
 
     @PostMapping("/api/query")
-    public String query(@RequestBody QueryRequest request) {
-        return nlToPromQL.answer(request.getQuestion());
+    public ApiResponse<String> query(@RequestBody QueryRequest request) {
+        return ApiResponse.success(nlToPromQL.answer(request.getQuestion()));
     }
 
     @Getter

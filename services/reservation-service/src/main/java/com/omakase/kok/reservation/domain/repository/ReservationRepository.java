@@ -32,9 +32,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
     @Query("""
         SELECT r FROM Reservation r
         WHERE r.userId = :userId AND r.deletedAt IS NULL
-          AND (:status IS NULL OR r.status = :status)
-          AND (:from IS NULL OR r.scheduledAt >= :from)
-          AND (:to IS NULL OR r.scheduledAt < :to)
+          AND (cast(:status as string) IS NULL OR r.status = :status)
+          AND (cast(:from as timestamp) IS NULL OR r.scheduledAt >= :from)
+          AND (cast(:to as timestamp) IS NULL OR r.scheduledAt < :to)
         ORDER BY r.scheduledAt DESC, r.reservationId DESC
         """)
     Page<Reservation> findMyReservations(@Param("userId") UUID userId,
@@ -46,9 +46,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
     @Query("""
         SELECT r FROM Reservation r
         WHERE r.storeId = :storeId AND r.deletedAt IS NULL
-          AND (:status IS NULL OR r.status = :status)
-          AND (:dateStart IS NULL OR r.scheduledAt >= :dateStart)
-          AND (:dateEnd IS NULL OR r.scheduledAt < :dateEnd)
+          AND (cast(:status as string) IS NULL OR r.status = :status)
+          AND (cast(:dateStart as timestamp) IS NULL OR r.scheduledAt >= :dateStart)
+          AND (cast(:dateEnd as timestamp) IS NULL OR r.scheduledAt < :dateEnd)
         ORDER BY r.scheduledAt DESC, r.reservationId DESC
         """)
     Page<Reservation> findStoreReservations(@Param("storeId") UUID storeId,

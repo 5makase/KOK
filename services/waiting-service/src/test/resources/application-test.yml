@@ -31,6 +31,13 @@ waiting:
         name: waiting.events.v1
         partitions: 1
         replicas: 1
+    dlt:
+      store-events:
+        name: store.events.v1.DLT
+        retry-interval-ms: 1000
+        max-retry-attempts: 3
+        partitions: 1
+        replicas: 1
     publisher:
       fixed-delay-ms: 5000
       failed-fixed-delay-ms: 60000

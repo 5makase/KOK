@@ -16,6 +16,7 @@ import java.util.Map;
 @EnableConfigurationProperties({
         WaitingKafkaProperties.class,
         WaitingKafkaPublisherProperties.class,
+        StoreEventDltProperties.class,
         WaitingAutoNoShowProperties.class
 })
 public class KafkaProducerConfig {
@@ -35,6 +36,14 @@ public class KafkaProducerConfig {
         return TopicBuilder.name(waitingKafkaProperties.name())
                 .partitions(waitingKafkaProperties.partitions())
                 .replicas(waitingKafkaProperties.replicas())
+                .build();
+    }
+
+    @Bean // store.events.v1 소비 실패 메시지를 격리할 DLT 토픽을 생성하는 빈
+    public NewTopic storeEventsDltTopic(StoreEventDltProperties storeEventDltProperties) {
+        return TopicBuilder.name(storeEventDltProperties.name())
+                .partitions(storeEventDltProperties.partitions())
+                .replicas(storeEventDltProperties.replicas())
                 .build();
     }
 }

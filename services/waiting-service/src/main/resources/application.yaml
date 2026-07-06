@@ -53,6 +53,13 @@ waiting:
         name: ${WAITING_EVENTS_TOPIC:waiting.events.v1}
         partitions: ${WAITING_EVENTS_TOPIC_PARTITIONS:1}
         replicas: ${WAITING_EVENTS_TOPIC_REPLICAS:1}
+    dlt:
+      store-events:
+        name: ${STORE_EVENTS_DLT_TOPIC:store.events.v1.DLT}
+        retry-interval-ms: ${STORE_EVENTS_DLT_RETRY_INTERVAL_MS:1000}
+        max-retry-attempts: ${STORE_EVENTS_DLT_MAX_RETRY_ATTEMPTS:3}
+        partitions: ${STORE_EVENTS_DLT_TOPIC_PARTITIONS:1}
+        replicas: ${STORE_EVENTS_DLT_TOPIC_REPLICAS:1}
     publisher:
       fixed-delay-ms: ${WAITING_EVENTS_PUBLISHER_FIXED_DELAY_MS:5000}
       failed-fixed-delay-ms: ${WAITING_EVENTS_FAILED_PUBLISHER_FIXED_DELAY_MS:60000}

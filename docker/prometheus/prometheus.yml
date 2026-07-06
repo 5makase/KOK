@@ -1,5 +1,6 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
   - job_name: store-service
@@ -14,3 +15,19 @@ scrape_configs:
   #   static_configs:
   #     - targets:
   #         - host.docker.internal:8001
+
+  - job_name: "waiting-service"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - "host.docker.internal:8004"
+
+  - job_name: "redis"
+    static_configs:
+      - targets:
+          - "redis-exporter:9121"
+
+  - job_name: "kafka"
+    static_configs:
+      - targets:
+          - "kafka-exporter:9308"

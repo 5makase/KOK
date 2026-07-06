@@ -35,6 +35,18 @@ services:
     networks:
       - kok-network
 
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: kok-redis-exporter
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - kok-network
+
   kafka:
     image: apache/kafka:4.1.1
     container_name: kok-kafka
@@ -52,6 +64,18 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
       - kok-kafka-data:/var/lib/kafka/data
+    networks:
+      - kok-network
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: kok-kafka-exporter
+    command:
+      - "--kafka.server=kafka:29092"
+    ports:
+      - "${KAFKA_EXPORTER_PORT:-9308}:9308"
+    depends_on:
+      - kafka
     networks:
       - kok-network
 
@@ -90,6 +114,20 @@ services:
     networks:
       - kok-network
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: kok-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - kok-prometheus-data:/prometheus
+    networks:
+      - kok-network
+
   loki:
     image: grafana/loki:3.5.0
     container_name: kok-loki
@@ -98,6 +136,19 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
       - ./docker/loki/loki-config.yml:/etc/loki/local-config.yaml
+    networks:
+      - kok-network
+
+  promtail:
+    image: grafana/promtail:3.5.0
+    container_name: kok-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
     networks:
       - kok-network
 
@@ -114,6 +165,7 @@ services:
       - kok-grafana-data:/var/lib/grafana
     depends_on:
       - loki
+      - prometheus
     networks:
       - kok-network
 
@@ -124,5 +176,5 @@ networks:
 volumes:
   kok-postgres-data:
   kok-kafka-data:
+  kok-prometheus-data:
   kok-grafana-data:
-

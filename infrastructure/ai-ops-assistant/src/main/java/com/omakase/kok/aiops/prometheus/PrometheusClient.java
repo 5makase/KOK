@@ -21,7 +21,7 @@ public class PrometheusClient {
      */
     public String query(String promql) {
         PromResponse res = restClient.get()
-                .uri(uri -> uri.path("/api/v1/query").queryParam("query", promql).build())
+                .uri("/api/v1/query?query={promql}", promql)
                 .retrieve()
                 .body(PromResponse.class);
 

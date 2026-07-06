@@ -42,6 +42,10 @@ public class StoreQueryRepository {
                 ? queryFactory.selectDistinct(store).from(store).leftJoin(store.amenities, amenity)
                 : queryFactory.select(store).from(store);
 
+        // category는 소분류로 제한되어 parent가 항상 존재하지만, StoreResult.from()의 isSubCategory() 방어 분기와 동일한 전제로 leftJoin 사용
+        contentQuery.join(store.category).fetchJoin();
+        contentQuery.leftJoin(store.category.parent).fetchJoin();
+
         List<Store> content = contentQuery
                 .where(where)
                 .orderBy(resolveSort(store, condition))

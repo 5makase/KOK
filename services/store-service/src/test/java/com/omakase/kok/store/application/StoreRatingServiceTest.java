@@ -57,7 +57,7 @@ class StoreRatingServiceTest {
         StoreCategory category = StoreCategory.create("한식", 1, null);
         Store store = Store.create(UUID.randomUUID(), category, "테스트 매장", null,
                 new Address("서울", "강남구", null, null, null, null), null, null);
-        store.changeStatus(StoreStatus.OPEN, UUID.randomUUID());
+        store.changeStatus(StoreStatus.OPEN, 7, UUID.randomUUID());
         openStore = store;
     }
 
@@ -317,8 +317,8 @@ class StoreRatingServiceTest {
         StoreCategory category = StoreCategory.create("한식", 1, null);
         Store closedStore = Store.create(UUID.randomUUID(), category, "폐업 매장", null,
                 new Address("서울", "강남구", null, null, null, null), null, null);
-        closedStore.changeStatus(StoreStatus.OPEN, UUID.randomUUID());
-        closedStore.changeStatus(StoreStatus.PERMANENTLY_CLOSED, UUID.randomUUID());
+        closedStore.changeStatus(StoreStatus.OPEN, 7, UUID.randomUUID());
+        closedStore.changeStatus(StoreStatus.PERMANENTLY_CLOSED, 0, UUID.randomUUID());
 
         when(storeRepository.findById(storeId)).thenReturn(Optional.of(closedStore));
 
@@ -379,7 +379,7 @@ class StoreRatingServiceTest {
         StoreCategory category = StoreCategory.create("한식", 1, null);
         Store store = Store.create(UUID.randomUUID(), category, name, null,
                 new Address("서울", "강남구", null, null, null, null), null, null);
-        store.changeStatus(StoreStatus.OPEN, UUID.randomUUID());
+        store.changeStatus(StoreStatus.OPEN, 7, UUID.randomUUID());
         return store;
     }
 

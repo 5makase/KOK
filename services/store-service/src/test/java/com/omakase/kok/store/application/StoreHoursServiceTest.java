@@ -324,7 +324,7 @@ class StoreHoursServiceTest {
     void deleteHours_open_store_throws() throws Exception {
         UUID hoursId = UUID.randomUUID();
         // OPEN 상태로 전환
-        store.changeStatus(com.omakase.kok.store.domain.enums.StoreStatus.OPEN, ownerId);
+        store.changeStatus(com.omakase.kok.store.domain.enums.StoreStatus.OPEN, 7, ownerId);
         StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
         setHoursId(hours, hoursId);
@@ -442,7 +442,7 @@ class StoreHoursServiceTest {
     @Test
     @DisplayName("정기 휴무일이면 DAY_OFF 반환")
     void checkBusinessHours_day_off_returns_denied() {
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         StoreHours dayOff = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
 
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
@@ -458,7 +458,7 @@ class StoreHoursServiceTest {
     @Test
     @DisplayName("영업시간 외 요청이면 OUTSIDE_HOURS 반환")
     void checkBusinessHours_outside_hours_returns_denied() {
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
 
@@ -475,7 +475,7 @@ class StoreHoursServiceTest {
     @Test
     @DisplayName("브레이크타임 내 요청이면 BREAK_TIME 반환")
     void checkBusinessHours_during_break_time_returns_denied() {
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
                 LocalTime.of(9, 0), LocalTime.of(21, 0),
                 LocalTime.of(14, 0), LocalTime.of(15, 0));
@@ -493,7 +493,7 @@ class StoreHoursServiceTest {
     @Test
     @DisplayName("breakStartTime만 있고 breakEndTime이 null이면 NPE 없이 available 반환 - 회귀 방지")
     void checkBusinessHours_break_start_only_no_npe() {
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         // breakEndTime=null - DB 스키마상 두 필드가 독립적으로 NULL 허용
         StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
                 LocalTime.of(9, 0), LocalTime.of(21, 0),
@@ -511,7 +511,7 @@ class StoreHoursServiceTest {
     @Test
     @DisplayName("정상 영업 중이면 available: true 반환")
     void checkBusinessHours_during_business_hours_returns_ok() {
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
                 LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
 
@@ -528,7 +528,7 @@ class StoreHoursServiceTest {
     @Test
     @DisplayName("해당 요일 영업시간 미등록 시 STORE_HOURS_NOT_FOUND 예외")
     void checkBusinessHours_hours_not_found_throws() {
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
         when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.empty());
 

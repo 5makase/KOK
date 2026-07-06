@@ -32,7 +32,6 @@ import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.repository.StoreSearchCondition;
 import com.omakase.kok.store.domain.service.StoreFinder;
 import com.omakase.kok.store.global.exception.StoreErrorCode;
-import com.omakase.kok.store.global.util.TransactionUtils;
 import com.omakase.kok.store.infrastructure.kafka.event.StoreCreatedEvent;
 import com.omakase.kok.store.infrastructure.kafka.event.StoreEventEnvelope;
 import com.omakase.kok.store.infrastructure.kafka.event.StoreEventFactory;
@@ -106,7 +105,7 @@ public class StoreService {
         saveStoreCreatedOutboxEvent(savedStore);
 
         StoreResult result = StoreResult.from(savedStore);
-        evictListCacheAfterCommit();
+        storeListCacheRepository.evictAllAfterCommit();
         return result;
     }
 
@@ -135,7 +134,7 @@ public class StoreService {
                 category
         );
 
-        evictListCacheAfterCommit();
+        storeListCacheRepository.evictAllAfterCommit();
         return StoreResult.from(store);
     }
 
@@ -144,7 +143,7 @@ public class StoreService {
         Store store = storeFinder.findActiveOrThrow(storeId);
         storeOwnerValidator.validate(store, requesterId, role, StoreErrorCode.STORE_ACCESS_DENIED);
         store.delete(requesterId);
-        evictListCacheAfterCommit();
+        storeListCacheRepository.evictAllAfterCommit();
     }
 
     @Transactional
@@ -152,14 +151,15 @@ public class StoreService {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         storeOwnerValidator.validate(store, command.getRequesterId(), command.getRole(), StoreErrorCode.STORE_ACCESS_DENIED);
 
-        // OPEN 전환 시 영업시간 7일치 등록 여부 확인
-        if (command.getStatus() == StoreStatus.OPEN
-                && storeHoursRepository.countRegisteredHours(store) < 7) {
-            throw new BaseException(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
-        }
+        // OPEN 전환일 때만 영업시간 등록 개수를 조회. 그 외 전환에는 이 값이 쓰이지 않으므로 조회 생략
+        // 7일치 이상 등록됐는지 여부는 Store.changeStatus() 내부에서 검증
+        int registeredHoursCount = command.getStatus() == StoreStatus.OPEN
+                ? (int) storeHoursRepository.countRegisteredHours(store)
+                : 0;
 
-        store.changeStatus(command.getStatus(), command.getRequesterId());
-        evictListCacheAfterCommit();
+        store.changeStatus(command.getStatus(), registeredHoursCount, command.getRequesterId());
+
+        storeListCacheRepository.evictAllAfterCommit();
         return StoreResult.from(store);
     }
 
@@ -237,11 +237,6 @@ public class StoreService {
 
     public StoreSummaryResult getStoreSummary(UUID storeId) {
         return StoreSummaryResult.from(storeFinder.findActiveOrThrow(storeId));
-    }
-    // DB 커밋 완료 후 목록 캐시 무효화 - 롤백 시 불필요한 eviction 방지
-    // 매장 데이터를 변경하는 @Transactional 메서드는 반드시 이 메서드를 호출해야 함
-    private void evictListCacheAfterCommit() {
-        TransactionUtils.runAfterCommit(storeListCacheRepository::evictAll);
     }
 
     /**

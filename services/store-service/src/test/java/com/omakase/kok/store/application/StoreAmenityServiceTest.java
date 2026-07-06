@@ -1,6 +1,7 @@
 package com.omakase.kok.store.application;
 
 import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.store.application.cache.StoreListCacheRepository;
 import com.omakase.kok.store.application.validator.StoreOwnerValidator;
 import org.mockito.Spy;
 import com.omakase.kok.common.exception.BaseException;
@@ -30,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +39,7 @@ class StoreAmenityServiceTest {
 
     @Mock StoreAmenityRepository storeAmenityRepository;
     @Mock StoreFinder storeFinder;
+    @Mock StoreListCacheRepository storeListCacheRepository;
     @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
 
     @InjectMocks
@@ -77,6 +80,8 @@ class StoreAmenityServiceTest {
         assertThat(result.getAmenities()).hasSize(1);
         assertThat(result.getAmenities().get(0).getAmenityType()).isEqualTo(AmenityType.WIFI.name());
         assertThat(existing.isDeleted()).isTrue();
+        // 편의시설 구성이 바뀌면 매장 목록 캐시(검색 필터 조건)도 무효화되어야 함
+        verify(storeListCacheRepository).evictAllAfterCommit();
     }
 
     @Test
@@ -163,6 +168,7 @@ class StoreAmenityServiceTest {
 
         assertThat(amenity.isDeleted()).isTrue();
         assertThat(amenity.getDeletedBy()).isEqualTo(ownerId);
+        verify(storeListCacheRepository).evictAllAfterCommit();
     }
 
     @Test

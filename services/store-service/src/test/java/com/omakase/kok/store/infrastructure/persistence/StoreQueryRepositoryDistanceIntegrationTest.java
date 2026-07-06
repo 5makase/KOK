@@ -113,7 +113,7 @@ class StoreQueryRepositoryDistanceIntegrationTest {
                              BigDecimal lat, BigDecimal lng) {
         Store store = Store.create(ownerId, category, name, null,
                 new Address(sido, sigungu, null, null, lat, lng), null, 50);
-        store.changeStatus(StoreStatus.OPEN, ownerId);
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
         return store;
     }
 }

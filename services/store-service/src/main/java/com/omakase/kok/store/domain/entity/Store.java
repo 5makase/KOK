@@ -1,8 +1,10 @@
 package com.omakase.kok.store.domain.entity;
 
 import com.omakase.kok.common.entity.BaseEntity;
+import com.omakase.kok.common.exception.BaseException;
 import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.vo.Address;
+import com.omakase.kok.store.global.exception.StoreErrorCode;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -23,6 +25,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +35,9 @@ import java.util.UUID;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Store extends BaseEntity {
+
+    // OPEN 전환 시 요구되는 영업시간 등록 개수(요일 수)
+    private static final int REQUIRED_HOURS_FOR_OPEN = DayOfWeek.values().length;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -115,10 +121,15 @@ public class Store extends BaseEntity {
 
     /**
      * 상태 전이 유효성 검증 후 변경
+     * OPEN 전환은 영업시간이 7일치(요일 수) 모두 등록돼 있어야 함
      * PERMANENTLY_CLOSED 전이 시 soft delete 동시 처리
      * findActiveStore(deletedAt IS NULL) 조건에서 폐업 매장이 자동으로 제외되도록 보장
      */
-    public void changeStatus(StoreStatus next, UUID userId) {
+    public void changeStatus(StoreStatus next, int registeredHoursCount, UUID userId) {
+        if (next == StoreStatus.OPEN && registeredHoursCount < REQUIRED_HOURS_FOR_OPEN) {
+            throw new BaseException(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
+        }
+
         this.status.validateTransitionTo(next);
         this.status = next;
         if (next == StoreStatus.PERMANENTLY_CLOSED) {

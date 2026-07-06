@@ -152,13 +152,14 @@ public class StoreService {
         Store store = storeFinder.findActiveOrThrow(command.getStoreId());
         storeOwnerValidator.validate(store, command.getRequesterId(), command.getRole(), StoreErrorCode.STORE_ACCESS_DENIED);
 
-        // OPEN 전환 시 영업시간 7일치 등록 여부 확인
-        if (command.getStatus() == StoreStatus.OPEN
-                && storeHoursRepository.countRegisteredHours(store) < 7) {
-            throw new BaseException(StoreErrorCode.STORE_HOURS_REQUIRED_FOR_OPEN);
-        }
+        // OPEN 전환일 때만 영업시간 등록 개수를 조회. 그 외 전환에는 이 값이 쓰이지 않으므로 조회 생략
+        // 7일치 이상 등록됐는지 여부는 Store.changeStatus() 내부에서 검증
+        int registeredHoursCount = command.getStatus() == StoreStatus.OPEN
+                ? (int) storeHoursRepository.countRegisteredHours(store)
+                : 0;
 
-        store.changeStatus(command.getStatus(), command.getRequesterId());
+        store.changeStatus(command.getStatus(), registeredHoursCount, command.getRequesterId());
+
         evictListCacheAfterCommit();
         return StoreResult.from(store);
     }

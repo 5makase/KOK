@@ -9,16 +9,23 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,8 +34,12 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class StoreRankingRedisRepositoryTest {
 
+    private static final String REBUILD_LOCK_KEY = "store:ranking:rebuild:lock";
+
     @Mock RedisTemplate<String, String> redisTemplate;
     @Mock ZSetOperations<String, String> zSetOperations;
+    @Mock RedissonClient redissonClient;
+    @Mock RLock rLock;
 
     @InjectMocks
     StoreRankingRedisRepository repository;
@@ -109,5 +120,83 @@ class StoreRankingRedisRepositoryTest {
         repository.getTopRanking(10);
 
         verify(zSetOperations).reverseRange("store:ranking", 0, 9L);
+    }
+
+    // tryAcquireRebuildLock
+
+    @Test
+    @DisplayName("tryAcquireRebuildLock - 락 획득 성공 시 true")
+    void tryAcquireRebuildLock_returns_true_when_lock_acquired() throws InterruptedException {
+        when(redissonClient.getLock(REBUILD_LOCK_KEY)).thenReturn(rLock);
+        when(rLock.tryLock(0, 3, TimeUnit.SECONDS)).thenReturn(true);
+
+        assertThat(repository.tryAcquireRebuildLock()).isTrue();
+    }
+
+    @Test
+    @DisplayName("tryAcquireRebuildLock - 이미 다른 요청이 잡고 있으면 false")
+    void tryAcquireRebuildLock_returns_false_when_already_held() throws InterruptedException {
+        when(redissonClient.getLock(REBUILD_LOCK_KEY)).thenReturn(rLock);
+        when(rLock.tryLock(0, 3, TimeUnit.SECONDS)).thenReturn(false);
+
+        assertThat(repository.tryAcquireRebuildLock()).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryAcquireRebuildLock - Redis 호출 자체가 예외를 던져도 false로 방어 (재구성만 생략되도록)")
+    void tryAcquireRebuildLock_returns_false_when_redis_throws() {
+        when(redissonClient.getLock(REBUILD_LOCK_KEY)).thenThrow(new RuntimeException("Redis 연결 실패"));
+
+        assertThat(repository.tryAcquireRebuildLock()).isFalse();
+    }
+
+    @Test
+    @DisplayName("tryAcquireRebuildLock - 인터럽트 발생 시에도 false로 방어하고 인터럽트 상태를 복원")
+    void tryAcquireRebuildLock_returns_false_when_interrupted() throws InterruptedException {
+        when(redissonClient.getLock(REBUILD_LOCK_KEY)).thenReturn(rLock);
+        when(rLock.tryLock(0, 3, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+
+        assertThat(repository.tryAcquireRebuildLock()).isFalse();
+        assertThat(Thread.interrupted()).isTrue(); // 확인과 동시에 플래그를 지우므로 테스트 뒷정리도 겸함
+    }
+
+    // rebuildAll
+
+    @Test
+    @DisplayName("rebuildAll - storeId/평점 전체를 ZADD로 재적재")
+    void rebuildAll_calls_zadd_with_all_scores() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        Map<UUID, BigDecimal> scores = Map.of(id1, new BigDecimal("4.50"), id2, new BigDecimal("3.20"));
+
+        repository.rebuildAll(scores);
+
+        verify(zSetOperations).add(eq("store:ranking"), argThatContainsBothTuples(id1, id2));
+    }
+
+    @Test
+    @DisplayName("rebuildAll - ZADD 도중 Redis가 예외를 던져도 삼키고 정상 반환 (호출부는 DB 응답을 그대로 써야 함)")
+    void rebuildAll_swallows_exception_when_redis_throws() {
+        UUID id1 = UUID.randomUUID();
+        when(zSetOperations.add(anyString(), any(Set.class))).thenThrow(new RuntimeException("Redis 연결 실패"));
+
+        repository.rebuildAll(Map.of(id1, new BigDecimal("4.50")));
+        // 예외 없이 메서드가 정상 종료되면 성공
+    }
+
+    @Test
+    @DisplayName("rebuildAll - 빈 맵이면 ZADD 호출 없이 반환")
+    void rebuildAll_does_nothing_when_map_empty() {
+        repository.rebuildAll(Map.of());
+
+        verify(zSetOperations, never()).add(anyString(), any(Set.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Set<ZSetOperations.TypedTuple<String>> argThatContainsBothTuples(UUID id1, UUID id2) {
+        return org.mockito.ArgumentMatchers.argThat(tuples ->
+                tuples != null && tuples.size() == 2
+                        && tuples.stream().anyMatch(t -> id1.toString().equals(t.getValue()))
+                        && tuples.stream().anyMatch(t -> id2.toString().equals(t.getValue())));
     }
 }

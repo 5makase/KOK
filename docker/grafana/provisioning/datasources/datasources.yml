@@ -5,6 +5,7 @@ datasources:
   # Loki 로그 조회
   - name: Loki
     type: loki
+    uid: LOKI
     access: proxy
     url: http://loki:3100
     isDefault: true

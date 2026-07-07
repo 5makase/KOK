@@ -40,13 +40,22 @@ import java.util.UUID;
 @Component
 public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAuthenticationFilter.Config> {
 
-    // 인증 제외 경로 (정책 3.3)
+    // 인증 제외 경로 (정책 3.3) - POST 요청에 대해서만 정확히 매칭
     private static final List<String> WHITE_LIST = List.of(
             "/api/v1/users/signup",
             "/api/v1/owners/signup",
             "/api/v1/auth/login",
-            "/api/v1/auth/reissue",
-            "/actuator/health"
+            "/api/v1/auth/reissue"
+    );
+
+    // GET 요청 인증 제외 경로 (health check, Swagger 문서/정적 리소스)
+    private static final List<String> GET_WHITE_LIST = List.of(
+            "/actuator/health",
+            "/v3/api-docs",
+            "/v3/api-docs/**",
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/webjars/**"
     );
 
     private final JwtUtil jwtUtil;

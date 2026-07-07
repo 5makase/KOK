@@ -36,12 +36,17 @@ dependencies {
 	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 	implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
 
+	// Swagger
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9'
+
+	// Observability - Zipkin 분산 추적, Prometheus 메트릭 (다른 서비스와 동일 구성)
+	implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+	implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.projectlombok:lombok'
-
-	// Swagger
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'

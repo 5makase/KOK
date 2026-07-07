@@ -29,6 +29,9 @@ dependencies {
 	// (버전은 다른 서비스의 springdoc-openapi-starter-webmvc-ui:2.8.9와 동일 release train으로 맞춤 - 빌드 시 검증 필요)
 	implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.9'
 
+	// Observability - Prometheus 메트릭
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 

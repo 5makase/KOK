@@ -23,22 +23,23 @@ public class OwnerApprovalService {
     private final OwnerApprovalRepository ownerApprovalRepository;
     private final UserRepository userRepository;
 
-    // 고도화: OWNER 승인 상태 조회 (내부 API 전용)
-    // 승인 이력이 없는 경우(재신청 이전 등)는 예외가 아니라 approved=false로 응답. - 정책 추가
+    // OWNER 승인 상태 조회 (내부 API 전용)
+    // 승인 이력이 없는 경우(재신청 이전 등)는 예외가 아니라 approved=false로 응답한다. (안1 확정)
     // 유저 자체가 존재하지 않는 경우에만 예외를 던진다.
-
+    // approved 여부(status == APPROVED) 계산은 OwnerApprovalStatusResponse.from()에 위임한다.
     public OwnerApprovalStatusResponse getApprovalStatus(UUID userId) {
         validateUserExists(userId);
 
-        boolean approved = ownerApprovalRepository.findFirstByUser_UserIdOrderByCreatedAtDesc(userId)
-                .map(approval -> approval.getStatus() == ApprovalStatus.APPROVED)
-                .orElse(false);
+        ApprovalStatus latestStatus = ownerApprovalRepository
+                .findFirstByUser_UserIdOrderByCreatedAtDesc(userId)
+                .map(OwnerApproval::getStatus)
+                .orElse(null);
 
-        return OwnerApprovalStatusResponse.of(userId, approved);
+        return OwnerApprovalStatusResponse.from(userId, latestStatus);
     }
 
-    private void validateUserExists(UUID userID) {
-        if (!userRepository.existsById(userID)) {
+    private void validateUserExists(UUID userId) {
+        if (!userRepository.existsById(userId)) {
             throw new BaseException(UserErrorCode.USER_NOT_FOUND);
         }
     }

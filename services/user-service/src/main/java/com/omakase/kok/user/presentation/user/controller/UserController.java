@@ -71,7 +71,7 @@ public class UserController {
     public ResponseEntity<ApiResponse<List<OwnerApprovalResponse>>> getPendingApprovals(
             @RequestHeader("X-Role") String role) {
         if (!"MASTER".equals(role)) {
-            throw new BaseException(UserErrorCode.OWNER_APPROVAL_NOT_FOUND);
+            throw new BaseException(UserErrorCode.USER_ACCESS_DENIED); // 수정: OWNER_APPROVAL_NOT_FOUND → USER_ACCESS_DENIED
         }
         List<OwnerApprovalResponse> response = userQueryService.getPendingApprovals();
         return ResponseEntity.ok(ApiResponse.success(response));
@@ -83,7 +83,7 @@ public class UserController {
             @RequestHeader("X-User-Id") UUID masterUserId,
             @RequestHeader("X-Role") String role) {
         if (!"MASTER".equals(role)) {
-            throw new BaseException(UserErrorCode.OWNER_APPROVAL_NOT_FOUND);
+            throw new BaseException(UserErrorCode.USER_ACCESS_DENIED); // 수정: OWNER_APPROVAL_NOT_FOUND → USER_ACCESS_DENIED
         }
         OwnerApprovalResponse response = ownerApprovalService.approveOwner(approvalId, masterUserId);
         return ResponseEntity.ok(ApiResponse.success(response));
@@ -96,7 +96,7 @@ public class UserController {
             @RequestHeader("X-Role") String role,
             @Valid @RequestBody ApprovalRequest request) {
         if (!"MASTER".equals(role)) {
-            throw new BaseException(UserErrorCode.OWNER_APPROVAL_NOT_FOUND);
+            throw new BaseException(UserErrorCode.USER_ACCESS_DENIED); // 수정: OWNER_APPROVAL_NOT_FOUND → USER_ACCESS_DENIED
         }
         OwnerApprovalResponse response = ownerApprovalService.rejectOwner(approvalId, masterUserId, request);
         return ResponseEntity.ok(ApiResponse.success(response));

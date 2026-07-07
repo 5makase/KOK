@@ -1,6 +1,8 @@
 import http from 'k6/http';
 import { check } from 'k6';
 
+const BASE_URL = __ENV.BASE_URL || 'http://host.docker.internal:8000';
+
 // SA 설계 목표(피크 RPS 150)를 그대로 검증하기 위한 보조 테스트.
 // ranking-load-test-vu.js(VU 기반 closed-model)는 응답이 빨라질수록 실제 RPS도 같이 늘어나
 // "150 RPS에서 통과"라는 목표치와 숫자가 정확히 대응하지 않는다.
@@ -23,7 +25,7 @@ export const options = {
 };
 
 export default function () {
-  const url = 'http://host.docker.internal:8000/api/v1/stores/ranking?size=10';
+  const url = `${BASE_URL}/api/v1/stores/ranking?size=10`;
 
   const params = {
     headers: {

@@ -25,12 +25,22 @@ store-service API에 대한 k6 부하 테스트 스크립트 모음.
 
 1. API Gateway를 포함한 전체 서비스가 기동돼 있어야 한다 (`docker-compose up`).
 2. 로그인 후 발급받은 JWT를 `TOKEN` 환경변수로 전달한다.
+3. (선택) 기본값은 `http://host.docker.internal:8000`(로컬 API Gateway)이다. 다른 환경(스테이징 등)을 대상으로 하려면 `BASE_URL` 환경변수로 덮어쓴다.
 
 ## 실행
 
 ```bash
 docker run --rm -i \
   -e TOKEN="<발급받은 JWT>" \
+  grafana/k6 run - < k6/store/<파일명>
+```
+
+다른 환경을 대상으로 하려면 `BASE_URL`을 추가로 전달한다.
+
+```bash
+docker run --rm -i \
+  -e TOKEN="<발급받은 JWT>" \
+  -e BASE_URL="https://staging.example.com" \
   grafana/k6 run - < k6/store/<파일명>
 ```
 

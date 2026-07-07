@@ -1,6 +1,8 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
+const BASE_URL = __ENV.BASE_URL || 'http://host.docker.internal:8000';
+
 export const options = {
   stages: [
     { duration: '30s', target: 150 },
@@ -14,7 +16,7 @@ export const options = {
 };
 
 export default function () {
-  const url = 'http://host.docker.internal:8000/api/v1/stores/ranking?size=10';
+  const url = `${BASE_URL}/api/v1/stores/ranking?size=10`;
 
   const params = {
     headers: {

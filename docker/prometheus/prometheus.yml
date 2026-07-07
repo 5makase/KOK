@@ -28,6 +28,12 @@ scrape_configs:
       - targets:
           - "host.docker.internal:8007"
 
+  - job_name: "reservation-service"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - "host.docker.internal:8003"
+
   - job_name: "redis"
     static_configs:
       - targets:

@@ -162,8 +162,9 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 .anyMatch(whitePath -> pathMatcher.match(whitePath, path))) {
             return true;
         }
-        // GET /actuator/health
-        if (method.equals("GET") && pathMatcher.match("/actuator/health", path)) {
+        // GET 메서드 기반 경로 매핑 (health check, Swagger) - 와일드카드 패턴 지원
+        if (method.equals("GET") && GET_WHITE_LIST.stream()
+                .anyMatch(whitePath -> pathMatcher.match(whitePath, path))) {
             return true;
         }
         return false;

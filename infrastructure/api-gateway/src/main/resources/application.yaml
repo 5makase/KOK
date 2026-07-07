@@ -74,6 +74,28 @@ spring:
           filters:
             - name: JwtAuthenticationFilter
 
+        # Swagger 문서 라우팅 (서비스별 /v3/api-docs를 Gateway 하나로 모아서 노출)
+        # 다른 서비스도 Swagger를 붙이면 아래와 같은 형식으로 route + springdoc.swagger-ui.urls에 추가하면 됨
+
+        - id: user-service-api-docs
+          uri: lb://user-service
+          predicates:
+            - Path=/v3/api-docs/user-service
+          filters:
+            - RewritePath=/v3/api-docs/user-service, /v3/api-docs
+
+# Gateway 자체는 REST 컨트롤러가 없어 문서화할 API가 없으므로,
+# springdoc-openapi-starter-webflux-ui는 각 서비스의 /v3/api-docs를 모아 보여주는 통합 Swagger UI 용도로만 사용한다.
+# 접속: http://localhost:8000/swagger-ui/index.html (상단 드롭다운에서 서비스 선택)
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: user-service
+        url: /v3/api-docs/user-service
+      # - name: store-service
+      #   url: /v3/api-docs/store-service
+
 jwt:
   secret: ${JWT_SECRET}
 

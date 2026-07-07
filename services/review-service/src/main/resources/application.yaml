@@ -47,6 +47,12 @@ management:
     web:
       exposure:
         include: health,info,prometheus,metrics   # prometheus/metrics는 다음 단계 대비(있어도 무방)
+  metrics:
+    tags:
+      application: review-service
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   tracing:
     sampling:
       probability: 1.0                              # 모든 요청 추적 (개발용)

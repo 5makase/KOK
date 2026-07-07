@@ -9,11 +9,12 @@ import com.omakase.kok.store.domain.enums.StoreStatus;
 import com.omakase.kok.store.domain.repository.StoreRankingRepository;
 import com.omakase.kok.store.domain.repository.StoreRepository;
 import com.omakase.kok.store.domain.vo.Address;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -38,7 +39,8 @@ class StoreRatingServiceTest {
     @Mock StoreListCacheRepository storeListCacheRepository;
     @Mock StoreRankingCacheRepository storeRankingCacheRepository;
 
-    @InjectMocks
+    MeterRegistry meterRegistry;
+
     StoreRatingService storeRatingService;
 
     private UUID storeId;
@@ -46,6 +48,11 @@ class StoreRatingServiceTest {
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        storeRatingService = new StoreRatingService(
+                storeRepository, storeRankingRepository, storeListCacheRepository,
+                storeRankingCacheRepository, meterRegistry
+        );
         storeId = UUID.randomUUID();
         StoreCategory category = StoreCategory.create("한식", 1, null);
         Store store = Store.create(UUID.randomUUID(), category, "테스트 매장", null,
@@ -70,6 +77,8 @@ class StoreRatingServiceTest {
         assertThat(results.get(0).getRank()).isEqualTo(1);
         verify(storeRankingRepository, never()).getTopRanking(any(int.class));
         verify(storeRepository, never()).findActiveStoresByIds(any());
+        assertThat(meterRegistry.get("store.ranking.cache.result").tag("result", "hit").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -106,6 +115,8 @@ class StoreRatingServiceTest {
         storeRatingService.getRanking(5);
 
         verify(storeRankingCacheRepository).set(eq(5), any());
+        assertThat(meterRegistry.get("store.ranking.cache.result").tag("result", "miss").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -199,6 +210,8 @@ class StoreRatingServiceTest {
         assertThat(results.get(0).getRank()).isEqualTo(1);
         verify(storeRankingRepository).rebuildAll(any());
         verify(storeRankingCacheRepository).set(eq(5), any());
+        assertThat(meterRegistry.get("store.ranking.cache.result").tag("result", "rebuild").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -248,6 +261,8 @@ class StoreRatingServiceTest {
         verify(storeRankingRepository, never()).tryAcquireRebuildLock();
         verify(storeRankingRepository, never()).rebuildAll(any());
         verify(storeRankingCacheRepository, never()).set(eq(5), any());
+        assertThat(meterRegistry.get("store.ranking.cache.result").tag("result", "redis_down").counter().count())
+                .isEqualTo(1.0);
     }
 
     // updateRating
@@ -274,6 +289,8 @@ class StoreRatingServiceTest {
 
         verify(storeRepository, never()).save(any());
         verify(storeRankingRepository, never()).updateScore(any(), any());
+        assertThat(meterRegistry.get("store.rating.update.skip").tag("reason", "not_found").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -290,6 +307,8 @@ class StoreRatingServiceTest {
 
         verify(storeRepository, never()).save(any());
         verify(storeRankingRepository, never()).updateScore(any(), any());
+        assertThat(meterRegistry.get("store.rating.update.skip").tag("reason", "deleted").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -307,6 +326,27 @@ class StoreRatingServiceTest {
 
         verify(storeRepository, never()).save(any());
         verify(storeRankingRepository, never()).updateScore(any(), any());
+        assertThat(meterRegistry.get("store.rating.update.skip").tag("reason", "deleted").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("CLOSED(휴무) 매장 - 평점 갱신 skip")
+    void updateRating_temporarily_closed_store_skip() {
+        StoreCategory category = StoreCategory.create("한식", 1, null);
+        Store closedStore = Store.create(UUID.randomUUID(), category, "휴무 매장", null,
+                new Address("서울", "강남구", null, null, null, null), null, null);
+        closedStore.changeStatus(StoreStatus.OPEN, 7, UUID.randomUUID());
+        closedStore.changeStatus(StoreStatus.CLOSED, 7, UUID.randomUUID());
+
+        when(storeRepository.findById(storeId)).thenReturn(Optional.of(closedStore));
+
+        storeRatingService.updateRating(storeId, new BigDecimal("4.5"), 10);
+
+        verify(storeRepository, never()).save(any());
+        verify(storeRankingRepository, never()).updateScore(any(), any());
+        assertThat(meterRegistry.get("store.rating.update.skip").tag("reason", "not_open").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test

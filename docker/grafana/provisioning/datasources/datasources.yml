@@ -10,8 +10,10 @@ datasources:
     isDefault: true
 
   # Prometheus 메트릭 조회
+  # uid 고정: dashboards/ 하위 JSON이 이 uid를 참조하므로 재기동해도 대시보드 패널이 끊기지 않음
   - name: Prometheus
     type: prometheus
+    uid: PBFA97CFB590B2093
     access: proxy
     url: http://prometheus:9090
     isDefault: false

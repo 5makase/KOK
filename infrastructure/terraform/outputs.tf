@@ -23,3 +23,22 @@ output "private_route_table_id" {
   value       = aws_route_table.private.id
 }
 
+output "app_security_group_id" {
+  description = "Security group ID for ec2-app."
+  value       = aws_security_group.app.id
+}
+
+output "infra_security_group_id" {
+  description = "Security group ID for ec2-infra."
+  value       = aws_security_group.infra.id
+}
+
+output "monitoring_security_group_id" {
+  description = "Security group ID for ec2-monitoring."
+  value       = aws_security_group.monitoring.id
+}
+
+output "rds_security_group_id" {
+  description = "Security group ID for RDS PostgreSQL."
+  value       = aws_security_group.rds.id
+}

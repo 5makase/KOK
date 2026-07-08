@@ -1,0 +1,18 @@
+project_name = "kok"
+environment  = "dev"
+aws_region   = "ap-northeast-2"
+
+vpc_cidr           = "10.0.0.0/16"
+public_subnet_cidr = "10.0.1.0/24"
+private_subnet_cidrs = [
+  "10.0.11.0/24",
+  "10.0.12.0/24"
+]
+
+# Replace with your current public IP address for SSH.
+# Example: "203.0.113.10/32"
+ssh_cidr = "YOUR_PUBLIC_IP/32"
+
+# Management UIs are open for team access during the demo.
+# Grafana(:3000), Prometheus(:9090), Kafka UI(:8080), Zipkin(:9411)
+admin_ui_cidr = "0.0.0.0/0"

@@ -33,3 +33,14 @@ variable "private_subnet_cidrs" {
   type        = list(string)
   default     = ["10.0.11.0/24", "10.0.12.0/24"]
 }
+
+variable "ssh_cidr" {
+  description = "CIDR block allowed to access SSH. Use your public IP with /32."
+  type        = string
+}
+
+variable "admin_ui_cidr" {
+  description = "CIDR block allowed to access management UIs such as Grafana, Prometheus, Kafka UI, and Zipkin."
+  type        = string
+  default     = "0.0.0.0/0"
+}

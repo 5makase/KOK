@@ -3,18 +3,35 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
+  - job_name: api-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8000
+
+  - job_name: eureka-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8761
+
+  - job_name: user-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8001
+
   - job_name: store-service
     metrics_path: /actuator/prometheus
     static_configs:
       - targets:
           - host.docker.internal:8002
 
-  # 다른 서비스 추가 시 아래 형식으로 작성
-  # - job_name: user-service
-  #   metrics_path: /actuator/prometheus
-  #   static_configs:
-  #     - targets:
-  #         - host.docker.internal:8001
+  - job_name: reservation-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8003
 
   - job_name: "waiting-service"
     metrics_path: /actuator/prometheus
@@ -22,17 +39,29 @@ scrape_configs:
       - targets:
           - "host.docker.internal:8004"
 
-  - job_name: "payment-service"
+  - job_name: notification-service
     metrics_path: /actuator/prometheus
     static_configs:
       - targets:
-          - "host.docker.internal:8007"
+          - host.docker.internal:8005
 
-  - job_name: "reservation-service"
+  - job_name: review-service
     metrics_path: /actuator/prometheus
     static_configs:
       - targets:
-          - "host.docker.internal:8003"
+          - host.docker.internal:8006
+
+  - job_name: payment-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8007
+
+  - job_name: ai-ops-assistant
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8099
 
   - job_name: "redis"
     static_configs:

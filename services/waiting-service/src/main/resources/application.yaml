@@ -80,6 +80,12 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  metrics:
+    tags:
+      application: waiting-service
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   tracing:
     sampling:
       probability: ${TRACING_SAMPLING_PROBABILITY:1.0}

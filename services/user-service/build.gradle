@@ -45,6 +45,7 @@ dependencies {
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.projectlombok:lombok'
 

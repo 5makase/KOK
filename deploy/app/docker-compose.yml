@@ -1,0 +1,219 @@
+services:
+  eureka-server:
+    image: ${EUREKA_SERVER_IMAGE}
+    container_name: kok-eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      EUREKA_SERVER_PORT: 8761
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      JAVA_TOOL_OPTIONS: ${EUREKA_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  api-gateway:
+    image: ${API_GATEWAY_IMAGE}
+    container_name: kok-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      API_GATEWAY_PORT: 8000
+      JWT_SECRET: ${JWT_SECRET}
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      JAVA_TOOL_OPTIONS: ${GATEWAY_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  user-service:
+    image: ${USER_SERVICE_IMAGE}
+    container_name: kok-user-service
+    ports:
+      - "8001:8001"
+    environment:
+      USER_SERVICE_PORT: 8001
+      DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/user_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      REDIS_HOST: ${INFRA_PRIVATE_IP}
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      JAVA_TOOL_OPTIONS: ${USER_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  store-service:
+    image: ${STORE_SERVICE_IMAGE}
+    container_name: kok-store-service
+    ports:
+      - "8002:8002"
+    environment:
+      STORE_SERVICE_PORT: 8002
+      STORE_DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/store_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      REDIS_HOST: ${INFRA_PRIVATE_IP}
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: ${INFRA_PRIVATE_IP}:9092
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      ZIPKIN_ENDPOINT: http://${MONITORING_PRIVATE_IP}:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_TOOL_OPTIONS: ${STORE_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  reservation-service:
+    image: ${RESERVATION_SERVICE_IMAGE}
+    container_name: kok-reservation-service
+    ports:
+      - "8003:8003"
+    environment:
+      RESERVATION_SERVICE_PORT: 8003
+      RESERVATION_DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/reservation_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      REDIS_HOST: ${INFRA_PRIVATE_IP}
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: ${INFRA_PRIVATE_IP}:9092
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      ZIPKIN_ENDPOINT: http://${MONITORING_PRIVATE_IP}:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_TOOL_OPTIONS: ${RESERVATION_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  waiting-service:
+    image: ${WAITING_SERVICE_IMAGE}
+    container_name: kok-waiting-service
+    ports:
+      - "8004:8004"
+    environment:
+      WAITING_SERVICE_PORT: 8004
+      WAITING_DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/waiting_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      REDIS_HOST: ${INFRA_PRIVATE_IP}
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: ${INFRA_PRIVATE_IP}:9092
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      ZIPKIN_ENDPOINT: http://${MONITORING_PRIVATE_IP}:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_TOOL_OPTIONS: ${WAITING_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  notification-service:
+    image: ${NOTIFICATION_SERVICE_IMAGE}
+    container_name: kok-notification-service
+    ports:
+      - "8005:8005"
+    environment:
+      NOTIFICATION_SERVICE_PORT: 8005
+      NOTIFICATION_DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/notification_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      REDIS_HOST: ${INFRA_PRIVATE_IP}
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: ${INFRA_PRIVATE_IP}:9092
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      ZIPKIN_ENDPOINT: http://${MONITORING_PRIVATE_IP}:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_TOOL_OPTIONS: ${NOTIFICATION_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  review-service:
+    image: ${REVIEW_SERVICE_IMAGE}
+    container_name: kok-review-service
+    ports:
+      - "8006:8006"
+    environment:
+      REVIEW_SERVICE_PORT: 8006
+      REVIEW_DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/review_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      REDIS_HOST: ${INFRA_PRIVATE_IP}
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: ${INFRA_PRIVATE_IP}:9092
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      ZIPKIN_ENDPOINT: http://${MONITORING_PRIVATE_IP}:9411/api/v2/spans
+      JAVA_TOOL_OPTIONS: ${REVIEW_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  payment-service:
+    image: ${PAYMENT_SERVICE_IMAGE}
+    container_name: kok-payment-service
+    ports:
+      - "8007:8007"
+    environment:
+      PAYMENT_SERVICE_PORT: 8007
+      PAYMENT_DB_URL: jdbc:postgresql://${RDS_ENDPOINT}:5432/payment_db
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      KAFKA_BOOTSTRAP_SERVERS: ${INFRA_PRIVATE_IP}:9092
+      EUREKA_DEFAULT_ZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      ZIPKIN_ENDPOINT: http://${MONITORING_PRIVATE_IP}:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+      JAVA_TOOL_OPTIONS: ${PAYMENT_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    depends_on:
+      - eureka-server
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.5.0
+    container_name: kok-app-promtail
+    command: -config.file=/etc/promtail/config.yml -config.expand-env=true
+    environment:
+      LOKI_URL: http://${MONITORING_PRIVATE_IP}:3100/loki/api/v1/push
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - kok-app
+    restart: unless-stopped
+
+networks:
+  kok-app:
+    driver: bridge

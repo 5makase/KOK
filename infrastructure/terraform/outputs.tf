@@ -82,3 +82,10 @@ output "monitoring_private_ip" {
   description = "Private IP address of ec2-monitoring."
   value       = aws_instance.monitoring.private_ip
 }
+
+output "ecr_repository_urls" {
+  description = "ECR repository URLs keyed by repository name."
+  value = {
+    for name, repo in aws_ecr_repository.service : name => repo.repository_url
+  }
+}

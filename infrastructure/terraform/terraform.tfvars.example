@@ -16,3 +16,12 @@ ssh_cidr = "YOUR_PUBLIC_IP/32"
 # Management UIs are open for team access during the demo.
 # Grafana(:3000), Prometheus(:9090), Kafka UI(:8080), Zipkin(:9411)
 admin_ui_cidr = "0.0.0.0/0"
+
+rds_instance_class    = "db.t3.micro"
+rds_engine_version    = "16.14"
+rds_allocated_storage = 20
+rds_database_name     = "kok"
+rds_master_username   = "kokadmin"
+
+# Set a strong password in terraform.tfvars. Do not commit terraform.tfvars.
+rds_master_password = "CHANGE_ME_STRONG_PASSWORD"

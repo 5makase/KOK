@@ -44,3 +44,39 @@ variable "admin_ui_cidr" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+variable "rds_instance_class" {
+  description = "Instance class for RDS PostgreSQL."
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "rds_engine_version" {
+  description = "PostgreSQL engine version for RDS."
+  type        = string
+  default     = "16.14"
+}
+
+variable "rds_allocated_storage" {
+  description = "Allocated storage size for RDS PostgreSQL in GB."
+  type        = number
+  default     = 20
+}
+
+variable "rds_database_name" {
+  description = "Initial database name created by RDS."
+  type        = string
+  default     = "kok"
+}
+
+variable "rds_master_username" {
+  description = "Master username for RDS PostgreSQL."
+  type        = string
+  default     = "kokadmin"
+}
+
+variable "rds_master_password" {
+  description = "Master password for RDS PostgreSQL. Set this in terraform.tfvars and do not commit it."
+  type        = string
+  sensitive   = true
+}

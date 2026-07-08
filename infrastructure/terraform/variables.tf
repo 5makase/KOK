@@ -80,3 +80,32 @@ variable "rds_master_password" {
   type        = string
   sensitive   = true
 }
+
+variable "ec2_public_key" {
+  description = "Public SSH key used to create an AWS key pair for EC2 access."
+  type        = string
+}
+
+variable "app_instance_type" {
+  description = "Instance type for the app EC2 instance."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "infra_instance_type" {
+  description = "Instance type for the infra EC2 instance."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "monitoring_instance_type" {
+  description = "Instance type for the monitoring EC2 instance."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "ec2_root_volume_size" {
+  description = "Root EBS volume size for EC2 instances in GB."
+  type        = number
+  default     = 30
+}

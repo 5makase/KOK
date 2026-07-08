@@ -52,3 +52,33 @@ output "rds_address" {
   description = "RDS PostgreSQL hostname."
   value       = aws_db_instance.postgres.address
 }
+
+output "app_public_ip" {
+  description = "Elastic IP address of ec2-app."
+  value       = aws_eip.app.public_ip
+}
+
+output "infra_public_ip" {
+  description = "Elastic IP address of ec2-infra."
+  value       = aws_eip.infra.public_ip
+}
+
+output "monitoring_public_ip" {
+  description = "Elastic IP address of ec2-monitoring."
+  value       = aws_eip.monitoring.public_ip
+}
+
+output "app_private_ip" {
+  description = "Private IP address of ec2-app."
+  value       = aws_instance.app.private_ip
+}
+
+output "infra_private_ip" {
+  description = "Private IP address of ec2-infra."
+  value       = aws_instance.infra.private_ip
+}
+
+output "monitoring_private_ip" {
+  description = "Private IP address of ec2-monitoring."
+  value       = aws_instance.monitoring.private_ip
+}

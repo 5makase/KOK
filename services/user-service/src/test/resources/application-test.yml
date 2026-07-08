@@ -9,8 +9,11 @@ spring:
     hibernate:
       ddl-auto: create-drop
     database-platform: org.hibernate.dialect.H2Dialect
+
 jwt:
-  secret: test-secret-key-for-testing-only-must-be-at-least-32-bytes
+  secret: testSecretKeyForIntegrationTestMustBeLongEnough256bits
+  access-expiry: 1800000
+  refresh-expiry: 1209600000
 
 eureka:
   client:

@@ -68,7 +68,7 @@ locals {
     #!/bin/bash
     set -eux
     apt-get update -y
-    apt-get install -y docker.io docker-compose-plugin
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2
     systemctl enable --now docker
     usermod -aG docker ubuntu
   EOF
@@ -77,7 +77,10 @@ locals {
     #!/bin/bash
     set -eux
     apt-get update -y
-    apt-get install -y docker.io docker-compose-plugin nginx
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2 nginx curl unzip
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install
     systemctl enable --now docker
     systemctl enable --now nginx
     usermod -aG docker ubuntu

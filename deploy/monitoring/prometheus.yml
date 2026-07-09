@@ -6,52 +6,52 @@ scrape_configs:
   - job_name: api-gateway
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8000"]
+      - targets: ["10.0.1.202:8000"]
 
   - job_name: eureka-server
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8761"]
+      - targets: ["10.0.1.202:8761"]
 
   - job_name: user-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8001"]
+      - targets: ["10.0.1.202:8001"]
 
   - job_name: store-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8002"]
+      - targets: ["10.0.1.202:8002"]
 
   - job_name: reservation-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8003"]
+      - targets: ["10.0.1.202:8003"]
 
   - job_name: waiting-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8004"]
+      - targets: ["10.0.1.202:8004"]
 
   - job_name: notification-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8005"]
+      - targets: ["10.0.1.202:8005"]
 
   - job_name: review-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8006"]
+      - targets: ["10.0.1.202:8006"]
 
   - job_name: payment-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<APP_PRIVATE_IP>:8007"]
+      - targets: ["10.0.1.202:8007"]
 
   - job_name: redis
     static_configs:
-      - targets: ["<INFRA_PRIVATE_IP>:9121"]
+      - targets: ["10.0.1.157:9121"]
 
   - job_name: kafka
     static_configs:
-      - targets: ["<INFRA_PRIVATE_IP>:9308"]
+      - targets: ["10.0.1.157:9308"]

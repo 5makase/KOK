@@ -1,0 +1,113 @@
+name: CD Pipeline
+
+# main 브랜치에 머지(push)될 때만 배포한다.
+# PR 단계에서는 기존 CI(빌드·테스트)만 돌고, 실제 배포는 하지 않는다.
+on:
+  push:
+    branches: [ main ]
+
+# 배포가 동시에 겹치지 않도록 직렬화한다.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
+
+jobs:
+  # ── 1단계: 빌드 + 테스트 + 이미지 빌드/푸시(ECR) ─────────────
+  # 이미지 푸시는 GitHub 쪽 AWS 인증이 필요하므로 액세스 키를 사용한다.
+  # (EC2의 IAM Role은 GitHub Actions 러너에서는 쓸 수 없음)
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 이미지 태그 결정 (git 짧은 해시)
+        id: meta
+        run: echo "image_tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: JDK 17 설치
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: gradlew 권한 부여
+        run: chmod +x ./gradlew
+
+      - name: 빌드 및 테스트
+        run: ./gradlew clean build
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          TEST_PG_USERNAME: user
+          TEST_PG_PASSWORD: password
+
+      - name: AWS 자격증명 설정 (이미지 푸시용 액세스 키)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR 로그인
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker Buildx 준비
+        uses: docker/setup-buildx-action@v3
+
+      # 기존 build-and-push.sh 를 그대로 재사용해 10개 이미지를 빌드·푸시한다.
+      # ECR 로그인은 위 단계에서 환경 자격증명으로 이미 끝났다.
+      - name: 이미지 빌드 및 ECR 푸시
+        run: |
+          chmod +x ./deploy/app/build-and-push.sh
+          ./deploy/app/build-and-push.sh
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+          AWS_PROFILE: default
+
+  # ── 2단계: App 서버(54.116.192.82)에 SSH 접속해 롤아웃 ────────
+  # App 서버는 IAM Role로 ECR에서 pull하므로 서버에 액세스 키를 두지 않는다.
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: App 서버에 배포 (SSH)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_APP_HOST }}
+          username: ${{ secrets.EC2_APP_USER }}
+          key: ${{ secrets.EC2_APP_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd ~/app
+
+            # 이번 배포의 이미지 태그를 .env의 IMAGE_TAG 한 줄에 반영
+            IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+            if grep -q '^IMAGE_TAG=' .env; then
+              sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${IMAGE_TAG}/" .env
+            else
+              echo "IMAGE_TAG=${IMAGE_TAG}" >> .env
+            fi
+
+            # App 서버는 IAM Role로 ECR 인증 (액세스 키 불필요)
+            aws ecr get-login-password --region ap-northeast-2 \
+              | docker login --username AWS --password-stdin \
+                570638873326.dkr.ecr.ap-northeast-2.amazonaws.com
+
+            docker compose pull
+            docker compose up -d
+            docker compose ps
+
+            # 이전 이미지 정리 (디스크 관리)
+            docker image prune -f

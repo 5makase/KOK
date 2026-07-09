@@ -1,0 +1,15 @@
+.git
+.github
+.gradle
+.gradle-local
+.idea
+**/build
+**/out
+**/.env
+*.iml
+*.log
+.DS_Store
+docker-data
+infrastructure/terraform
+jmeter
+k6

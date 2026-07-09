@@ -4,6 +4,8 @@ import com.omakase.kok.common.auth.AuthConstants;
 import com.omakase.kok.common.auth.RoleAuthorizationUtils;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.store.application.StoreService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 // MASTER 전용 매장 관리 API
+@Tag(name = "Admin-Store", description = "매장 관리자 API")
 @RestController
 @RequestMapping("/api/v1/admin/stores")
 @RequiredArgsConstructor
@@ -23,6 +26,7 @@ public class AdminStoreController {
     private final StoreService storeService;
 
     // 매장 삭제
+    @Operation(summary = "매장 삭제")
     @DeleteMapping("/{storeId}")
     public ResponseEntity<ApiResponse<Void>> deleteStore(
             @PathVariable UUID storeId,

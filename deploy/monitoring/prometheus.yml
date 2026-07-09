@@ -48,6 +48,11 @@ scrape_configs:
     static_configs:
       - targets: ["10.0.1.202:8007"]
 
+  - job_name: ai-ops-assistant
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["10.0.1.202:8099"]
+
   - job_name: redis
     static_configs:
       - targets: ["10.0.1.157:9121"]

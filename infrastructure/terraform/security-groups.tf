@@ -75,6 +75,15 @@ resource "aws_vpc_security_group_ingress_rule" "app_eureka" {
   referenced_security_group_id = aws_security_group.monitoring.id
 }
 
+resource "aws_vpc_security_group_ingress_rule" "app_ai_ops" {
+  security_group_id            = aws_security_group.app.id
+  description                  = "AI Ops metrics access from monitoring"
+  ip_protocol                  = "tcp"
+  from_port                    = 8099
+  to_port                      = 8099
+  referenced_security_group_id = aws_security_group.monitoring.id
+}
+
 # ec2-infra inbound
 resource "aws_vpc_security_group_ingress_rule" "infra_ssh" {
   security_group_id = aws_security_group.infra.id

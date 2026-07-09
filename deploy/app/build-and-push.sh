@@ -7,6 +7,7 @@ AWS_PROFILE="${AWS_PROFILE:-kok-deploy}"
 IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD)}"
 REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 PLATFORM="${PLATFORM:-linux/amd64}"
+TARGET_SERVICE="${1:-}"
 
 SERVICES=(
   "kok-eureka-server|:infrastructure:eureka-server:bootJar|infrastructure/eureka-server/build/libs"
@@ -18,6 +19,7 @@ SERVICES=(
   "kok-notification-service|:services:notification-service:bootJar|services/notification-service/build/libs"
   "kok-review-service|:services:review-service:bootJar|services/review-service/build/libs"
   "kok-payment-service|:services:payment-service:bootJar|services/payment-service/build/libs"
+  "kok-ai-ops-assistant|:infrastructure:ai-ops-assistant:bootJar|infrastructure/ai-ops-assistant/build/libs"
 )
 
 aws ecr get-login-password \
@@ -27,6 +29,10 @@ aws ecr get-login-password \
 
 for service in "${SERVICES[@]}"; do
   IFS='|' read -r repository gradle_task jar_dir <<< "${service}"
+
+  if [[ -n "${TARGET_SERVICE}" && "${TARGET_SERVICE}" != "${repository}" ]]; then
+    continue
+  fi
 
   echo "Building and pushing ${repository}:${IMAGE_TAG}"
 

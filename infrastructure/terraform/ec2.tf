@@ -108,6 +108,10 @@ resource "aws_instance" "app" {
     Role = "app"
   })
 
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   depends_on = [aws_internet_gateway.main]
 }
 
@@ -132,6 +136,10 @@ resource "aws_instance" "infra" {
     Role = "infra"
   })
 
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   depends_on = [aws_internet_gateway.main]
 }
 
@@ -155,6 +163,10 @@ resource "aws_instance" "monitoring" {
     Name = "${local.name_prefix}-ec2-monitoring"
     Role = "monitoring"
   })
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   depends_on = [aws_internet_gateway.main]
 }

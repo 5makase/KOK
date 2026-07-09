@@ -200,6 +200,23 @@ services:
       - kok-app
     restart: unless-stopped
 
+  ai-ops-assistant:
+    image: ${AI_OPS_ASSISTANT_IMAGE}
+    container_name: kok-ai-ops-assistant
+    ports:
+      - "8099:8099"
+    environment:
+      AI_OPS_ASSISTANT_PORT: 8099
+      AI_OPS_API_KEY: ${AI_OPS_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      PROMETHEUS_BASE_URL: http://${MONITORING_PRIVATE_IP}:9090
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_ALERT_CHANNEL_ID: ${SLACK_ALERT_CHANNEL_ID}
+      JAVA_TOOL_OPTIONS: ${AI_OPS_JAVA_OPTS:-"-Xms128m -Xmx256m"}
+    networks:
+      - kok-app
+    restart: unless-stopped
+
   promtail:
     image: grafana/promtail:3.5.0
     container_name: kok-app-promtail

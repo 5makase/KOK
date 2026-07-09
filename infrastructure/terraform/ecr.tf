@@ -9,6 +9,7 @@ locals {
     "kok-notification-service",
     "kok-review-service",
     "kok-payment-service",
+    "kok-ai-ops-assistant",
   ]
 }
 

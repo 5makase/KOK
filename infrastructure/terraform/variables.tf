@@ -89,13 +89,13 @@ variable "ec2_public_key" {
 variable "app_instance_type" {
   description = "Instance type for the app EC2 instance."
   type        = string
-  default     = "t3.micro"
+  default     = "m7i-flex.large"
 }
 
 variable "infra_instance_type" {
   description = "Instance type for the infra EC2 instance."
   type        = string
-  default     = "t3.micro"
+  default     = "m7i-flex.large"
 }
 
 variable "monitoring_instance_type" {

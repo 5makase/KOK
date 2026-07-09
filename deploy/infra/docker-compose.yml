@@ -63,7 +63,7 @@ services:
     restart: unless-stopped
 
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:v0.7.2
     container_name: kok-kafka-ui
     ports:
       - "8080:8080"
@@ -86,6 +86,7 @@ services:
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/var/lib/promtail
     networks:
       - kok-infra
     restart: unless-stopped
@@ -97,3 +98,4 @@ networks:
 volumes:
   redis-data:
   kafka-data:
+  promtail-positions:

@@ -24,7 +24,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidr
   availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-public-a"
@@ -44,6 +44,13 @@ resource "aws_subnet" "private" {
     Name = "${local.name_prefix}-private-${count.index + 1}"
     Tier = "private"
   })
+
+  lifecycle {
+    precondition {
+      condition     = length(var.private_subnet_cidrs) <= length(data.aws_availability_zones.available.names)
+      error_message = "private_subnet_cidrs cannot contain more entries than the available Availability Zones."
+    }
+  }
 }
 
 resource "aws_route_table" "public" {
@@ -78,4 +85,3 @@ resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
 }
-

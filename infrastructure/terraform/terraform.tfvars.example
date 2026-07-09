@@ -13,9 +13,9 @@ private_subnet_cidrs = [
 # Example: "203.0.113.10/32"
 ssh_cidr = "YOUR_PUBLIC_IP/32"
 
-# Management UIs are open for team access during the demo.
+# Replace with the public IP allowed to access management UIs.
 # Grafana(:3000), Prometheus(:9090), Kafka UI(:8080), Zipkin(:9411)
-admin_ui_cidr = "0.0.0.0/0"
+admin_ui_cidr = "YOUR_PUBLIC_IP/32"
 
 rds_instance_class    = "db.t3.micro"
 rds_engine_version    = "16.14"
@@ -30,7 +30,7 @@ rds_master_password = "CHANGE_ME_STRONG_PASSWORD"
 # cat ~/.ssh/kok-deploy.pub
 ec2_public_key = "ssh-ed25519 AAAA... your-email@example.com"
 
-app_instance_type        = "t3.micro"
-infra_instance_type      = "t3.micro"
+app_instance_type        = "m7i-flex.large"
+infra_instance_type      = "m7i-flex.large"
 monitoring_instance_type = "t3.micro"
 ec2_root_volume_size     = 30

@@ -227,6 +227,7 @@ services:
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/var/lib/promtail
     networks:
       - kok-app
     restart: unless-stopped
@@ -234,3 +235,6 @@ services:
 networks:
   kok-app:
     driver: bridge
+
+volumes:
+  promtail-positions:

@@ -97,6 +97,12 @@ resource "aws_instance" "app" {
   associate_public_ip_address = true
   user_data                   = local.app_user_data
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
   root_block_device {
     volume_size = var.ec2_root_volume_size
     volume_type = "gp3"
@@ -125,6 +131,12 @@ resource "aws_instance" "infra" {
   associate_public_ip_address = true
   user_data                   = local.ec2_common_user_data
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
   root_block_device {
     volume_size = var.ec2_root_volume_size
     volume_type = "gp3"
@@ -152,6 +164,12 @@ resource "aws_instance" "monitoring" {
   iam_instance_profile        = aws_iam_instance_profile.ec2.name
   associate_public_ip_address = true
   user_data                   = local.ec2_common_user_data
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
 
   root_block_device {
     volume_size = var.ec2_root_volume_size

@@ -18,6 +18,8 @@ import com.omakase.kok.store.presentation.dto.request.CreateStoreRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreRankingResponse;
 import com.omakase.kok.store.presentation.dto.response.StoreResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -37,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+@Tag(name = "Store", description = "매장 API")
 @RestController
 @RequestMapping("/api/v1/stores")
 @RequiredArgsConstructor
@@ -46,6 +49,7 @@ public class StoreController {
     private final StoreRatingService storeRatingService;
 
     // 매장 등록
+    @Operation(summary = "매장 등록")
     @PostMapping
     public ResponseEntity<ApiResponse<StoreResponse>> createStore(
             @RequestHeader(AuthConstants.USER_ID) UUID userId,
@@ -71,6 +75,7 @@ public class StoreController {
     }
 
     // 매장 기본정보 수정
+    @Operation(summary = "매장 기본정보 수정")
     @PatchMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StoreResponse>> updateStore(
             @PathVariable UUID storeId,
@@ -99,6 +104,7 @@ public class StoreController {
     }
 
     // 매장 상태 변경
+    @Operation(summary = "매장 상태 변경")
     @PatchMapping("/{storeId}/status")
     public ResponseEntity<ApiResponse<StoreResponse>> changeStatus(
             @PathVariable UUID storeId,
@@ -117,6 +123,7 @@ public class StoreController {
     }
 
     // 매장 상세 조회 - MASTER는 soft delete된 매장도 조회 가능
+    @Operation(summary = "매장 상세 조회")
     @GetMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StoreResponse>> getStore(
             @PathVariable UUID storeId,
@@ -127,6 +134,7 @@ public class StoreController {
 
     // 인기 매장 랭킹 조회 - Redis Sorted Set 기반, 권한 불필요
     // size 범위(1~50) 보정은 StoreRatingService에서 처리
+    @Operation(summary = "인기 매장 랭킹 조회")
     @GetMapping("/ranking")
     public ResponseEntity<ApiResponse<StoreRankingResponse>> getRanking(
             @RequestParam(defaultValue = "10") int size
@@ -136,6 +144,7 @@ public class StoreController {
 
     // 매장 목록 검색 - 역할별 동작 차이는 Service에서 처리
     // USER: status=OPEN 강제 / OWNER: 본인 매장 전체 상태 자동 적용 / MASTER: 모든 조건 자유
+    @Operation(summary = "매장 목록 검색")
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<StoreResponse>>> searchStores(
             @RequestHeader(value = AuthConstants.USER_ID, required = false) UUID userId,

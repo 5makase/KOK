@@ -13,6 +13,8 @@ import com.omakase.kok.store.presentation.dto.response.MenuDeleteResponse;
 import com.omakase.kok.store.presentation.dto.response.MenuDetailResponse;
 import com.omakase.kok.store.presentation.dto.response.MenuSoldOutResponse;
 import com.omakase.kok.store.presentation.dto.response.MenuUpdateResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "Menu", description = "메뉴 API")
 @RestController
 @RequestMapping("/api/v1/stores/{storeId}/menus")
 @RequiredArgsConstructor
@@ -38,6 +41,7 @@ public class MenuController {
     private final MenuService menuService;
 
     // 메뉴 등록 (OWNER/MASTER)
+    @Operation(summary = "메뉴 등록")
     @PostMapping
     public ResponseEntity<ApiResponse<MenuCreateResponse>> createMenu(
             @PathVariable UUID storeId,
@@ -52,6 +56,7 @@ public class MenuController {
     }
 
     // 메뉴 수정 (OWNER/MASTER)
+    @Operation(summary = "메뉴 수정")
     @PatchMapping("/{menuId}")
     public ResponseEntity<ApiResponse<MenuUpdateResponse>> updateMenu(
             @PathVariable UUID storeId,
@@ -66,6 +71,7 @@ public class MenuController {
     }
 
     // 메뉴 삭제 (OWNER/MASTER)
+    @Operation(summary = "메뉴 삭제")
     @DeleteMapping("/{menuId}")
     public ResponseEntity<ApiResponse<MenuDeleteResponse>> deleteMenu(
             @PathVariable UUID storeId,
@@ -79,6 +85,7 @@ public class MenuController {
     }
 
     // 메뉴 목록 조회 (ALL)
+    @Operation(summary = "메뉴 목록 조회")
     @GetMapping
     public ResponseEntity<ApiResponse<List<MenuDetailResponse>>> getMenus(
             @PathVariable UUID storeId
@@ -90,6 +97,7 @@ public class MenuController {
     }
 
     // 품절 토글 (OWNER/MASTER)
+    @Operation(summary = "메뉴 품절 토글")
     @PatchMapping("/{menuId}/sold-out")
     public ResponseEntity<ApiResponse<MenuSoldOutResponse>> toggleSoldOut(
             @PathVariable UUID storeId,

@@ -8,6 +8,8 @@ import com.kok.review.presentation.DTO1.request.*;
 import com.kok.review.presentation.DTO1.response.*;
 import com.omakase.kok.common.dto.ApiResponse;
 import com.omakase.kok.common.dto.PageResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+@Tag(name = "Review", description = "리뷰 API")
 @RestController
 @RequestMapping("/api/v1/reviews")
 @RequiredArgsConstructor
@@ -35,6 +38,7 @@ public class ReviewController {
      * @param dto
      * @return
      */
+    @Operation(summary = "리뷰 신고")
     @PostMapping("/{reviewId}/reports")
     public ResponseEntity<ApiResponse<ReviewReportResponseDto>> reportReview(
             @PathVariable UUID reviewId,
@@ -52,6 +56,7 @@ public class ReviewController {
      * @param userRole
      * @return
      */
+    @Operation(summary = "신고 승인")
     @PatchMapping("/reports/{reportId}/approve")
     public ResponseEntity<ApiResponse<Void>> approveReport(
             @PathVariable UUID reportId,
@@ -66,6 +71,7 @@ public class ReviewController {
      * @param userRole
      * @return
      */
+    @Operation(summary = "신고 거부")
     @PatchMapping("/reports/{reportId}/reject")
     public ResponseEntity<ApiResponse<Void>> rejectReport(
             @PathVariable UUID reportId,
@@ -82,6 +88,7 @@ public class ReviewController {
      * @param dto
      * @return
      */
+    @Operation(summary = "사장님 답글 작성")
     @PostMapping("/{reviewId}/replies")
     public ResponseEntity<ApiResponse<ReviewReplyResponseDto>> createReply(
             @PathVariable UUID reviewId,
@@ -100,6 +107,7 @@ public class ReviewController {
      * @param dto
      * @return
      */
+    @Operation(summary = "사장님 답글 수정")
     @PutMapping("/{reviewId}/replies")
     public ResponseEntity<ApiResponse<ReviewReplyResponseDto>> updateReply(
             @PathVariable UUID reviewId,
@@ -117,6 +125,7 @@ public class ReviewController {
      * @param userRole
      * @return
      */
+    @Operation(summary = "사장님 답글 삭제")
     @PatchMapping("/{reviewId}/replies")
     public ResponseEntity<ApiResponse<Void>> deleteReply(
             @PathVariable UUID reviewId,
@@ -134,6 +143,7 @@ public class ReviewController {
      * @param size
      * @return
      */
+    @Operation(summary = "내 리뷰 목록 조회")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<PageResponse<ReviewGetResponseDto>>> getMyReviews(@RequestHeader("X-User-Id") UUID userId,
                                                                                       @RequestParam(defaultValue = "LATEST") ReviewSortType sort,
@@ -156,6 +166,7 @@ public class ReviewController {
      * @param size
      * @return
      */
+    @Operation(summary = "매장 리뷰 목록 조회")
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<ReviewGetResponseDto>>> getReviews(@RequestParam UUID storeId,
                                                                                       @RequestParam(defaultValue = "LATEST") ReviewSortType sort,
@@ -175,6 +186,7 @@ public class ReviewController {
      * @param reviewId
      * @return
      */
+    @Operation(summary = "리뷰 상세 조회")
     @GetMapping("/{reviewId}")
     public ResponseEntity<ApiResponse<ReviewGetResponseDto>> getReview(@PathVariable UUID reviewId) {
         ReviewGetResponseDto reviewGetResponseDto = reviewService.getReview(reviewId);
@@ -189,6 +201,7 @@ public class ReviewController {
      * @param userRole
      * @return
      */
+    @Operation(summary = "리뷰 수정")
     @PutMapping("/{reviewId}")
     public ResponseEntity<ApiResponse<ReviewUpdateResponseDto>> updateReview(@PathVariable UUID reviewId,
                                                                              @RequestHeader("X-User-Id")UUID userId,
@@ -204,6 +217,7 @@ public class ReviewController {
      * @param userId
      * @return
      */
+    @Operation(summary = "리뷰 삭제")
     @PatchMapping("/{reviewId}")
     public ResponseEntity<ApiResponse<ReviewDeletedResponseDto>> deleteReview(@PathVariable UUID reviewId, @RequestHeader("X-User-Id")UUID userId) {
         ReviewDeletedResponseDto dto = reviewService.deleteReview(reviewId, userId);
@@ -215,6 +229,7 @@ public class ReviewController {
      * @param requestDto
      * @return
      */
+    @Operation(summary = "리뷰 생성")
     @PostMapping
     public ResponseEntity<ApiResponse<ReviewCreateResponseDto>> createReview(@Valid @RequestBody ReviewRequestDto requestDto, @RequestHeader("X-User-Id")UUID userId) {
         ReviewCreateResponseDto reviewResponseDto = reviewService.createReview(requestDto,userId);

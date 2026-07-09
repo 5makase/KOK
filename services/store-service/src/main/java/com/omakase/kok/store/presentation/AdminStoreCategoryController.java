@@ -9,6 +9,8 @@ import com.omakase.kok.store.application.command.UpdateStoreCategoryCommand;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreCategoryRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreCategoryRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreCategoryResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 // MASTER 전용 카테고리 관리 API
+@Tag(name = "Admin-StoreCategory", description = "매장 카테고리 관리자 API")
 @RestController
 @RequestMapping("/api/v1/admin/categories")
 @RequiredArgsConstructor
@@ -32,6 +35,7 @@ public class AdminStoreCategoryController {
     private final StoreCategoryService storeCategoryService;
 
     // 카테고리 등록
+    @Operation(summary = "카테고리 등록")
     @PostMapping
     public ResponseEntity<ApiResponse<StoreCategoryResponse.Single>> createCategory(
             @RequestHeader(AuthConstants.ROLE) String role,
@@ -47,6 +51,7 @@ public class AdminStoreCategoryController {
     }
 
     // 카테고리 수정
+    @Operation(summary = "카테고리 수정")
     @PatchMapping("/{categoryId}")
     public ResponseEntity<ApiResponse<StoreCategoryResponse.Single>> updateCategory(
             @PathVariable UUID categoryId,
@@ -63,6 +68,7 @@ public class AdminStoreCategoryController {
     }
 
     // 카테고리 삭제
+    @Operation(summary = "카테고리 삭제")
     @DeleteMapping("/{categoryId}")
     public ResponseEntity<ApiResponse<Void>> deleteCategory(
             @PathVariable UUID categoryId,

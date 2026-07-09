@@ -9,6 +9,8 @@ import com.omakase.kok.store.application.command.UpdateStoreHoursCommand;
 import com.omakase.kok.store.presentation.dto.request.CreateStoreHoursBulkRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreHoursRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreHoursResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "StoreHours", description = "매장 영업시간 API")
 @RestController
 @RequestMapping("/api/v1/stores/{storeId}/hours")
 @RequiredArgsConstructor
@@ -33,6 +36,7 @@ public class StoreHoursController {
     private final StoreHoursService storeHoursService;
 
     // 영업시간 7일치 일괄 등록 (이미 등록된 요일은 restore 후 덮어쓰기)
+    @Operation(summary = "영업시간 일괄 등록")
     @PostMapping
     public ResponseEntity<ApiResponse<List<StoreHoursResponse>>> createBulkHours(
             @PathVariable UUID storeId,
@@ -61,6 +65,7 @@ public class StoreHoursController {
     }
 
     // 영업시간 수정
+    @Operation(summary = "영업시간 수정")
     @PatchMapping("/{hoursId}")
     public ResponseEntity<ApiResponse<StoreHoursResponse>> updateHours(
             @PathVariable UUID storeId,
@@ -84,6 +89,7 @@ public class StoreHoursController {
     }
 
     // 영업시간 삭제 (OPEN 매장 불가 - isDayOff 변경 유도)
+    @Operation(summary = "영업시간 삭제")
     @DeleteMapping("/{hoursId}")
     public ResponseEntity<ApiResponse<Void>> deleteHours(
             @PathVariable UUID storeId,
@@ -97,6 +103,7 @@ public class StoreHoursController {
     }
 
     // 매장 영업시간 목록 조회
+    @Operation(summary = "매장 영업시간 목록 조회")
     @GetMapping
     public ResponseEntity<ApiResponse<List<StoreHoursResponse>>> getStoreHours(
             @PathVariable UUID storeId

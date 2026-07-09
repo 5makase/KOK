@@ -7,6 +7,8 @@ import com.omakase.kok.store.application.StoreAmenityService;
 import com.omakase.kok.store.application.command.AddStoreAmenityCommand;
 import com.omakase.kok.store.presentation.dto.request.AddStoreAmenityRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreAmenityResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "StoreAmenity", description = "매장 편의시설 API")
 @RestController
 @RequestMapping("/api/v1/stores/{storeId}/amenities")
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class StoreAmenityController {
     private final StoreAmenityService storeAmenityService;
 
     // 편의시설 동기화 - 요청 목록으로 전체 교체 (restore/insert/soft delete 자동 처리)
+    @Operation(summary = "편의시설 동기화")
     @PutMapping
     public ResponseEntity<ApiResponse<StoreAmenityResponse.Bulk>> syncAmenities(
             @PathVariable UUID storeId,
@@ -47,6 +51,7 @@ public class StoreAmenityController {
     }
 
     // 편의시설 삭제 (Soft Delete)
+    @Operation(summary = "편의시설 삭제")
     @DeleteMapping("/{amenityId}")
     public ResponseEntity<ApiResponse<Void>> deleteAmenity(
             @PathVariable UUID storeId,
@@ -60,6 +65,7 @@ public class StoreAmenityController {
     }
 
     // 매장 편의시설 목록 조회
+    @Operation(summary = "매장 편의시설 목록 조회")
     @GetMapping
     public ResponseEntity<ApiResponse<List<StoreAmenityResponse>>> getAmenities(
             @PathVariable UUID storeId

@@ -9,6 +9,8 @@ import com.omakase.kok.store.application.command.UpdateStoreImageCommand;
 import com.omakase.kok.store.presentation.dto.request.AddStoreImageRequest;
 import com.omakase.kok.store.presentation.dto.request.UpdateStoreImageRequest;
 import com.omakase.kok.store.presentation.dto.response.StoreImageResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "StoreImage", description = "매장 이미지 API")
 @RestController
 @RequestMapping("/api/v1/stores/{storeId}/images")
 @RequiredArgsConstructor
@@ -33,6 +36,7 @@ public class StoreImageController {
     private final StoreImageService storeImageService;
 
     // 이미지 bulk 등록 (1장~N장, 동일 슬롯 이미 존재 시 URL 업데이트)
+    @Operation(summary = "이미지 등록")
     @PostMapping
     public ResponseEntity<ApiResponse<List<StoreImageResponse>>> addImages(
             @PathVariable UUID storeId,
@@ -57,6 +61,7 @@ public class StoreImageController {
     }
 
     // 이미지 단건 수정 (URL 또는 displayOrder 변경, displayOrder 충돌 시 기존 이미지 soft delete)
+    @Operation(summary = "이미지 수정")
     @PatchMapping("/{imageId}")
     public ResponseEntity<ApiResponse<StoreImageResponse>> updateImage(
             @PathVariable UUID storeId,
@@ -77,6 +82,7 @@ public class StoreImageController {
     }
 
     // 이미지 삭제 (Soft Delete)
+    @Operation(summary = "이미지 삭제")
     @DeleteMapping("/{imageId}")
     public ResponseEntity<ApiResponse<Void>> deleteImage(
             @PathVariable UUID storeId,
@@ -90,6 +96,7 @@ public class StoreImageController {
     }
 
     // 매장 이미지 목록 조회 (displayOrder 오름차순)
+    @Operation(summary = "매장 이미지 목록 조회")
     @GetMapping
     public ResponseEntity<ApiResponse<List<StoreImageResponse>>> getImages(
             @PathVariable UUID storeId

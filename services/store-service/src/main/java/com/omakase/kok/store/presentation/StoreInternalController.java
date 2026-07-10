@@ -6,6 +6,8 @@ import com.omakase.kok.store.application.StoreService;
 import com.omakase.kok.store.application.result.StoreSummaryResult;
 import com.omakase.kok.store.presentation.dto.response.BusinessHoursValidationResponse;
 import com.omakase.kok.store.presentation.dto.response.StoreSummaryResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,7 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 // 서비스 간 내부 호출 전용
+@Tag(name = "Internal", description = "내부 서비스 통신 API")
 @RestController
 @RequestMapping("/api/v1/internal/stores")
 @RequiredArgsConstructor
@@ -28,6 +31,7 @@ public class StoreInternalController {
     private final StoreService storeService;
     private final StoreHoursService storeHoursService;
 
+    @Operation(summary = "매장 요약 정보 조회 (내부용)")
     @GetMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StoreSummaryResponse>> getStoreSummary(
             @PathVariable UUID storeId
@@ -36,6 +40,7 @@ public class StoreInternalController {
         return ResponseEntity.ok(ApiResponse.success(StoreSummaryResponse.from(result)));
     }
 
+    @Operation(summary = "영업시간 검증 (내부용)")
     @GetMapping("/{storeId}/hours/validate")
     public ResponseEntity<ApiResponse<BusinessHoursValidationResponse>> validateBusinessHours(
             @PathVariable UUID storeId,

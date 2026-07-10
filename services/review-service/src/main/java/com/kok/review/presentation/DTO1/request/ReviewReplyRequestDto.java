@@ -3,9 +3,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @NoArgsConstructor
+@Setter
 public class ReviewReplyRequestDto {
 
     @NotBlank(message = "답글 내용을 입력하시오.")

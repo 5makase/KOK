@@ -1,0 +1,667 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Waiting Actuator",
+      "type": "link",
+      "url": "http://localhost:8004/actuator/prometheus",
+      "targetBlank": true
+    },
+    {
+      "title": "Zipkin",
+      "type": "link",
+      "url": "http://localhost:9411",
+      "targetBlank": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "waiting-service UP",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{instance=~\".*:8004\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "HTTP Requests/sec",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 4,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (method, uri, status) (rate(http_server_requests_seconds_count{instance=~\".*:8004\", uri!~\"/actuator.*\"}[1m]))",
+          "legendFormat": "{{method}} {{uri}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "HTTP Latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (method, uri, status) (rate(http_server_requests_seconds_sum{instance=~\".*:8004\", uri!~\"/actuator.*\"}[1m])) / sum by (method, uri, status) (rate(http_server_requests_seconds_count{instance=~\".*:8004\", uri!~\"/actuator.*\"}[1m]))) * 1000",
+          "legendFormat": "{{method}} {{uri}} {{status}} avg"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (method, uri, status) (http_server_requests_seconds_max{instance=~\".*:8004\", uri!~\"/actuator.*\"}) * 1000",
+          "legendFormat": "{{method}} {{uri}} {{status}} max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Process CPU",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_cpu_usage{instance=~\".*:8004\"}",
+          "legendFormat": "process cpu"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "JVM Memory",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (area) (jvm_memory_used_bytes{instance=~\".*:8004\"})",
+          "legendFormat": "{{area}} used"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (area) (jvm_memory_max_bytes{instance=~\".*:8004\"})",
+          "legendFormat": "{{area}} max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "HikariCP Connections",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{instance=~\".*:8004\"}",
+          "legendFormat": "active"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_idle{instance=~\".*:8004\"}",
+          "legendFormat": "idle"
+        },
+        {
+          "refId": "C",
+          "expr": "hikaricp_connections_pending{instance=~\".*:8004\"}",
+          "legendFormat": "pending"
+        },
+        {
+          "refId": "D",
+          "expr": "hikaricp_connections_max{instance=~\".*:8004\"}",
+          "legendFormat": "max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "DB Pool Pressure",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(hikaricp_connections_timeout_total{instance=~\".*:8004\"}[1m])",
+          "legendFormat": "connection timeout/sec"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_acquire_seconds_max{instance=~\".*:8004\"} * 1000",
+          "legendFormat": "acquire max ms"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Kafka Producer / Consumer",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(kafka_producer_record_send_total{instance=~\".*:8004\"}[1m]))",
+          "legendFormat": "producer sends/sec"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(kafka_consumer_fetch_manager_records_consumed_total{instance=~\".*:8004\"}[1m]))",
+          "legendFormat": "consumer records/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Kafka Latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kafka_producer_request_latency_avg{instance=~\".*:8004\"}",
+          "legendFormat": "producer request avg"
+        },
+        {
+          "refId": "B",
+          "expr": "kafka_consumer_fetch_manager_fetch_latency_avg{instance=~\".*:8004\"}",
+          "legendFormat": "consumer fetch avg"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "Redis Commands",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(lettuce_command_completion_seconds_count{instance=~\".*:8004\"}[1m]))",
+          "legendFormat": "lettuce commands/sec"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum(rate(lettuce_command_completion_seconds_sum{instance=~\".*:8004\"}[1m])) / sum(rate(lettuce_command_completion_seconds_count{instance=~\".*:8004\"}[1m]))) * 1000",
+          "legendFormat": "lettuce avg latency ms"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "title": "전체 컨테이너 로그",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\"} |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 12,
+      "title": "waiting-service 전체 로그",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"waiting-service\"} |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 13,
+      "title": "waiting-service WARN / ERROR",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"waiting-service\"} |~ \"WARN|ERROR|Exception\" |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 14,
+      "title": "waiting-service DB / Hikari 로그",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"waiting-service\"} |~ \"Hikari|Connection|JDBC|EntityManager|transaction|timeout\" |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 15,
+      "title": "Kafka 컨테이너 로그",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"kafka\"} |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 16,
+      "title": "Kafka WARN / ERROR",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"kafka\"} |~ \"WARN|ERROR|Exception|Failed|Timeout\" |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 17,
+      "title": "Redis 컨테이너 로그",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"redis\"} |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 18,
+      "title": "Redis WARN / ERROR",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "LOKI"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"kok-docker\", service=\"redis\"} |~ \"WARN|ERROR|Exception|Failed|Timeout|MISCONF\" |~ \"$logFilter\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": [
+    "kok",
+    "waiting-service",
+    "prometheus",
+    "loki"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "logFilter",
+        "label": "Log Filter",
+        "type": "textbox",
+        "query": ".",
+        "current": {
+          "text": ".",
+          "value": "."
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "KOK Waiting Service",
+  "uid": "kok-waiting-service",
+  "version": 1,
+  "weekStart": ""
+}

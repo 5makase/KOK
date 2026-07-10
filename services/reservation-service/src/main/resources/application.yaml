@@ -51,6 +51,8 @@ management:
       exposure:
         include: health,info,prometheus
   metrics:
+    tags:
+      application: reservation-service
     distribution:
       percentiles-histogram:
         http.server.requests: true

@@ -33,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RAtomicLong;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -70,6 +71,11 @@ public class ReservationService {
     private final PaymentFeignClient paymentFeignClient;
     private final PlatformTransactionManager transactionManager;
     private final ObjectMapper objectMapper;
+
+    // 운영에서는 락 경합이 짧게 끝나야 하므로 3초가 적절하지만, 테스트처럼 한 슬롯에 락 대기자가
+    // 몰리는 상황에서는 3초로 부족해 정상 요청까지 SLOT_LOCK_FAILED로 떨어질 수 있어 환경별로 조정 가능하게 뺀다.
+    @Value("${reservation.lock.wait-seconds:3}")
+    private long lockWaitSeconds = 3;
 
     // 같은 Idempotency-Key로 재전송된 요청은 실제 예약 로직을 다시 타지 않고 최초 시도의 결과를 그대로 반환한다.
     // 매핑은 Reservation이 실제 저장된 시점(결제 실패로 이후 취소되더라도)에만 남기므로, 아무 것도 생성되기 전에
@@ -124,7 +130,7 @@ public class ReservationService {
 
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + request.getSlotId());
         try {
-            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
 
@@ -284,7 +290,7 @@ public class ReservationService {
         try {
             // 이 락을 잡고 있는 동안은 create/cancel/change 어느 경로도 이 슬롯의 capacityKey를
             // 건드릴 수 없으므로, 재설정이 동시 요청의 차감을 덮어쓰는 일이 없다.
-            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS)) {
                 log.warn("슬롯 락 획득 실패로 정원 복구 스킵 - slotId: {}", slotId);
                 return SlotCapacityRestoreItem.skipped(slotId);
             }
@@ -431,7 +437,7 @@ public class ReservationService {
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         ReservationResponse response;
         try {
-            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
             response = new TransactionTemplate(transactionManager).execute(status -> {
@@ -508,7 +514,7 @@ public class ReservationService {
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         ReservationResponse response;
         try {
-            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
             response = new TransactionTemplate(transactionManager).execute(status -> {
@@ -605,7 +611,7 @@ public class ReservationService {
         // 슬롯 락을 통해 동시 요청 간 Redis 잔여 인원 불일치 방지
         RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
         try {
-            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+            if (!lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS)) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
 
@@ -685,11 +691,11 @@ public class ReservationService {
         boolean aLocked = false;
         boolean bLocked = false;
         try {
-            aLocked = lockA.tryLock(3, TimeUnit.SECONDS);
+            aLocked = lockA.tryLock(lockWaitSeconds, TimeUnit.SECONDS);
             if (!aLocked) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }
-            bLocked = lockB.tryLock(3, TimeUnit.SECONDS);
+            bLocked = lockB.tryLock(lockWaitSeconds, TimeUnit.SECONDS);
             if (!bLocked) {
                 throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
             }

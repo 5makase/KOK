@@ -1,0 +1,566 @@
+package com.omakase.kok.store.application;
+
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.store.application.validator.StoreOwnerValidator;
+import org.mockito.Spy;
+import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand;
+import com.omakase.kok.store.application.command.CreateStoreHoursBulkCommand.HoursEntry;
+import com.omakase.kok.store.application.command.UpdateStoreHoursCommand;
+import com.omakase.kok.store.application.result.StoreHoursResult;
+import com.omakase.kok.store.domain.entity.Store;
+import com.omakase.kok.store.domain.entity.StoreCategory;
+import com.omakase.kok.store.domain.entity.StoreHours;
+import com.omakase.kok.store.domain.repository.StoreHoursRepository;
+import com.omakase.kok.store.domain.service.StoreFinder;
+import com.omakase.kok.store.domain.vo.Address;
+import com.omakase.kok.store.global.exception.StoreErrorCode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.omakase.kok.store.application.result.StoreHoursValidationResult;
+import com.omakase.kok.store.domain.enums.StoreStatus;
+import java.lang.reflect.Field;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class StoreHoursServiceTest {
+
+    @Mock StoreHoursRepository storeHoursRepository;
+    @Mock StoreFinder storeFinder;
+    @Spy StoreOwnerValidator storeOwnerValidator = new StoreOwnerValidator();
+
+    @InjectMocks
+    StoreHoursService storeHoursService;
+
+    private UUID ownerId;
+    private UUID storeId;
+    private Store store;
+
+    @BeforeEach
+    void setUp() {
+        ownerId = UUID.randomUUID();
+        storeId = UUID.randomUUID();
+        store = Store.create(ownerId, StoreCategory.create("한식", 1, null), "테스트 매장", null,
+                new Address("서울", "강남", null, null, null, null), null, null);
+    }
+
+    // createBulkHours
+
+    @Test
+    @DisplayName("영업일 등록 성공")
+    void createBulk_operating_day_success() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHoursByDay(any(), any())).thenReturn(Optional.empty());
+        StoreHours saved = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        when(storeHoursRepository.save(any())).thenReturn(saved);
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
+                .build();
+
+        List<StoreHoursResult> results = storeHoursService.createBulkHours(command, AuthConstants.OWNER);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).isDayOff()).isFalse();
+    }
+
+    @Test
+    @DisplayName("휴무일 등록 성공")
+    void createBulk_day_off_success() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHoursByDay(any(), any())).thenReturn(Optional.empty());
+        StoreHours saved = StoreHours.createDayOff(store, DayOfWeek.SUNDAY);
+        when(storeHoursRepository.save(any())).thenReturn(saved);
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .hours(List.of(dayOffEntry(DayOfWeek.SUNDAY)))
+                .build();
+
+        List<StoreHoursResult> results = storeHoursService.createBulkHours(command, AuthConstants.OWNER);
+
+        assertThat(results.get(0).isDayOff()).isTrue();
+    }
+
+    @Test
+    @DisplayName("영업일인데 openTime 없으면 400")
+    void createBulk_operating_without_open_time_throws() {
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        HoursEntry invalidEntry = HoursEntry.builder()
+                .dayOfWeek(DayOfWeek.MONDAY)
+                .isDayOff(false)
+                .openTime(null)   // 영업일인데 openTime 없음
+                .closeTime(LocalTime.of(21, 0))
+                .build();
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .hours(List.of(invalidEntry))
+                .build();
+
+        assertThatThrownBy(() -> storeHoursService.createBulkHours(command, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.INVALID_STORE_HOURS);
+    }
+
+    @Test
+    @DisplayName("기존 soft delete 영업시간 재등록 시 restore 후 업데이트")
+    void createBulk_restores_deleted_hours() {
+        StoreHours deleted = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(18, 0), null, null);
+        deleted.delete(ownerId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHoursByDay(store, DayOfWeek.MONDAY)).thenReturn(Optional.of(deleted));
+        when(storeHoursRepository.save(any())).thenReturn(deleted);
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(ownerId)
+                .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
+                .build();
+
+        storeHoursService.createBulkHours(command, AuthConstants.OWNER);
+
+        assertThat(deleted.isDeleted()).isFalse(); // restore 확인
+        assertThat(deleted.getOpenTime()).isEqualTo(LocalTime.of(9, 0));
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 영업시간 등록 시 403")
+    void createBulk_owner_cannot_register_to_others_store() {
+        UUID otherId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(otherId)
+                .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
+                .build();
+
+        assertThatThrownBy(() -> storeHoursService.createBulkHours(command, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 영업시간 등록 가능")
+    void createBulk_master_skips_owner_check() {
+        UUID masterId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHoursByDay(any(), any())).thenReturn(Optional.empty());
+        StoreHours saved = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        when(storeHoursRepository.save(any())).thenReturn(saved);
+
+        CreateStoreHoursBulkCommand command = CreateStoreHoursBulkCommand.builder()
+                .storeId(storeId).requesterId(masterId)
+                .hours(List.of(operatingEntry(DayOfWeek.MONDAY)))
+                .build();
+
+        List<StoreHoursResult> results = storeHoursService.createBulkHours(command, AuthConstants.MASTER);
+
+        assertThat(results).hasSize(1);
+    }
+
+    // updateHours
+
+    @Test
+    @DisplayName("영업일로 변경 성공")
+    void updateHours_to_operating_success() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId).hoursId(hoursId).requesterId(ownerId)
+                .isDayOff(false)
+                .openTime(LocalTime.of(9, 0))
+                .closeTime(LocalTime.of(21, 0))
+                .build();
+
+        StoreHoursResult result = storeHoursService.updateHours(command, AuthConstants.OWNER);
+
+        assertThat(result.isDayOff()).isFalse();
+        assertThat(result.getOpenTime()).isEqualTo(LocalTime.of(9, 0));
+    }
+
+    @Test
+    @DisplayName("휴무일로 변경 시 openTime/closeTime null 처리")
+    void updateHours_to_day_off_clears_times() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId).hoursId(hoursId).requesterId(ownerId)
+                .isDayOff(true)
+                .openTime(null).closeTime(null)
+                .build();
+
+        StoreHoursResult result = storeHoursService.updateHours(command, AuthConstants.OWNER);
+
+        assertThat(result.isDayOff()).isTrue();
+        assertThat(result.getOpenTime()).isNull();
+        assertThat(result.getCloseTime()).isNull();
+    }
+
+    @Test
+    @DisplayName("영업일로 수정인데 openTime 없으면 400")
+    void updateHours_operating_without_time_throws() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId).hoursId(hoursId).requesterId(ownerId)
+                .isDayOff(false)
+                .openTime(null)
+                .closeTime(LocalTime.of(21, 0))
+                .build();
+
+        assertThatThrownBy(() -> storeHoursService.updateHours(command, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.INVALID_STORE_HOURS);
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 영업시간 수정 시 403")
+    void updateHours_owner_cannot_update_others() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId).hoursId(hoursId).requesterId(otherId)
+                .isDayOff(false)
+                .openTime(LocalTime.of(10, 0)).closeTime(LocalTime.of(22, 0))
+                .build();
+
+        assertThatThrownBy(() -> storeHoursService.updateHours(command, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 영업시간 수정 가능")
+    void updateHours_master_skips_owner_check() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        UpdateStoreHoursCommand command = UpdateStoreHoursCommand.builder()
+                .storeId(storeId).hoursId(hoursId).requesterId(masterId)
+                .isDayOff(false)
+                .openTime(LocalTime.of(9, 0))
+                .closeTime(LocalTime.of(21, 0))
+                .build();
+
+        StoreHoursResult result = storeHoursService.updateHours(command, AuthConstants.MASTER);
+
+        assertThat(result).isNotNull();
+    }
+
+    // deleteHours
+
+    @Test
+    @DisplayName("PREPARING 매장 영업시간 삭제 성공")
+    void deleteHours_preparing_store_success() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER);
+
+        assertThat(hours.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("OPEN 매장 영업시간 삭제 시 400")
+    void deleteHours_open_store_throws() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        // OPEN 상태로 전환
+        store.changeStatus(com.omakase.kok.store.domain.enums.StoreStatus.OPEN, 7, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_CANNOT_DELETE_WHILE_OPEN);
+    }
+
+    @Test
+    @DisplayName("이미 삭제된 영업시간 삭제 시 400")
+    void deleteHours_already_deleted_throws() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+        hours.delete(ownerId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_ALREADY_DELETED);
+    }
+
+    @Test
+    @DisplayName("OWNER가 타인 매장 영업시간 삭제 시 403")
+    void deleteHours_owner_cannot_delete_others() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, otherId, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_ACCESS_DENIED);
+    }
+
+    @Test
+    @DisplayName("MASTER는 소유자 검증 없이 영업시간 삭제 가능")
+    void deleteHours_master_skips_owner_check() throws Exception {
+        UUID hoursId = UUID.randomUUID();
+        UUID masterId = UUID.randomUUID();
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        setHoursId(hours, hoursId);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.of(hours));
+
+        storeHoursService.deleteHours(storeId, hoursId, masterId, AuthConstants.MASTER);
+
+        assertThat(hours.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 영업시간 삭제 시 404")
+    void deleteHours_not_found_throws() {
+        UUID hoursId = UUID.randomUUID();
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findHours(storeId, hoursId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> storeHoursService.deleteHours(storeId, hoursId, ownerId, AuthConstants.OWNER))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_NOT_FOUND);
+    }
+
+    // getStoreHours
+
+    @Test
+    @DisplayName("영업시간 목록 조회 - 요일 오름차순 반환")
+    void getStoreHours_returns_sorted_by_day() {
+        StoreHours mon = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+        StoreHours wed = StoreHours.createDayOff(store, DayOfWeek.WEDNESDAY);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        // Repository가 요일(DayOfWeek) 오름차순 정렬 후 반환하는 것을 mock으로 표현
+        when(storeHoursRepository.findAllHours(store)).thenReturn(List.of(mon, wed));
+
+        List<StoreHoursResult> results = storeHoursService.getStoreHours(storeId);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).isDayOff()).isFalse();
+        assertThat(results.get(1).isDayOff()).isTrue();
+    }
+
+    // checkBusinessHours
+
+    @Test
+    @DisplayName("매장이 OPEN 상태가 아니면 STORE_NOT_OPEN 반환")
+    void checkBusinessHours_store_not_open_returns_denied() {
+        // store의 기본 상태는 PREPARING → isAvailableForService() == false
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("STORE_NOT_OPEN");
+    }
+
+    @Test
+    @DisplayName("정기 휴무일이면 DAY_OFF 반환")
+    void checkBusinessHours_day_off_returns_denied() {
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+        StoreHours dayOff = StoreHours.createDayOff(store, DayOfWeek.MONDAY);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(dayOff));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0)); // 2026-06-01 is MONDAY
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("DAY_OFF");
+    }
+
+    @Test
+    @DisplayName("영업시간 외 요청이면 OUTSIDE_HOURS 반환")
+    void checkBusinessHours_outside_hours_returns_denied() {
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(22, 0));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("OUTSIDE_HOURS");
+    }
+
+    @Test
+    @DisplayName("브레이크타임 내 요청이면 BREAK_TIME 반환")
+    void checkBusinessHours_during_break_time_returns_denied() {
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0),
+                LocalTime.of(14, 0), LocalTime.of(15, 0));
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(14, 30));
+
+        assertThat(result.isAvailable()).isFalse();
+        assertThat(result.getReason()).isEqualTo("BREAK_TIME");
+    }
+
+    @Test
+    @DisplayName("breakStartTime만 있고 breakEndTime이 null이면 NPE 없이 available 반환 - 회귀 방지")
+    void checkBusinessHours_break_start_only_no_npe() {
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+        // breakEndTime=null - DB 스키마상 두 필드가 독립적으로 NULL 허용
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0),
+                LocalTime.of(14, 0), null);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(14, 30));
+
+        assertThat(result.isAvailable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("정상 영업 중이면 available: true 반환")
+    void checkBusinessHours_during_business_hours_returns_ok() {
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+        StoreHours hours = StoreHours.createOperating(store, DayOfWeek.MONDAY,
+                LocalTime.of(9, 0), LocalTime.of(21, 0), null, null);
+
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.of(hours));
+
+        StoreHoursValidationResult result = storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0));
+
+        assertThat(result.isAvailable()).isTrue();
+        assertThat(result.getReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("해당 요일 영업시간 미등록 시 STORE_HOURS_NOT_FOUND 예외")
+    void checkBusinessHours_hours_not_found_throws() {
+        store.changeStatus(StoreStatus.OPEN, 7, ownerId);
+        when(storeFinder.findActiveOrThrow(storeId)).thenReturn(store);
+        when(storeHoursRepository.findTodayHours(storeId, DayOfWeek.MONDAY)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> storeHoursService.checkBusinessHours(
+                storeId, LocalDate.of(2026, 6, 1), LocalTime.of(12, 0)))
+                .isInstanceOf(BaseException.class)
+                .extracting(e -> ((BaseException) e).getErrorCode())
+                .isEqualTo(StoreErrorCode.STORE_HOURS_NOT_FOUND);
+    }
+
+    // helpers
+
+    private HoursEntry operatingEntry(DayOfWeek day) {
+        return HoursEntry.builder()
+                .dayOfWeek(day)
+                .isDayOff(false)
+                .openTime(LocalTime.of(9, 0))
+                .closeTime(LocalTime.of(21, 0))
+                .build();
+    }
+
+    private HoursEntry dayOffEntry(DayOfWeek day) {
+        return HoursEntry.builder()
+                .dayOfWeek(day)
+                .isDayOff(true)
+                .build();
+    }
+
+    // @GeneratedValue는 JPA 영속 시점에만 동작하므로 단위 테스트에서는 리플렉션으로 주입
+    private void setHoursId(StoreHours hours, UUID id) throws Exception {
+        Field field = StoreHours.class.getDeclaredField("hoursId");
+        field.setAccessible(true);
+        field.set(hours, id);
+    }
+}

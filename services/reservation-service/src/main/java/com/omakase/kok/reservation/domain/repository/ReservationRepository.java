@@ -1,0 +1,91 @@
+package com.omakase.kok.reservation.domain.repository;
+
+import com.omakase.kok.reservation.domain.entity.Reservation;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+public interface ReservationRepository extends JpaRepository<Reservation, UUID> {
+
+    Optional<Reservation> findByReservationIdAndDeletedAtIsNull(UUID reservationId);
+
+    List<Reservation> findByUserIdAndDeletedAtIsNull(UUID userId);
+
+    List<Reservation> findByStoreIdAndDeletedAtIsNull(UUID storeId);
+
+    List<Reservation> findBySlotIdAndStatusInAndDeletedAtIsNull(UUID slotId, List<ReservationStatus> statuses);
+
+    List<Reservation> findByStatusAndCreatedAtBeforeAndDeletedAtIsNull(ReservationStatus status, LocalDateTime threshold);
+
+    List<Reservation> findByStatusAndScheduledAtBetweenAndDeletedAtIsNull(
+            ReservationStatus status, LocalDateTime from, LocalDateTime to);
+
+    @Query("""
+        SELECT r FROM Reservation r
+        WHERE r.userId = :userId AND r.deletedAt IS NULL
+          AND (cast(:status as string) IS NULL OR r.status = :status)
+          AND (cast(:from as timestamp) IS NULL OR r.scheduledAt >= :from)
+          AND (cast(:to as timestamp) IS NULL OR r.scheduledAt < :to)
+        ORDER BY r.scheduledAt DESC, r.reservationId DESC
+        """)
+    Page<Reservation> findMyReservations(@Param("userId") UUID userId,
+                                          @Param("status") ReservationStatus status,
+                                          @Param("from") LocalDateTime from,
+                                          @Param("to") LocalDateTime to,
+                                          Pageable pageable);
+
+    @Query("""
+        SELECT r FROM Reservation r
+        WHERE r.storeId = :storeId AND r.deletedAt IS NULL
+          AND (cast(:status as string) IS NULL OR r.status = :status)
+          AND (cast(:dateStart as timestamp) IS NULL OR r.scheduledAt >= :dateStart)
+          AND (cast(:dateEnd as timestamp) IS NULL OR r.scheduledAt < :dateEnd)
+        ORDER BY r.scheduledAt DESC, r.reservationId DESC
+        """)
+    Page<Reservation> findStoreReservations(@Param("storeId") UUID storeId,
+                                             @Param("status") ReservationStatus status,
+                                             @Param("dateStart") LocalDateTime dateStart,
+                                             @Param("dateEnd") LocalDateTime dateEnd,
+                                             Pageable pageable);
+
+    @Query("""
+        SELECT r.slotId AS slotId, SUM(r.reservationSize) AS pendingSize
+        FROM Reservation r
+        WHERE r.slotId IN :slotIds AND r.status = :status AND r.deletedAt IS NULL
+        GROUP BY r.slotId
+        """)
+    List<SlotPendingSize> sumPendingSizeBySlotIds(@Param("slotIds") List<UUID> slotIds,
+                                                   @Param("status") ReservationStatus status);
+
+    interface SlotPendingSize {
+        UUID getSlotId();
+        Long getPendingSize();
+    }
+
+    @Query("""
+        SELECT r.slotId AS slotId, r.status AS status, r.scheduledAt AS scheduledAt
+        FROM Reservation r
+        WHERE r.storeId = :storeId AND r.deletedAt IS NULL
+          AND r.scheduledAt >= :from AND r.scheduledAt < :to
+          AND r.status IN :statuses
+        """)
+    List<ReservationStatsRow> findStatsRowsByStoreIdAndScheduledAtBetween(@Param("storeId") UUID storeId,
+                                                                           @Param("from") LocalDateTime from,
+                                                                           @Param("to") LocalDateTime to,
+                                                                           @Param("statuses") Collection<ReservationStatus> statuses);
+
+    interface ReservationStatsRow {
+        UUID getSlotId();
+        ReservationStatus getStatus();
+        LocalDateTime getScheduledAt();
+    }
+}

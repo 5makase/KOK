@@ -1,0 +1,333 @@
+package com.omakase.kok.waiting.application.service;
+
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.common.exception.CommonErrorCode;
+import com.omakase.kok.waiting.domain.entity.WaitingSetting;
+import com.omakase.kok.waiting.domain.repository.WaitingSettingRepository;
+import com.omakase.kok.waiting.infrastructure.client.StoreSummaryReader;
+import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore;
+import com.omakase.kok.waiting.infrastructure.redis.WaitingQueueRedisStore.StoreWaitingValues;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingInitializeRequest;
+import com.omakase.kok.waiting.presentation.dto.request.WaitingSettingUpdateRequest;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingInitializeResponse;
+import com.omakase.kok.waiting.presentation.dto.response.WaitingSettingResponse;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.lang.reflect.Constructor;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+
+@ExtendWith(MockitoExtension.class)
+class WaitingSettingServiceTest {
+    @Mock
+    private WaitingSettingRepository waitingSettingRepository;
+
+    @Mock
+    private WaitingQueueRedisStore waitingQueueRedisStore;
+
+    @Mock
+    private StoreSummaryReader storeSummaryReader;
+
+    @InjectMocks
+    private WaitingSettingService waitingSettingService;
+
+    @Test
+    @DisplayName("매장 웨이팅 설정 조회는 저장된 설정값을 응답한다")
+    void getWaitingSetting_success() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 10, 5, true, 12);
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
+
+        WaitingSettingResponse response = waitingSettingService.getWaitingSetting(storeId);
+
+        assertThat(response.getWaitingSettingId()).isEqualTo(setting.getId());
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getWaitingEnabled()).isTrue();
+        assertThat(response.getMaxWaitingCount()).isEqualTo(10);
+        assertThat(response.getCallTimeoutMinutes()).isEqualTo(5);
+        assertThat(response.getAllowUserCancel()).isTrue();
+        assertThat(response.getAverageWaitingMinutes()).isEqualTo(12);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 초기화 시 기존 설정이 없으면 요청값으로 생성하고 Redis에 캐싱한다")
+    void initializeWaitingSetting_createNewSetting() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSettingInitializeRequest request = waitingSettingInitializeRequest(true, 30, 5, false, 12);
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
+        given(waitingSettingRepository.saveAndFlush(any(WaitingSetting.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeWaitingSetting(storeId, request);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isTrue();
+
+        ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
+        then(waitingSettingRepository).should().saveAndFlush(settingCaptor.capture());
+
+        WaitingSetting setting = settingCaptor.getValue();
+        assertThat(setting.getStoreId()).isEqualTo(storeId);
+        assertThat(setting.getWaitingEnabled()).isTrue();
+        assertThat(setting.getMaxWaitingCount()).isEqualTo(30);
+        assertThat(setting.getCallTimeoutMinutes()).isEqualTo(5);
+        assertThat(setting.getAllowUserCancel()).isFalse();
+        assertThat(setting.getAverageWaitingMinutes()).isEqualTo(12);
+
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 30, 5, false, 12);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 초기화 시 기존 설정이 있으면 새로 만들지 않고 기존값을 Redis에 캐싱한다")
+    void initializeWaitingSetting_useExistingSetting() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSetting));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeWaitingSetting(
+                storeId,
+                waitingSettingInitializeRequest(false, 100, 10, false, 30)
+        );
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isFalse();
+
+        then(waitingSettingRepository).should(never()).save(any());
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 20, 8, true, 11);
+    }
+
+    @Test
+    @DisplayName("매장 생성 이벤트 기반 초기화는 요청값 없이 기본값으로 웨이팅 설정을 생성한다")
+    void initializeDefaultWaitingSetting_createNewSettingWithDefaults() {
+        UUID storeId = UUID.randomUUID();
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.empty());
+        given(waitingSettingRepository.saveAndFlush(any(WaitingSetting.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isTrue();
+
+        ArgumentCaptor<WaitingSetting> settingCaptor = ArgumentCaptor.forClass(WaitingSetting.class);
+        then(waitingSettingRepository).should().saveAndFlush(settingCaptor.capture());
+
+        WaitingSetting setting = settingCaptor.getValue();
+        assertThat(setting.getStoreId()).isEqualTo(storeId);
+        assertThat(setting.getWaitingEnabled()).isFalse();
+        assertThat(setting.getMaxWaitingCount()).isEqualTo(100);
+        assertThat(setting.getCallTimeoutMinutes()).isEqualTo(10);
+        assertThat(setting.getAllowUserCancel()).isTrue();
+        assertThat(setting.getAverageWaitingMinutes()).isEqualTo(10);
+
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, false, 100, 10, true, 10);
+    }
+
+    @Test
+    @DisplayName("매장 생성 이벤트 기반 초기화 중 unique 충돌이 발생하면 기존 설정을 재조회해 멱등 처리한다")
+    void initializeDefaultWaitingSetting_duplicateStoreIdReloadsExistingSetting() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, false, 11);
+
+        given(waitingSettingRepository.findByStoreId(storeId))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(existingSetting));
+        given(waitingSettingRepository.saveAndFlush(any(WaitingSetting.class)))
+                .willThrow(new DataIntegrityViolationException("duplicate store_id"));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isFalse();
+
+        then(waitingSettingRepository).should().saveAndFlush(any(WaitingSetting.class));
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 20, 8, false, 11);
+    }
+
+    @Test
+    @DisplayName("매장 생성 이벤트 기반 초기화는 기존 설정이 있으면 새로 만들지 않고 기존값을 유지한다")
+    void initializeDefaultWaitingSetting_useExistingSetting() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting existingSetting = WaitingSetting.create(storeId, true, 20, 8, false, 11);
+
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(existingSetting));
+
+        WaitingSettingInitializeResponse response = waitingSettingService.initializeDefaultWaitingSetting(storeId);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getSettingCreated()).isFalse();
+
+        then(waitingSettingRepository).should(never()).save(any());
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 20, 8, false, 11);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 수정은 본인 매장이면 요청값만 반영하고 Redis 캐시를 갱신한다")
+    void updateWaitingSetting_success() {
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
+        WaitingSettingUpdateRequest request = waitingSettingUpdateRequest(false, 50, null, false, 18);
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
+
+        WaitingSettingResponse response = waitingSettingService.updateWaitingSetting(ownerId, "OWNER", storeId, request);
+
+        assertThat(response.getStoreId()).isEqualTo(storeId);
+        assertThat(response.getWaitingEnabled()).isFalse();
+        assertThat(response.getMaxWaitingCount()).isEqualTo(50);
+        assertThat(response.getCallTimeoutMinutes()).isEqualTo(8);
+        assertThat(response.getAllowUserCancel()).isFalse();
+        assertThat(response.getAverageWaitingMinutes()).isEqualTo(18);
+
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, false, 50, 8, false, 18);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 수정은 본인 매장이 아니면 거부된다")
+    void updateWaitingSetting_forbiddenWhenNotOwner() {
+        UUID storeId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse.of(storeId, "테스트 매장", UUID.randomUUID()));
+
+        assertThatThrownBy(() -> waitingSettingService.updateWaitingSetting(
+                requesterId,
+                "OWNER",
+                storeId,
+                waitingSettingUpdateRequest(true, null, null, null, null)
+        ))
+                .isInstanceOf(BaseException.class)
+                .satisfies(exception -> assertThat(((BaseException) exception).getErrorCode())
+                        .isEqualTo(CommonErrorCode.ACCESS_DENIED));
+
+        then(waitingSettingRepository).should(never()).findByStoreId(any(UUID.class));
+        then(waitingQueueRedisStore).should(never())
+                .cacheStoreValues(any(UUID.class), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("웨이팅 기준값 캐시가 없으면 DB에서 조회한 뒤 Redis에 캐싱한다")
+    void getStoreWaitingValues_cacheMiss() {
+        UUID storeId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 40, 7, false, 13);
+
+        given(waitingQueueRedisStore.getStoreValues(storeId)).willReturn(Optional.empty());
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
+
+        StoreWaitingValues values = waitingSettingService.getStoreWaitingValues(storeId);
+
+        assertThat(values.waitingEnabled()).isTrue();
+        assertThat(values.maxWaitingCount()).isEqualTo(40);
+        assertThat(values.callTimeoutMinutes()).isEqualTo(7);
+        assertThat(values.allowUserCancel()).isFalse();
+        assertThat(values.averageWaitingMinutes()).isEqualTo(13);
+        then(waitingQueueRedisStore).should()
+                .cacheStoreValues(storeId, true, 40, 7, false, 13);
+    }
+
+    @Test
+    @DisplayName("웨이팅 설정 수정은 트랜잭션 커밋 후에만 Redis 캐시를 갱신한다")
+    void updateWaitingSetting_updatesCacheAfterCommit() {
+        UUID storeId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        WaitingSetting setting = WaitingSetting.create(storeId, true, 20, 8, true, 11);
+        WaitingSettingUpdateRequest request = waitingSettingUpdateRequest(false, 50, null, false, 18);
+
+        given(storeSummaryReader.getStoreSummary(storeId))
+                .willReturn(com.omakase.kok.waiting.infrastructure.client.dto.StoreSummaryResponse.of(storeId, "테스트 매장", ownerId));
+        given(waitingSettingRepository.findByStoreId(storeId)).willReturn(Optional.of(setting));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            WaitingSettingResponse response = waitingSettingService.updateWaitingSetting(ownerId, "OWNER", storeId, request);
+
+            assertThat(response.getWaitingEnabled()).isFalse();
+            then(waitingQueueRedisStore).should(never())
+                    .cacheStoreValues(any(UUID.class), any(), any(), any(), any(), any());
+
+            List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+
+            then(waitingQueueRedisStore).should()
+                    .cacheStoreValues(storeId, false, 50, 8, false, 18);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    private WaitingSettingInitializeRequest waitingSettingInitializeRequest(
+            Boolean waitingEnabled,
+            Integer maxWaitingCount,
+            Integer callTimeoutMinutes,
+            Boolean allowUserCancel,
+            Integer averageWaitingMinutes
+    ) {
+        WaitingSettingInitializeRequest request = newInstance(WaitingSettingInitializeRequest.class);
+        ReflectionTestUtils.setField(request, "waitingEnabled", waitingEnabled);
+        ReflectionTestUtils.setField(request, "maxWaitingCount", maxWaitingCount);
+        ReflectionTestUtils.setField(request, "callTimeoutMinutes", callTimeoutMinutes);
+        ReflectionTestUtils.setField(request, "allowUserCancel", allowUserCancel);
+        ReflectionTestUtils.setField(request, "averageWaitingMinutes", averageWaitingMinutes);
+        return request;
+    }
+
+    private WaitingSettingUpdateRequest waitingSettingUpdateRequest(
+            Boolean waitingEnabled,
+            Integer maxWaitingCount,
+            Integer callTimeoutMinutes,
+            Boolean allowUserCancel,
+            Integer averageWaitingMinutes
+    ) {
+        WaitingSettingUpdateRequest request = newInstance(WaitingSettingUpdateRequest.class);
+        ReflectionTestUtils.setField(request, "waitingEnabled", waitingEnabled);
+        ReflectionTestUtils.setField(request, "maxWaitingCount", maxWaitingCount);
+        ReflectionTestUtils.setField(request, "callTimeoutMinutes", callTimeoutMinutes);
+        ReflectionTestUtils.setField(request, "allowUserCancel", allowUserCancel);
+        ReflectionTestUtils.setField(request, "averageWaitingMinutes", averageWaitingMinutes);
+        return request;
+    }
+
+    private <T> T newInstance(Class<T> type) {
+        try {
+            Constructor<T> constructor = type.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to create test request: " + type.getSimpleName(), e);
+        }
+    }
+}

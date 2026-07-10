@@ -1,0 +1,29 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'KOK'
+
+include 'module'
+
+include 'infrastructure:eureka-server'
+include 'infrastructure:api-gateway'
+include 'infrastructure:ai-ops-assistant'
+
+include 'services:user-service'
+include 'services:store-service'
+include 'services:reservation-service'
+include 'services:waiting-service'
+include 'services:notification-service'
+include 'services:review-service'
+include 'services:payment-service'

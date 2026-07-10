@@ -1,0 +1,63 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      # Redis 서비스 설정
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+      # PostgreSQL 서비스 설정 (들여쓰기 수정 완료)
+      postgres:
+        image: postgis/postgis:15-3.3
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: kok_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설치
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: gradlew 권한 부여
+        run: chmod +x ./gradlew
+
+      - name: 빌드 및 테스트
+        run: ./gradlew clean build
+        env:
+          JWT_SECRET: dGVzdC1zZWNyZXQta2V5LWZvci1jaS1vbmx5LW5vdC1mb3ItcHJvZHVjdGlvbg==
+          SLACK_BOT_TOKEN: xoxb-dummy-token-for-ci
+          # StoreQueryRepositoryDistanceIntegrationTest용 - 위 postgres 서비스 계정과 일치시킴
+          TEST_PG_USERNAME: user
+          TEST_PG_PASSWORD: password
+
+      - name: 테스트 결과 리포트 저장
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/test/'
+          retention-days: 5

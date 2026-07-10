@@ -1,0 +1,49 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:waiting-test-db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+waiting:
+  auto-no-show:
+    cron: 0 * * * * *
+    batch-size: 100
+  kafka:
+    topic:
+      waiting-events:
+        name: waiting.events.v1
+        partitions: 1
+        replicas: 1
+    dlt:
+      store-events:
+        name: store.events.v1.DLT
+        retry-interval-ms: 1000
+        max-retry-attempts: 3
+        partitions: 1
+        replicas: 1
+    publisher:
+      fixed-delay-ms: 5000
+      failed-fixed-delay-ms: 60000
+      send-timeout-ms: 3000
+      batch-size: 100
+
+eureka:
+  client:
+    enabled: false

@@ -1,0 +1,94 @@
+server:
+  port: ${WAITING_SERVICE_PORT:8004}
+
+spring:
+  application:
+    name: waiting-service
+
+  datasource:
+    url: ${WAITING_DB_URL:jdbc:postgresql://localhost:5433/waiting_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:waiting-service-group}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+
+waiting:
+  auto-no-show:
+    cron: ${WAITING_AUTO_NO_SHOW_CRON:0 * * * * *}
+    batch-size: ${WAITING_AUTO_NO_SHOW_BATCH_SIZE:100}
+  kafka:
+    topic:
+      store-events:
+        name: ${STORE_EVENTS_TOPIC:store.events.v1}
+      waiting-events:
+        name: ${WAITING_EVENTS_TOPIC:waiting.events.v1}
+        partitions: ${WAITING_EVENTS_TOPIC_PARTITIONS:1}
+        replicas: ${WAITING_EVENTS_TOPIC_REPLICAS:1}
+    dlt:
+      store-events:
+        name: ${STORE_EVENTS_DLT_TOPIC:store.events.v1.DLT}
+        retry-interval-ms: ${STORE_EVENTS_DLT_RETRY_INTERVAL_MS:1000}
+        max-retry-attempts: ${STORE_EVENTS_DLT_MAX_RETRY_ATTEMPTS:3}
+        partitions: ${STORE_EVENTS_DLT_TOPIC_PARTITIONS:1}
+        replicas: ${STORE_EVENTS_DLT_TOPIC_REPLICAS:1}
+    publisher:
+      fixed-delay-ms: ${WAITING_EVENTS_PUBLISHER_FIXED_DELAY_MS:5000}
+      failed-fixed-delay-ms: ${WAITING_EVENTS_FAILED_PUBLISHER_FIXED_DELAY_MS:60000}
+      send-timeout-ms: ${WAITING_EVENTS_PUBLISHER_SEND_TIMEOUT_MS:3000}
+      batch-size: ${WAITING_EVENTS_PUBLISHER_BATCH_SIZE:100}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: waiting-service
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

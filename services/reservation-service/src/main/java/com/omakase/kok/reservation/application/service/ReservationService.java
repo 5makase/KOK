@@ -1,0 +1,806 @@
+package com.omakase.kok.reservation.application.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
+import com.omakase.kok.common.exception.BaseException;
+import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
+import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
+import com.omakase.kok.reservation.application.dto.ReservationResponse;
+import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse;
+import com.omakase.kok.reservation.application.dto.SlotCapacityRestoreResponse.SlotCapacityRestoreItem;
+import com.omakase.kok.reservation.domain.entity.Reservation;
+import com.omakase.kok.reservation.domain.entity.ReservationIdempotencyKey;
+import com.omakase.kok.reservation.domain.entity.ReservationOutboxEvent;
+import com.omakase.kok.reservation.domain.entity.ReservationSlot;
+import com.omakase.kok.reservation.domain.enums.EventType;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import com.omakase.kok.reservation.domain.enums.SlotStatus;
+import com.omakase.kok.reservation.domain.exception.ReservationErrorCode;
+import com.omakase.kok.reservation.domain.exception.SlotErrorCode;
+import com.omakase.kok.reservation.domain.repository.ReservationIdempotencyKeyRepository;
+import com.omakase.kok.reservation.domain.repository.ReservationOutboxEventRepository;
+import com.omakase.kok.reservation.domain.repository.ReservationRepository;
+import com.omakase.kok.reservation.domain.repository.ReservationRepository.SlotPendingSize;
+import com.omakase.kok.reservation.domain.repository.ReservationSlotRepository;
+import com.omakase.kok.reservation.infrastructure.client.PaymentFeignClient;
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
+import com.omakase.kok.reservation.infrastructure.client.dto.CreatePaymentRequest;
+import com.omakase.kok.reservation.infrastructure.client.dto.PaymentResponse;
+import com.omakase.kok.reservation.infrastructure.client.dto.RefundRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RAtomicLong;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ReservationService {
+
+    private static final String SLOT_CAPACITY_KEY = "slot:capacity:";
+    private static final String SLOT_LOCK_KEY = "reservation:lock:slot:";
+    private static final String IDEMPOTENCY_LOCK_KEY = "reservation:idempotency:lock:";
+
+    private final ReservationRepository reservationRepository;
+    private final ReservationSlotRepository slotRepository;
+    private final ReservationOutboxEventRepository outboxEventRepository;
+    private final ReservationIdempotencyKeyRepository idempotencyKeyRepository;
+    private final RedissonClient redissonClient;
+    private final PaymentFeignClient paymentFeignClient;
+    private final PlatformTransactionManager transactionManager;
+    private final ObjectMapper objectMapper;
+
+    // 같은 Idempotency-Key로 재전송된 요청은 실제 예약 로직을 다시 타지 않고 최초 시도의 결과를 그대로 반환한다.
+    // 매핑은 Reservation이 실제 저장된 시점(결제 실패로 이후 취소되더라도)에만 남기므로, 아무 것도 생성되기 전에
+    // 실패한 요청(SLOT_UNAVAILABLE, SLOT_CAPACITY_EXCEEDED 등)은 같은 키로 재시도해도 처음부터 다시 처리된다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse createReservation(CreateReservationRequest request, UUID userId, String idempotencyKey) {
+        ReservationResponse existing = findExistingResponseByIdempotencyKey(userId, idempotencyKey);
+        if (existing != null) {
+            return existing;
+        }
+
+        // 같은 슬롯을 대상으로 한 재전송은 기존 slot 락으로도 직렬화되지만, 앞선 시도의 결제 처리가
+        // slot 락 대기시간(3초)보다 길어지면 재전송 쪽이 SLOT_LOCK_FAILED라는 잘못된 에러를 받는다.
+        // 이를 막기 위해 idempotency 키 전용 락을 slot 락보다 바깥쪽에서 먼저 건다.
+        RLock idempotencyLock = redissonClient.getLock(IDEMPOTENCY_LOCK_KEY + userId + ":" + idempotencyKey);
+        try {
+            if (!idempotencyLock.tryLock(0, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+            }
+
+            // 락 대기 중 다른 스레드가 이미 처리를 끝냈을 수 있으므로 재확인
+            existing = findExistingResponseByIdempotencyKey(userId, idempotencyKey);
+            if (existing != null) {
+                return existing;
+            }
+
+            return doCreateReservation(request, userId, idempotencyKey);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+        } finally {
+            if (idempotencyLock.isHeldByCurrentThread()) {
+                idempotencyLock.unlock();
+            }
+        }
+    }
+
+    private ReservationResponse findExistingResponseByIdempotencyKey(UUID userId, String idempotencyKey) {
+        return idempotencyKeyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
+                .flatMap(mapping -> reservationRepository.findByReservationIdAndDeletedAtIsNull(mapping.getReservationId()))
+                .map(ReservationResponse::from)
+                .orElse(null);
+    }
+
+    private ReservationResponse doCreateReservation(CreateReservationRequest request, UUID userId, String idempotencyKey) {
+        // 락 획득 전 빠른 사전 검사 (최적화용)
+        var preCheckSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+        if (preCheckSlot.getStatus() != SlotStatus.OPEN) {
+            throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+        }
+
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + request.getSlotId());
+        try {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+
+            // 락 획득 후 슬롯 상태 재검증 (레이스 컨디션 방지)
+            var slot = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId())
+                    .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+            if (slot.getStatus() != SlotStatus.OPEN) {
+                throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+            }
+
+            // 예약금 필요 슬롯은 결제 수단 필수
+            if (slot.isDepositRequired() &&
+                    (request.getPaymentMethod() == null || request.getPaymentMethod().isBlank())) {
+                throw new BaseException(ReservationErrorCode.PAYMENT_METHOD_REQUIRED);
+            }
+
+            RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + request.getSlotId());
+            long remaining = capacityKey.addAndGet(-request.getReservationSize());
+
+            if (remaining < 0) {
+                capacityKey.addAndGet(request.getReservationSize());
+                throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+            }
+
+            if (!slot.isDepositRequired()) {
+                try {
+                    return new TransactionTemplate(transactionManager).execute(status -> {
+                        Reservation reservation = buildReservation(request, userId, slot);
+                        reservation.confirm();
+                        reservationRepository.save(reservation);
+                        idempotencyKeyRepository.save(ReservationIdempotencyKey.builder()
+                                .userId(userId).idempotencyKey(idempotencyKey).reservationId(reservation.getReservationId()).build());
+                        ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(request.getSlotId()).orElseThrow();
+                        s.decreaseCapacity(request.getReservationSize());
+                        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
+                        return ReservationResponse.from(reservation);
+                    });
+                } catch (Exception e) {
+                    capacityKey.addAndGet(request.getReservationSize());
+                    throw e;
+                }
+            }
+
+            UUID reservationId;
+            try {
+                reservationId = new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = buildReservation(request, userId, slot);
+                    reservationRepository.save(reservation);
+                    idempotencyKeyRepository.save(ReservationIdempotencyKey.builder()
+                            .userId(userId).idempotencyKey(idempotencyKey).reservationId(reservation.getReservationId()).build());
+                    return reservation.getReservationId();
+                });
+            } catch (Exception e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                throw e;
+            }
+
+            try {
+                paymentFeignClient.createPayment(new CreatePaymentRequest(
+                        reservationId,
+                        slot.getDepositAmount(),
+                        request.getPaymentMethod()
+                ));
+            } catch (FeignException e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                    reservation.cancel("SYSTEM", "결제 처리 실패");
+                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
+                    return null;
+                });
+                if (e.status() >= 400 && e.status() < 500) {
+                    log.warn("결제 서비스 클라이언트 오류 - status: {}, reservationId: {}", e.status(), reservationId);
+                } else {
+                    log.error("결제 서비스 서버 오류 - status: {}, reservationId: {}", e.status(), reservationId, e);
+                }
+                throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
+            } catch (Exception e) {
+                capacityKey.addAndGet(request.getReservationSize());
+                new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                    reservation.cancel("SYSTEM", "결제 처리 실패");
+                    outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CANCELLED));
+                    return null;
+                });
+                log.error("결제 처리 중 예외 발생 - reservationId: {}", reservationId, e);
+                throw new BaseException(ReservationErrorCode.PAYMENT_FAILED);
+            }
+
+            // 결제 성공 후 확정 TX 실패 시 재시도 (일시적 DB 장애 대응)
+            // 재시도 모두 실패 시 PAYMENT_PENDING 유지 → 스케줄러가 5분 내 expire + CANCELLED 처리
+            RuntimeException lastException = null;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                try {
+                    return new TransactionTemplate(transactionManager).execute(status -> {
+                        Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+                        reservation.confirm();
+                        ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId()).orElseThrow();
+                        s.decreaseCapacity(reservation.getReservationSize());
+                        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_CONFIRMED));
+                        return ReservationResponse.from(reservation);
+                    });
+                } catch (BaseException e) {
+                    // 정원 초과는 재시도해도 결과가 같은 결정론적 실패이므로 즉시 중단
+                    if (e.getErrorCode() == ReservationErrorCode.SLOT_CAPACITY_EXCEEDED) {
+                        throw e;
+                    }
+                    lastException = e;
+                } catch (RuntimeException e) {
+                    lastException = e;
+                }
+            }
+            throw lastException;
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    // 슬롯별로 락을 순차 획득하며 처리하므로, slotDate 미지정 시 매장의 열린 슬롯이 매우 많으면
+    // 관리자 요청 스레드가 오래 블록될 수 있다. 한 번에 처리할 슬롯 수에 상한을 둔다.
+    private static final int MAX_SLOTS_PER_RESTORE = 200;
+
+    // Redis 장애로 유실된 slot:capacity:{slotId}를 DB 기준으로 복구한다.
+    // 골든 패스(createReservation 등)에서는 절대 호출되지 않고, 관리자 전용 내부 API에서만 호출된다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public SlotCapacityRestoreResponse restoreCapacity(UUID storeId, LocalDate slotDate) {
+        List<ReservationSlot> slots = slotDate != null
+                ? slotRepository.findByStoreIdAndStatusAndSlotDateAndDeletedAtIsNull(storeId, SlotStatus.OPEN, slotDate)
+                : slotRepository.findByStoreIdAndStatusAndSlotDateGreaterThanEqualAndDeletedAtIsNull(
+                        storeId, SlotStatus.OPEN, LocalDate.now());
+
+        if (slots.size() > MAX_SLOTS_PER_RESTORE) {
+            log.warn("복구 대상 슬롯이 {}건으로 상한({}건)을 초과해 날짜가 이른 슬롯부터 {}건만 처리 - storeId: {}. " +
+                            "나머지는 slotDate를 지정해 재호출 필요",
+                    slots.size(), MAX_SLOTS_PER_RESTORE, MAX_SLOTS_PER_RESTORE, storeId);
+            slots = slots.stream()
+                    .sorted(Comparator.comparing(ReservationSlot::getSlotDate)
+                            .thenComparing(ReservationSlot::getSlotTime))
+                    .limit(MAX_SLOTS_PER_RESTORE)
+                    .toList();
+        }
+
+        List<SlotCapacityRestoreItem> items = slots.stream()
+                .map(slot -> restoreSingleSlotCapacity(slot.getSlotId()))
+                .toList();
+        return SlotCapacityRestoreResponse.of(storeId, slotDate, items);
+    }
+
+    private SlotCapacityRestoreItem restoreSingleSlotCapacity(UUID slotId) {
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + slotId);
+        try {
+            // 이 락을 잡고 있는 동안은 create/cancel/change 어느 경로도 이 슬롯의 capacityKey를
+            // 건드릴 수 없으므로, 재설정이 동시 요청의 차감을 덮어쓰는 일이 없다.
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                log.warn("슬롯 락 획득 실패로 정원 복구 스킵 - slotId: {}", slotId);
+                return SlotCapacityRestoreItem.skipped(slotId);
+            }
+
+            // 반드시 명시적 트랜잭션으로 새로 읽어야 한다. 락 보호 구간 밖에서 시작된 커넥션을 그대로
+            // 재사용하는 암묵적 트랜잭션(Spring Data 리포지토리 기본 트랜잭션)에 의존하면, 락을 놓친
+            // 이전 홀더의 커밋이 아직 반영되지 않은 오래된 스냅샷을 읽을 수 있다.
+            CapacitySnapshot snapshot = new TransactionTemplate(transactionManager).execute(status -> {
+                ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(slotId)
+                        .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+                long pendingSize = reservationRepository
+                        .sumPendingSizeBySlotIds(List.of(slotId), ReservationStatus.PAYMENT_PENDING)
+                        .stream().findFirst().map(SlotPendingSize::getPendingSize).orElse(0L);
+                return new CapacitySnapshot(slot.getRemainingCapacity(), pendingSize,
+                        slot.effectiveRemainingCapacity(pendingSize));
+            });
+
+            RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + slotId);
+            long before = capacityKey.get();
+            capacityKey.set(snapshot.effectiveRemaining());
+
+            log.warn("슬롯 정원 Redis 값 복구 - slotId: {}, before: {}, after: {}, dbRemaining: {}, pending: {}",
+                    slotId, before, snapshot.effectiveRemaining(), snapshot.dbRemaining(), snapshot.pendingSize());
+            return SlotCapacityRestoreItem.restored(slotId, before, snapshot.effectiveRemaining());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return SlotCapacityRestoreItem.skipped(slotId);
+        } catch (RuntimeException e) {
+            // 슬롯 하나의 실패(예: 복구 도중 삭제됨)로 나머지 슬롯 복구까지 중단되지 않도록 스킵 처리
+            log.error("슬롯 정원 복구 중 예외 발생 - slotId: {}", slotId, e);
+            return SlotCapacityRestoreItem.skipped(slotId);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    private record CapacitySnapshot(int dbRemaining, long pendingSize, long effectiveRemaining) {
+    }
+
+    public Page<ReservationResponse> getMyReservations(UUID userId, ReservationStatus status,
+                                                        LocalDate from, LocalDate to, Pageable pageable) {
+        LocalDateTime fromDateTime = from != null ? from.atStartOfDay() : null;
+        LocalDateTime toDateTime = to != null ? to.plusDays(1).atStartOfDay() : null;
+        return reservationRepository.findMyReservations(userId, status, fromDateTime, toDateTime, pageable)
+                .map(ReservationResponse::from);
+    }
+
+    public ReservationResponse getMyReservation(UUID reservationId, UUID userId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        return ReservationResponse.from(reservation);
+    }
+
+    public Page<ReservationResponse> getStoreReservations(UUID storeId, ReservationStatus status,
+                                                           LocalDate date, Pageable pageable) {
+        LocalDateTime dateStart = date != null ? date.atStartOfDay() : null;
+        LocalDateTime dateEnd = date != null ? date.plusDays(1).atStartOfDay() : null;
+        return reservationRepository.findStoreReservations(storeId, status, dateStart, dateEnd, pageable)
+                .map(ReservationResponse::from);
+    }
+
+    public ReservationResponse getStoreReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional
+    public ReservationResponse visitReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.visit();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_VISITED));
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional
+    public ReservationResponse noShowReservation(UUID storeId, UUID reservationId) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_VISITABLE);
+        }
+
+        reservation.noShow();
+        outboxEventRepository.save(buildOutboxEvent(reservation, EventType.RESERVATION_NO_SHOW));
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse cancelReservation(UUID reservationId, UUID userId, CancelReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        if (!reservation.isCancellable()) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+        }
+
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        // 실제 결제 금액 조회 (환불 기준은 슬롯 설정이 아닌 실제 결제 금액)
+        PaymentResponse payment = null;
+        if (slot.isDepositRequired()) {
+            payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
+        }
+        final PaymentResponse finalPayment = payment;
+
+        // DB 커밋 전 재검증으로 동시 취소 요청 방어
+        String cancelReason = request != null ? request.getCancelReason() : null;
+
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
+        ReservationResponse response;
+        try {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+            response = new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+                if (!r.isCancellable()) {
+                    throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+                }
+                boolean wasConfirmed = r.getStatus() == ReservationStatus.CONFIRMED;
+                r.cancel("USER", cancelReason);
+                // PAYMENT_PENDING은 DB remaining_capacity를 감소시킨 적 없으므로 복구하지 않음
+                if (wasConfirmed) {
+                    ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                    s.increaseCapacity(r.getReservationSize());
+                }
+                outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+                return ReservationResponse.from(r);
+            });
+            try {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                        .addAndGet(reservation.getReservationSize());
+            } catch (Exception e) {
+                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+
+        // DB 커밋 이후 환불 처리 (DB가 취소 상태의 원천)
+        if (slot.isDepositRequired() && finalPayment != null) {
+            long refundAmount = calculateUserRefundAmount(slot.getSlotDate(), finalPayment.getAmount());
+            if (refundAmount > 0) {
+                try {
+                    paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(refundAmount));
+                } catch (Exception e) {
+                    log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
+                }
+            }
+        }
+
+        return response;
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse cancelByStore(UUID storeId, UUID reservationId, CancelReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getStoreId().equals(storeId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND);
+        }
+
+        if (!reservation.isCancellable()) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+        }
+
+        ReservationSlot slot = slotRepository.findBySlotIdAndDeletedAtIsNull(reservation.getSlotId())
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        // 실제 결제 금액 조회 (점주 취소 시 전액 환불 기준)
+        PaymentResponse payment = null;
+        if (slot.isDepositRequired()) {
+            payment = paymentFeignClient.getPayment(reservation.getReservationId()).getData();
+        }
+        final PaymentResponse finalPayment = payment;
+
+        // DB 커밋 전 재검증으로 동시 취소 요청 방어
+        String cancelReason = request != null ? request.getCancelReason() : null;
+
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
+        ReservationResponse response;
+        try {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+            response = new TransactionTemplate(transactionManager).execute(status -> {
+                Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId).orElseThrow();
+                if (!r.isCancellable()) {
+                    throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CANCELLABLE);
+                }
+                boolean wasConfirmed = r.getStatus() == ReservationStatus.CONFIRMED;
+                r.cancel("OWNER", cancelReason);
+                // PAYMENT_PENDING은 DB remaining_capacity를 감소시킨 적 없으므로 복구하지 않음
+                if (wasConfirmed) {
+                    ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                    s.increaseCapacity(r.getReservationSize());
+                }
+                outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CANCELLED));
+                return ReservationResponse.from(r);
+            });
+            try {
+                redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + reservation.getSlotId())
+                        .addAndGet(reservation.getReservationSize());
+            } catch (Exception e) {
+                log.error("Redis 잔여 인원 복구 실패 - slotId: {}", reservation.getSlotId(), e);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+
+        // DB 커밋 이후 전액 환불 처리
+        if (slot.isDepositRequired() && finalPayment != null) {
+            try {
+                paymentFeignClient.refund(finalPayment.getPaymentId(), new RefundRequest(finalPayment.getAmount()));
+            } catch (Exception e) {
+                log.error("환불 처리 실패 - reservationId: {}, paymentId: {}", reservationId, finalPayment.getPaymentId(), e);
+            }
+        }
+
+        return response;
+    }
+
+    private long calculateUserRefundAmount(LocalDate slotDate, Long depositAmount) {
+        long daysUntilVisit = ChronoUnit.DAYS.between(LocalDate.now(), slotDate);
+        if (daysUntilVisit >= 3) {
+            return depositAmount;
+        } else if (daysUntilVisit >= 1) {
+            return depositAmount / 2;
+        }
+        return 0;
+    }
+
+    private Reservation buildReservation(CreateReservationRequest request, UUID userId, ReservationSlot slot) {
+        return Reservation.builder()
+                .slotId(request.getSlotId())
+                .userId(userId)
+                .storeId(slot.getStoreId())
+                .storeName(slot.getStoreName())
+                .scheduledAt(LocalDateTime.of(slot.getSlotDate(), slot.getSlotTime()))
+                .bookerName(request.getBookerName())
+                .bookerPhone(request.getBookerPhone())
+                .reservationSize(request.getReservationSize())
+                .requestMessage(request.getRequestMessage())
+                .build();
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ReservationResponse changeReservation(UUID reservationId, UUID userId, ChangeReservationRequest request) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        if (!reservation.getUserId().equals(userId)) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_FORBIDDEN);
+        }
+
+        UUID targetSlotId = request.getNewSlotId() != null ? request.getNewSlotId() : reservation.getSlotId();
+        boolean slotChanging = !targetSlotId.equals(reservation.getSlotId());
+
+        if (!slotChanging) {
+            int newSize = request.getReservationSize() != null ? request.getReservationSize() : reservation.getReservationSize();
+            return changeReservationSizeOnly(reservationId, newSize);
+        }
+
+        int newSize = request.getReservationSize() != null ? request.getReservationSize() : reservation.getReservationSize();
+        return changeReservationSlot(reservationId, reservation.getSlotId(), targetSlotId, newSize);
+    }
+
+    private ReservationResponse changeReservationSizeOnly(UUID reservationId, int newSize) {
+        Reservation reservation = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+        // 슬롯 락을 통해 동시 요청 간 Redis 잔여 인원 불일치 방지
+        RLock lock = redissonClient.getLock(SLOT_LOCK_KEY + reservation.getSlotId());
+        try {
+            if (!lock.tryLock(3, TimeUnit.SECONDS)) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+
+            // 락 내에서 fresh row 재조회 → 동시 변경 시 sizeDiff가 stale해지는 문제 방지
+            Reservation fresh = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                    .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+
+            // CONFIRMED 상태 및 당일 변경 금지 검증을 sizeDiff 계산보다 먼저 수행
+            if (fresh.getStatus() != ReservationStatus.CONFIRMED) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+            }
+
+            int sizeDiff = newSize - fresh.getReservationSize();
+
+            if (sizeDiff == 0) {
+                return ReservationResponse.from(fresh);
+            }
+
+            RAtomicLong capacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + fresh.getSlotId());
+            long remaining = capacityKey.addAndGet(-sizeDiff);
+            if (remaining < 0) {
+                capacityKey.addAndGet(sizeDiff);
+                throw new BaseException(ReservationErrorCode.SLOT_CAPACITY_EXCEEDED);
+            }
+
+            try {
+                return new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                            .orElseThrow();
+                    r.change(r.getSlotId(), r.getScheduledAt(), newSize);
+                    ReservationSlot s = slotRepository.findBySlotIdAndDeletedAtIsNull(r.getSlotId()).orElseThrow();
+                    if (sizeDiff > 0) {
+                        s.decreaseCapacity(sizeDiff);
+                    } else {
+                        s.increaseCapacity(-sizeDiff);
+                    }
+                    outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
+                    return ReservationResponse.from(r);
+                });
+            } catch (Exception e) {
+                try {
+                    redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + fresh.getSlotId()).addAndGet(sizeDiff);
+                } catch (Exception redisEx) {
+                    log.error("Redis 잔여 인원 복구 실패 - slotId: {}", fresh.getSlotId(), redisEx);
+                }
+                throw e;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    private ReservationResponse changeReservationSlot(UUID reservationId, UUID oldSlotId, UUID newSlotId, int newSize) {
+        ReservationSlot newSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)
+                .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+
+        Reservation reservationForStoreCheck = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+        if (!newSlot.getStoreId().equals(reservationForStoreCheck.getStoreId())) {
+            throw new BaseException(ReservationErrorCode.RESERVATION_SLOT_STORE_MISMATCH);
+        }
+        if (newSlot.getStatus() != SlotStatus.OPEN) {
+            throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+        }
+
+        // 데드락 방지: 두 슬롯 락을 항상 slotId 오름차순으로 획득
+        UUID first = oldSlotId.compareTo(newSlotId) <= 0 ? oldSlotId : newSlotId;
+        UUID second = first.equals(oldSlotId) ? newSlotId : oldSlotId;
+
+        RLock lockA = redissonClient.getLock(SLOT_LOCK_KEY + first);
+        RLock lockB = redissonClient.getLock(SLOT_LOCK_KEY + second);
+        boolean aLocked = false;
+        boolean bLocked = false;
+        try {
+            aLocked = lockA.tryLock(3, TimeUnit.SECONDS);
+            if (!aLocked) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+            bLocked = lockB.tryLock(3, TimeUnit.SECONDS);
+            if (!bLocked) {
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+
+            // 락 내에서 fresh row 재조회 → 동시 변경 시 상태/인원이 stale해지는 문제 방지
+            Reservation fresh = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                    .orElseThrow(() -> new BaseException(ReservationErrorCode.RESERVATION_NOT_FOUND));
+            if (fresh.getStatus() != ReservationStatus.CONFIRMED) {
+                throw new BaseException(ReservationErrorCode.RESERVATION_NOT_CHANGEABLE);
+            }
+            if (!fresh.getSlotId().equals(oldSlotId)) {
+                // 락 획득 전 조회한 oldSlotId가 그 사이 다른 변경 요청으로 stale해진 경우
+                // (이미 다른 슬롯으로 이동한 예약) 잘못된 슬롯의 인원을 건드리지 않도록 안전하게 실패 처리
+                throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+            }
+
+            ReservationSlot freshNewSlot = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId)
+                    .orElseThrow(() -> new BaseException(SlotErrorCode.SLOT_NOT_FOUND));
+            if (freshNewSlot.getStatus() != SlotStatus.OPEN) {
+                throw new BaseException(ReservationErrorCode.SLOT_UNAVAILABLE);
+            }
+
+            int oldSize = fresh.getReservationSize();
+
+            RAtomicLong oldCapacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + oldSlotId);
+            RAtomicLong newCapacityKey = redissonClient.getAtomicLong(SLOT_CAPACITY_KEY + newSlotId);
+
+            oldCapacityKey.addAndGet(oldSize);
+            long remaining = newCapacityKey.addAndGet(-newSize);
+            if (remaining < 0) {
+                newCapacityKey.addAndGet(newSize);
+                oldCapacityKey.addAndGet(-oldSize);
+                throw new BaseException(ReservationErrorCode.RESERVATION_SLOT_CAPACITY_EXCEEDED);
+            }
+
+            try {
+                return new TransactionTemplate(transactionManager).execute(status -> {
+                    Reservation r = reservationRepository.findByReservationIdAndDeletedAtIsNull(reservationId)
+                            .orElseThrow();
+                    ReservationSlot newSlotEntity = slotRepository.findBySlotIdAndDeletedAtIsNull(newSlotId).orElseThrow();
+                    LocalDateTime newScheduledAt = LocalDateTime.of(newSlotEntity.getSlotDate(), newSlotEntity.getSlotTime());
+                    r.change(newSlotId, newScheduledAt, newSize);
+
+                    ReservationSlot oldSlotEntity = slotRepository.findBySlotIdAndDeletedAtIsNull(oldSlotId).orElseThrow();
+                    oldSlotEntity.increaseCapacity(oldSize);
+                    newSlotEntity.decreaseCapacity(newSize);
+
+                    outboxEventRepository.save(buildOutboxEvent(r, EventType.RESERVATION_CHANGED));
+                    return ReservationResponse.from(r);
+                });
+            } catch (Exception e) {
+                try {
+                    newCapacityKey.addAndGet(newSize);
+                    oldCapacityKey.addAndGet(-oldSize);
+                } catch (Exception redisEx) {
+                    log.error("Redis 잔여 인원 복구 실패 - oldSlotId: {}, newSlotId: {}", oldSlotId, newSlotId, redisEx);
+                }
+                throw e;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaseException(ReservationErrorCode.SLOT_LOCK_FAILED);
+        } finally {
+            if (bLocked && lockB.isHeldByCurrentThread()) {
+                lockB.unlock();
+            }
+            if (aLocked && lockA.isHeldByCurrentThread()) {
+                lockA.unlock();
+            }
+        }
+    }
+
+    private ReservationOutboxEvent buildOutboxEvent(Reservation reservation, EventType eventType) {
+        UUID outboxEventId = UUID.randomUUID();
+        try {
+            LocalDateTime visitedAtValue = (eventType == EventType.RESERVATION_VISITED)
+                    ? reservation.getVisitedAt()
+                    : reservation.getScheduledAt();
+
+            Map<String, Object> payloadData = new LinkedHashMap<>();
+            payloadData.put("reservationId", reservation.getReservationId().toString());
+            payloadData.put("userId", reservation.getUserId().toString());
+            payloadData.put("storeId", reservation.getStoreId().toString());
+            payloadData.put("storeName", reservation.getStoreName());
+            payloadData.put("visitedAt", visitedAtValue);
+
+            if (eventType == EventType.RESERVATION_CONFIRMED || eventType == EventType.RESERVATION_CHANGED) {
+                payloadData.put("partySize", reservation.getReservationSize());
+                payloadData.put("slotDate", visitedAtValue.toLocalDate().toString());
+                payloadData.put("slotTime", visitedAtValue.toLocalTime().toString());
+            }
+            if (eventType == EventType.RESERVATION_CANCELLED) {
+                payloadData.put("cancelReason", reservation.getCancelReason());
+            }
+
+            Map<String, Object> envelope = new LinkedHashMap<>();
+            envelope.put("eventId", outboxEventId.toString());
+            envelope.put("eventType", eventType.name());
+            envelope.put("schemaVersion", 1);
+            envelope.put("occurredAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")));
+            envelope.put("producer", "reservation-service");
+            envelope.put("payload", payloadData);
+
+            String payload = objectMapper.writeValueAsString(envelope);
+            return ReservationOutboxEvent.builder()
+                    .reservationId(reservation.getReservationId())
+                    .eventType(eventType)
+                    .payload(payload)
+                    .build();
+        } catch (JsonProcessingException e) {
+            throw new BaseException(ReservationErrorCode.PAYLOAD_SERIALIZATION_FAILED);
+        }
+    }
+}

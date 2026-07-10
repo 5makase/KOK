@@ -1,0 +1,90 @@
+package com.omakase.kok.reservation.presentation.controller;
+
+import com.omakase.kok.common.auth.AuthConstants;
+import com.omakase.kok.common.dto.ApiResponse;
+import com.omakase.kok.common.dto.PageResponse;
+import com.omakase.kok.reservation.application.dto.CancelReservationRequest;
+import com.omakase.kok.reservation.application.dto.ChangeReservationRequest;
+import com.omakase.kok.reservation.application.dto.CreateReservationRequest;
+import com.omakase.kok.reservation.application.dto.ReservationResponse;
+import com.omakase.kok.reservation.application.service.ReservationService;
+import com.omakase.kok.reservation.domain.enums.ReservationStatus;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.UUID;
+
+@Tag(name = "예약 관리 (사용자)")
+@RestController
+@RequestMapping("/api/v1/reservations")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('USER')")
+@Validated
+public class ReservationController {
+
+    private final ReservationService reservationService;
+
+    @Operation(summary = "예약 생성")
+    @PostMapping
+    public ResponseEntity<ApiResponse<ReservationResponse>> createReservation(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestHeader("Idempotency-Key") @NotBlank String idempotencyKey,
+            @RequestBody @Valid CreateReservationRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created(reservationService.createReservation(request, userId, idempotencyKey)));
+    }
+
+    @Operation(summary = "내 예약 목록 조회")
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<PageResponse<ReservationResponse>>> getMyReservations(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @RequestParam(required = false) ReservationStatus status,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 50));
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        Page<ReservationResponse> result = reservationService.getMyReservations(userId, status, from, to, pageable);
+        return ResponseEntity.ok(ApiResponse.success(PageResponse.from(result)));
+    }
+
+    @Operation(summary = "내 예약 단건 조회")
+    @GetMapping("/me/{reservationId}")
+    public ResponseEntity<ApiResponse<ReservationResponse>> getMyReservation(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @PathVariable UUID reservationId) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.getMyReservation(reservationId, userId)));
+    }
+
+    @Operation(summary = "예약 변경")
+    @PatchMapping("/{reservationId}/change")
+    public ResponseEntity<ApiResponse<ReservationResponse>> changeReservation(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @PathVariable UUID reservationId,
+            @RequestBody @Valid ChangeReservationRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.changeReservation(reservationId, userId, request)));
+    }
+
+    @Operation(summary = "예약 취소")
+    @PatchMapping("/{reservationId}/cancel")
+    public ResponseEntity<ApiResponse<ReservationResponse>> cancelReservation(
+            @RequestHeader(AuthConstants.USER_ID) UUID userId,
+            @PathVariable UUID reservationId,
+            @RequestBody(required = false) CancelReservationRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(reservationService.cancelReservation(reservationId, userId, request)));
+    }
+}

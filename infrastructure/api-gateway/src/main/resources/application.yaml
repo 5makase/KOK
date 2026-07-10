@@ -1,0 +1,178 @@
+server:
+  port: ${API_GATEWAY_PORT:8000}
+
+spring:
+  application:
+    name: api-gateway
+
+  main:
+    web-application-type: reactive
+
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns:
+              - ${FRONTEND_URL:http://localhost:5173}
+              - "http://localhost:3000"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: false
+            maxAge: 3600
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**, /api/v1/auth/**, /api/v1/owners/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: reservation-service
+          uri: lb://reservation-service
+          predicates:
+            - Path=/api/v1/reservations/**, /api/v1/stores/*/reservations/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: slot-service
+          uri: lb://reservation-service
+          predicates:
+            - Path=/api/v1/slots/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: store-service
+          uri: lb://store-service
+          predicates:
+            - Path=/api/v1/stores/**, /api/v1/categories/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: store-service-admin
+          uri: lb://store-service
+          predicates:
+            - Path=/api/v1/admin/stores/**, /api/v1/admin/categories/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: waiting-service
+          uri: lb://waiting-service
+          predicates:
+            - Path=/api/v1/waitings/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: review-service
+          uri: lb://review-service
+          predicates:
+            - Path=/api/v1/reviews/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - name: JwtAuthenticationFilter
+
+        # Swagger 문서 라우팅 (서비스별 /v3/api-docs를 Gateway 하나로 모아서 노출)
+
+        - id: user-service-api-docs
+          uri: lb://user-service
+          predicates:
+            - Path=/v3/api-docs/user-service
+          filters:
+            - RewritePath=/v3/api-docs/user-service, /v3/api-docs
+
+        - id: store-service-api-docs
+          uri: lb://store-service
+          predicates:
+            - Path=/v3/api-docs/store-service
+          filters:
+            - RewritePath=/v3/api-docs/store-service, /v3/api-docs
+
+        - id: reservation-service-api-docs
+          uri: lb://reservation-service
+          predicates:
+            - Path=/v3/api-docs/reservation-service
+          filters:
+            - RewritePath=/v3/api-docs/reservation-service, /v3/api-docs
+
+        - id: waiting-service-api-docs
+          uri: lb://waiting-service
+          predicates:
+            - Path=/v3/api-docs/waiting-service
+          filters:
+            - RewritePath=/v3/api-docs/waiting-service, /v3/api-docs
+
+        - id: notification-service-api-docs
+          uri: lb://notification-service
+          predicates:
+            - Path=/v3/api-docs/notification-service
+          filters:
+            - RewritePath=/v3/api-docs/notification-service, /v3/api-docs
+
+        - id: review-service-api-docs
+          uri: lb://review-service
+          predicates:
+            - Path=/v3/api-docs/review-service
+          filters:
+            - RewritePath=/v3/api-docs/review-service, /v3/api-docs
+
+        - id: payment-service-api-docs
+          uri: lb://payment-service
+          predicates:
+            - Path=/v3/api-docs/payment-service
+          filters:
+            - RewritePath=/v3/api-docs/payment-service, /v3/api-docs
+
+# Gateway 자체는 REST 컨트롤러가 없어 문서화할 API가 없으므로,
+# springdoc-openapi-starter-webflux-ui는 각 서비스의 /v3/api-docs를 모아 보여주는 통합 Swagger UI 용도로만 사용한다.
+# 접속: http://localhost:8000/swagger-ui/index.html (상단 드롭다운에서 서비스 선택)
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: user-service
+        url: /v3/api-docs/user-service
+      - name: store-service
+        url: /v3/api-docs/store-service
+      - name: reservation-service
+        url: /v3/api-docs/reservation-service
+      - name: waiting-service
+        url: /v3/api-docs/waiting-service
+      - name: notification-service
+        url: /v3/api-docs/notification-service
+      - name: review-service
+        url: /v3/api-docs/review-service
+      - name: payment-service
+        url: /v3/api-docs/payment-service
+
+jwt:
+  secret: ${JWT_SECRET}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: api-gateway
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

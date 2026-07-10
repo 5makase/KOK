@@ -1,0 +1,60 @@
+spring:
+  datasource:
+    # 1. 빠르고 독립적인 테스트를 위해 인메모리 H2 DB 사용
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    # 동시성 테스트를 위해 커넥션 풀을 넉넉히 열어줍니다. (스레드 수 100개 기준)
+    hikari:
+      maximum-pool-size: 100
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        show_sql: true
+        format_sql: true
+
+  # Eureka 비활성화 (잘하셨습니다)
+  cloud:
+    discovery:
+      enabled: false
+
+  # Kafka가 굳이 필요 없다면 테스트에서는 가짜 주소를 넣거나 비활성화
+  kafka:
+    bootstrap-servers: localhost:9099 # 존재하지 않는 포트로 두어 무시하게 하거나 Mock 처리
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+#spring:
+#  datasource:
+#    url: jdbc:postgresql://ep-floral-water-at8225zj-pooler.c-9.us-east-1.aws.neon.tech/neon_review_db?sslmode=require
+#    username: neondb_owner
+#    password: npg_SxX7Iel1szBf
+#    driver-class-name: org.postgresql.Driver
+#  jpa:
+#    hibernate:
+#      ddl-auto: create-drop
+#    properties:
+#      hibernate:
+#        dialect: org.hibernate.dialect.PostgreSQLDialect
+#  cloud:
+#    discovery:
+#      enabled: false
+#  kafka:
+#    bootstrap-servers: localhost:9092
+#  autoconfigure:
+#    exclude:
+#      - org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration
+#
+#eureka:
+#  client:
+#    enabled: false
+#    register-with-eureka: false
+#    fetch-registry: false

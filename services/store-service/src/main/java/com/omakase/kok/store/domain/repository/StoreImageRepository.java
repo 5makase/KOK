@@ -1,0 +1,33 @@
+package com.omakase.kok.store.domain.repository;
+
+import com.omakase.kok.store.domain.entity.StoreImage;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+public interface StoreImageRepository {
+
+    StoreImage save(StoreImage image);
+
+    List<StoreImage> saveAll(List<StoreImage> images);
+
+    // 이미지 식별자 기반 단건 조회 (soft delete 포함) - storeId + imageId 복합 조건으로 교차 접근 차단
+    // 수정/삭제 전 상태 확인 목적으로 사용하며, 삭제 여부 판단은 호출 측에서 처리
+    Optional<StoreImage> findImageById(UUID storeId, UUID imageId);
+
+    // 활성 슬롯만 조회 - 슬롯 충돌 확인용 (soft delete 행 여러 개 공존 시 NonUniqueResultException 방지)
+    Optional<StoreImage> findActiveImageByDisplayOrder(UUID storeId, int displayOrder);
+
+    // 요청 슬롯 목록 한 번에 조회 - soft delete 포함 (bulk upsert용)
+    List<StoreImage> findAllByDisplayOrders(UUID storeId, List<Integer> displayOrders);
+
+    // 슬롯을 즉시 비워 재사용 가능 상태로 만듦 - soft delete를 DB에 즉시 반영해 partial index에서 제외
+    void releaseImageSlot(StoreImage image);
+
+    // 매장의 활성 이미지 목록 조회 (displayOrder 오름차순)
+    List<StoreImage> findAllImages(UUID storeId);
+
+    // 매장 상세 - 이미지 미리보기 (displayOrder 오름차순 최대 5개)
+    List<StoreImage> findImagePreview(UUID storeId);
+}

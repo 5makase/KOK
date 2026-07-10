@@ -44,13 +44,11 @@ jobs:
       - name: gradlew 권한 부여
         run: chmod +x ./gradlew
 
-      - name: 빌드 및 테스트
-        run: ./gradlew clean build
+      - name: 빌드 (테스트는 CI에서 이미 수행하므로 스킵)
+        run: ./gradlew clean build -x test
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          TEST_PG_USERNAME: user
-          TEST_PG_PASSWORD: password
 
       - name: AWS 자격증명 설정 (이미지 푸시용 액세스 키)
         uses: aws-actions/configure-aws-credentials@v4

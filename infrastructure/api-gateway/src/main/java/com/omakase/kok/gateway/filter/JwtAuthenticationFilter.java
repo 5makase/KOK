@@ -11,6 +11,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -55,7 +56,11 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             "/v3/api-docs/**",
             "/swagger-ui.html",
             "/swagger-ui/**",
-            "/webjars/**"
+            "/webjars/**",
+            "/api/v1/stores",
+            "/api/v1/stores/**",
+            "/api/v1/categoreis",
+            "/api/v1/stores/ranking"
     );
 
     private final JwtUtil jwtUtil;
@@ -74,6 +79,13 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             ServerHttpRequest request = exchange.getRequest();
             String path = request.getPath().value();
             String method = request.getMethod().name();
+
+            // CORS 프리플라이트(OPTIONS)는 항상 JWT 검증 없이 통과시킨다.
+            // 브라우저는 실제 요청 전에 Authorization 헤더 없이 OPTIONS를 먼저 보내므로,
+            // 여기서 막으면 브라우저가 실제 요청(POST 등)을 아예 보내지 못한다.
+            if (HttpMethod.OPTIONS.matches(method)) {
+                return chain.filter(exchange);
+            }
 
             // 외부 헤더 인젝션 방지: 화이트리스트 경로 포함 모든 요청에서 X-User-* 헤더 제거
             ServerHttpRequest strippedRequest = request.mutate()

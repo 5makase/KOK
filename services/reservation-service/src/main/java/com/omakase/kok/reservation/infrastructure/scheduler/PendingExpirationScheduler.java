@@ -129,7 +129,6 @@ public class PendingExpirationScheduler {
 
             String payload = objectMapper.writeValueAsString(envelope);
             return ReservationOutboxEvent.builder()
-                    .outboxEventId(outboxEventId)
                     .reservationId(reservation.getReservationId())
                     .eventType(EventType.RESERVATION_CANCELLED)
                     .payload(payload)

@@ -5,6 +5,8 @@ name: CD Pipeline
 on:
   push:
     branches: [ main ]
+  # Actions 화면에서 손으로 실행할 수 있게 한다 (테스트용).
+  workflow_dispatch:
 
 # 배포가 동시에 겹치지 않도록 직렬화한다.
 concurrency:

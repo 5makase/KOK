@@ -1,5 +1,7 @@
 # KOK
 
+![KOK](docs/kok.png)
+
 MSA 기반 실시간 레스토랑 예약·웨이팅 플랫폼 KOK 백엔드 서비스
 
 이 README는 프로젝트 진입점입니다. 각 서비스의 상세 기능은 [docs/services](docs/services)의 서비스별 문서를 참고하세요.
@@ -25,6 +27,14 @@ services ──async─▶ Kafka (Outbox 패턴) ──▶ services
 ```
 
 서비스 간 통신은 동기 호출(Feign + Resilience4j CircuitBreaker)과 비동기 이벤트(Kafka, Transactional Outbox 패턴)를 함께 사용합니다. 이벤트 흐름 상세는 [docs/kafka-event-flow.md](docs/kafka-event-flow.md) 참고.
+
+### 인프라 설계서
+
+![Infra Architecture](docs/infra_architecture.png)
+
+### ERD
+
+![ERD](docs/erd.png)
 
 ## Tech Stack
 

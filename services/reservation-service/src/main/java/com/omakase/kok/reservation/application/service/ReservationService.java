@@ -778,6 +778,8 @@ public class ReservationService {
 
             if (eventType == EventType.RESERVATION_CONFIRMED || eventType == EventType.RESERVATION_CHANGED) {
                 payloadData.put("partySize", reservation.getReservationSize());
+                payloadData.put("slotDate", visitedAtValue.toLocalDate().toString());
+                payloadData.put("slotTime", visitedAtValue.toLocalTime().toString());
             }
             if (eventType == EventType.RESERVATION_CANCELLED) {
                 payloadData.put("cancelReason", reservation.getCancelReason());

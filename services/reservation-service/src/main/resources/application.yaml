@@ -7,8 +7,8 @@ spring:
 
   datasource:
     url: ${RESERVATION_DB_URL:jdbc:postgresql://localhost:5433/reservation_db}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    username: ${RESERVATION_DB_USERNAME:${DB_USERNAME:postgres}}
+    password: ${RESERVATION_DB_PASSWORD:${DB_PASSWORD:postgres}}
     driver-class-name: org.postgresql.Driver
 
   jpa:

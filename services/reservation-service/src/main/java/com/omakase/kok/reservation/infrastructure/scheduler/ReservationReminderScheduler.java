@@ -143,7 +143,6 @@ public class ReservationReminderScheduler {
 
             String payload = objectMapper.writeValueAsString(envelope);
             return ReservationOutboxEvent.builder()
-                    .outboxEventId(outboxEventId)
                     .reservationId(reservation.getReservationId())
                     .eventType(eventType)
                     .payload(payload)
